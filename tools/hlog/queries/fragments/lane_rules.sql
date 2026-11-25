@@ -270,13 +270,14 @@ lr_hb AS (
     FROM lr_hb1 o
     WHERE o.prev IS NULL OR o.t - o.prev > 5
 ),
--- The hitter (`tid` on me, else the nearest enemy hero).
+-- The hitter (`tid` on me, else the nearest enemy hero). The distance is a column of a derived table because SQLite 3.50
+-- and 3.51 refuse an outer alias in a subquery's ORDER BY.
 lr_hbw AS (
     SELECT o.*, coalesce(
         (SELECT a.pid FROM lr_s a WHERE a.game_id = o.game_id AND a.team <> o.team AND a.tid = 'h' || o.pid
             AND a.sec >= o.t - 3 AND a.sec <= o.t + 1 ORDER BY a.sec DESC LIMIT 1),
-        (SELECT b.pid FROM lr_s b WHERE b.game_id = o.game_id AND b.sec = o.t AND b.team <> o.team
-            ORDER BY (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) LIMIT 1)) AS hpid
+        (SELECT pid FROM (SELECT b.pid, (b.x - o.x) * (b.x - o.x) + (b.y - o.y) * (b.y - o.y) AS d2 FROM lr_s b
+            WHERE b.game_id = o.game_id AND b.sec = o.t AND b.team <> o.team) ORDER BY d2 LIMIT 1)) AS hpid
     FROM lr_hb o
 ),
 -- The cases (hitter in my reach, unprovoked), whether it was answered, and the judge: the raw HP each side lost over 8 s and

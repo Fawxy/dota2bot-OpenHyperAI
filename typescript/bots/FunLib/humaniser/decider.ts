@@ -60,7 +60,7 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that applies holds. Empty: the pass-through. index.ts fills it, so no row is imported here. */
+/** Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack and rune detour rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
 export const ROWS: Row[] = [];
 
 /**

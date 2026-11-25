@@ -83,6 +83,8 @@ const passes: Record<number, Pass | undefined> = {};
 const went: Record<number, { spawn: number; misses: number } | undefined> = {};
 
 interface Walk {
+    /** The attempt id (Telemetry.NextAid): the pass's go choice line carries it for the first walk; a later walk of the pass takes a new one at its start. */
+    aid: number;
     rune: number;
     gold: number;
     /** The largest gain between two steps. */
@@ -161,10 +163,11 @@ function block(bot: Unit, r: Read): string | undefined {
     return undefined;
 }
 
-function choiceLine(bot: Unit, p: Pass, go: boolean, why: string | undefined, src: string): void {
+function choiceLine(bot: Unit, p: Pass, go: boolean, why: string | undefined, src: string, aid?: number): void {
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "rune_detour"],
+        ["aid", aid],
         ["go", go ? 1 : 0],
         ["want", p.want ? 1 : 0],
         ["why", why],
@@ -177,10 +180,13 @@ function choiceLine(bot: Unit, p: Pass, go: boolean, why: string | undefined, sr
     ]);
 }
 
-function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string, w?: Walk, took?: boolean): void {
+function jobLine(bot: Unit, phase: string, why: string, ex?: number, cut?: string, w?: Walk, took?: boolean, start?: Walk): void {
+    const a = w ?? start;
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "rune_detour"],
+        ["aid", a?.aid],
+        ["tgt", start !== undefined ? `rune:${start.rune}` : undefined],
         ["phase", phase],
         ["why", why],
         ["host", HOST],
@@ -281,11 +287,13 @@ function rowApplies(bot: Unit): boolean {
     const g = went[pid];
     if (g === undefined || g.spawn !== r.spawn) went[pid] = { spawn: r.spawn, misses: 0 };
     // One line a pass: a later walk for the same pass (a rune piled on the spot) writes none.
-    if (p.logged !== true) choiceLine(bot, p, ok, ok ? undefined : "refused", "own");
+    const aid = ok ? Telemetry.NextAid(pid) : undefined;
+    if (p.logged !== true) choiceLine(bot, p, ok, ok ? undefined : "refused", "own", aid);
     p.logged = true;
     if (!ok) return false;
-    running[pid] = { rune: r.rune, gold: bot.GetGold(), jump: 0 };
-    jobLine(bot, "start", "pass", ex);
+    const walk: Walk = { aid: aid!, rune: r.rune, gold: bot.GetGold(), jump: 0 };
+    running[pid] = walk;
+    jobLine(bot, "start", "pass", ex, undefined, undefined, undefined, walk);
     return true;
 }
 

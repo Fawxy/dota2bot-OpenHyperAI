@@ -931,6 +931,8 @@
   },
   "job": {
    "pid": "num",
+   "aid": "num",
+   "tgt": "str",
    "job": "str",
    "phase": "str",
    "why": "str",
@@ -961,6 +963,7 @@
   },
   "stack": {
    "pid": "num",
+   "aid": "num",
    "min": "num",
    "res": "str",
    "why": "str",
@@ -1687,6 +1690,7 @@
   },
   "rune_job": {
    "pid": "num",
+   "aid": "num",
    "pos": "num",
    "kind": "str",
    "spawn": "num",
@@ -1758,6 +1762,7 @@
   },
   "pull_job": {
    "pid": "num",
+   "aid": "num",
    "pos": "num",
    "lane": "num",
    "camp": "num",
@@ -1839,6 +1844,7 @@
   },
   "choice": {
    "pid": "num",
+   "aid": "num",
    "kind": "str",
    "held": "str",
    "hs": "str",
@@ -2557,6 +2563,7 @@
    "foe": "text"
   },
   "ev_job": {
+   "tgt": "text",
    "job": "text",
    "phase": "text",
    "why": "text",

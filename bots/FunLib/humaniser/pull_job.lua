@@ -1559,7 +1559,7 @@ local function campFields(s)
     return {__TS__SparseArraySpread(____array_11)}
 end
 --- `slot` the plan's hit second, so the line joins its `pull_job` line.
-local function choiceLine(bot, d, slot, go, why, camp, src)
+local function choiceLine(bot, d, slot, go, why, camp, src, aid)
     if src == nil then
         src = "own"
     end
@@ -1574,6 +1574,7 @@ local function choiceLine(bot, d, slot, go, why, camp, src)
             bot:GetPlayerID()
         },
         {"kind", "pull"},
+        {"aid", aid},
         {"go", go and 1 or 0},
         {"want", d.want and 1 or 0},
         {"why", why},
@@ -1647,7 +1648,12 @@ local function jobLine(bot, p, phase, why, cut)
             bot:GetPlayerID()
         },
         {"job", "pull"},
+        {"aid", p.aid},
         {"phase", phase},
+        {
+            "tgt",
+            phase == "start" and "camp:" .. tostring(p.plan.camp.campIdx) or nil
+        },
         {"why", why},
         {"host", p.host},
         unpack(phase == "end" and ({{"hit", p.hit == true and 1 or 0}}) or ({}))
@@ -1701,6 +1707,7 @@ local function finish(bot, p, ____end, label)
             "pid",
             bot:GetPlayerID()
         },
+        {"aid", p.aid},
         {
             "pos",
             LaneConfig.PositionOf(bot)
@@ -2082,7 +2089,7 @@ local function rowApplies(bot)
     local d = due.d
     local camp = ____exports.CampStateOf(p.spawner)
     camp.known = ____exports.Known(p.spawner)
-    local function done(go, why)
+    local function done(go, why, aid)
         handled[pid] = p.slot
         gateWhy[pid] = nil
         choiceLine(
@@ -2091,7 +2098,9 @@ local function rowApplies(bot)
             p.slot,
             go,
             why,
-            camp
+            camp,
+            "own",
+            aid
         )
     end
     if not d.want then
@@ -2142,7 +2151,8 @@ local function rowApplies(bot)
         done(false, "refused")
         return false
     end
-    done(true, nil)
+    pull.aid = Telemetry.NextAid(pid)
+    done(true, nil, pull.aid)
     running[pid] = pull
     jobLine(bot, pull, "start", "trigger")
     return true

@@ -2,11 +2,6 @@
 
 Working notes for the humaniser fork of OHA. Items marked **TODO (in-game)** still need confirming in a live lobby.
 
-## Branches
-- `humaniser`: feature work.
-- `patch-currency`: brings OHA up to the live patch. It is kept separate so it can be rebased or upstreamed on its own.
-- `upstream` remote: forest0xia/dota2bot-OpenHyperAI. **TODO:** fork to our org and set `origin` to the fork.
-
 ## Build
 - Use yarn, which matches the checked-in `yarn.lock`. `npm install` fails on a peer conflict: `typescript-to-lua@1.26.2` pins `typescript@5.5.2`, but the project has `5.5.4`.
   ```bash
@@ -15,36 +10,7 @@ Working notes for the humaniser fork of OHA. Items marked **TODO (in-game)** sti
   ```bash
   npm run build
   ```
-- Round-trip check (21/10/2026, upstream `cb814c6`): `npm run build` on a clean checkout produced **no diff** against the checked-in Lua. The TS pipeline is trustworthy.
 - `bots/Customize/general.lua` is hand-written Lua. `typescript/bots/Customize/general.ts` only re-exports it, so humaniser config lives in the Lua file under `Customize.Humaniser`.
-
-## Dev install
-On macOS, Dota reads bot scripts from:
-```
-~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots
-```
-On this machine that path is a symlink to the Workshop OHA item (`workshop/content/570/3246316298`). To run the dev checkout instead, re-point it (and point it back to the Workshop path to undo):
-```bash
-ln -sfn "$HOME/Documents/Projects/dota-bots-humaniser/oha/bots" "$HOME/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots"
-```
-Edits then take effect on the next lobby start, or after `script_reload` (**TODO (in-game):** confirm which reload works mid-game for bot scripts).
-
-### Lobby setup
-**TODO (in-game):** record the exact clicks. Expected flow:
-1. Play → Custom Lobbies → Create. Edit settings: Server Location = Local Host, Enable Cheats (needed for FretBots and debug draws).
-2. Set Radiant and Dire bot scripts to **Local Dev Script** (not the Workshop item). Set bot difficulty per team.
-3. Start the game.
-
-**With FretBots** (discussion #68): in the console, once the game has loaded, run `sv_cheats 1`, then `script_reload_code fretbots`. **TODO (in-game):** confirm the exact command.
-**Without FretBots:** skip that step. The humaniser must still work, with `GetFret().active = false`.
-
-### Useful console commands
-| Command | Use |
-|---|---|
-| `sv_cheats 1` | Required for debug draws and `host_timescale` |
-| `host_timescale 2` | Speed up the game (perf check) |
-| `dota_bot_debug_team 2` / `3` | **TODO (in-game):** confirm. Valve's own bot debug overlay |
-| `dota_bot_debug_clear` | **TODO (in-game):** confirm |
 
 ## Debug overlay
 Set `Customize.Humaniser.Debug = true` in `bots/Customize/general.lua`. The module is `typescript/bots/FunLib/humaniser/debug.ts`, required as `HDebug`.
@@ -80,8 +46,6 @@ cd tests/humaniser && npm install && npm run check
     the chunk instead of parsing it again; a re-run still builds new module tables (Lua 5.3 may reuse a closure that
     captures nothing changed, so compare instances by their tables, not their functions). A test that needs a
     module's source changed on disk mid-file would see the old chunk (none does; `package.preload` still wins).
-  - Cost (30/10/2026, 69 files): about 35 s and under 600 MB per process. Before: 260 s and 1.6 GB in one process
-    (about 1,550 `FreshHumaniser` calls at 170 ms of parsing each).
 - `npm run check:calls` (repo root; `npm run build` runs it first and stops on a finding; its tests run in `npm run check` here as `anycall`; `npm run dev`, the watch build, skips it) fails on a member call with no declared signature (the callee is `any` or `Function`, a cast on the callee included) under `typescript/bots/FunLib/humaniser/`. The Lua build has `noImplicitSelf`, so such a call compiles to `x.Foo()` with no self argument: a unit method called without its unit, which only fails in a game. Declare the method on a typed interface (`h as Unit & { GetAttackPoint?(): number }`); a call that is meant to be a plain function call takes `// any-call-ok: <reason>` on its line or as a comment line above, one call per comment. OHA's own TypeScript and `engine/` are out of scope.
 - These check logic and wiring only. Valve API semantics (ping types, chat callback delivery, modifier stacks) still need the in-game checks marked TODO in this file.
 - `hlog` runs the telemetry analyser's tests (`tools/hlog/test`), including `hlog_session.lua`: a scripted mode switch and `!mark` through the real modules whose `[HEV]` output the analyser must read.
@@ -97,16 +61,18 @@ cd tests/humaniser && npm install && npm run check
 ```bash
 node tools/hlog/analyse.js                 # latest game: per-player summary and checks
 node tools/hlog/analyse.js --mark 2        # every bot's state at mark 2, plus the 20 s before it
-node tools/hlog/analyse.js --from 4:30 --to 5:10 --pid 3 --ev mode,lasthit,order_accept
-node tools/hlog/analyse.js --check         # checks only; exit 1 on any FAIL (e.g. after an all-bot run)
+node tools/hlog/analyse.js --from 4:30 --to 5:10 --pid 3 --ev mode,lasthit
+node tools/hlog/analyse.js --check         # checks only; exit 1 on any FAIL
 node tools/hlog/analyse.js --list          # games in the log; --game N picks one
 ```
 
 **Humaniser off (A/B games):** telemetry has its own switch. With `Customize.Humaniser.Enable = false` and `Telemetry.Enable = true`, `Humaniser.Tick` runs only `Telemetry.Tick`: snapshots, `mode`, `lasthit`/`deny`, `game_end`, `lua_error`, and a `bot` line with `humaniser=0` and the read-only `skill`/`ally` (the profile is not built, because building it draws `RandomFloat`). Every humaniser hook still early-returns as before, so behaviour is upstream OHA. Not available off: every humaniser-only event, `by`/`order` on snapshots, and `!mark` (the humaniser chat hub isn't installed; upstream installs its own callback). `Customize.Enable = false` still turns telemetry off with everything else.
 
-**Lua error guard (`Telemetry.LuaErrors`, default on with telemetry):** read once at load. `Humaniser.Tick` and the hooks other files call every frame (the `Chooser`, `Retreat`, `SustainAct`, `StackJob`, `Drill` and `States` hooks) run under `xpcall`. A throw is printed as `lua_error`, once per `where`+`msg` and again at most every `LuaErrorRepeat` s with the count, and is swallowed: the hook returns its feature-off value (raw desire, unfiltered list, `false`, `0`), so a humaniser bug degrades to upstream behaviour instead of losing the whole `GetDesire`/`Think` call. Reporting runs after `xpcall` returns, so a stack overflow, which Valve's handler prints only as `error in error handling`, is still attributed to its entry point. If the console shows `error in error handling` and there's no `lua_error`, the error came from outside the guarded entry points (upstream OHA or Valve code). Cost: roughly 0.03 µs per guarded call under the LuaJIT interpreter on an M4, so expect about 0.1 µs in Dota's Lua. Perception filters are called most often (every enemy `GetNearbyHeroes`/`GetUnitList`), which is well under 1 ms per frame for ten bots. Set `LuaErrors = false` to remove the wrappers.
+**Lua error guard (`Telemetry.LuaErrors`, default on with telemetry):** read once at load. `Humaniser.Tick` and the hooks other files call every frame (the `Chooser`, `Retreat`, `SustainAct`, `StackJob`, `Drill` and `States` hooks) run under `xpcall`. A throw is printed as `lua_error`, once per `where`+`msg` and again at most every `LuaErrorRepeat` s with the count, and is swallowed: the hook returns its feature-off value (raw desire, unfiltered list, `false`, `0`), so a humaniser bug degrades to upstream behaviour instead of losing the whole `GetDesire`/`Think` call. Reporting runs after `xpcall` returns, so a stack overflow, which Valve's handler prints only as `error in error handling`, is still attributed to its entry point. If the console shows `error in error handling` and there's no `lua_error`, the error came from outside the guarded entry points (upstream OHA or Valve code). Cost: roughly 0.03 µs per guarded call under the LuaJIT interpreter on an M4, so expect about 0.1 µs in Dota's Lua. Set `LuaErrors = false` to remove the wrappers.
 
-**Line format:** `[HEV] t=<DotaTime> ev=<name> k=v ...`. A value with spaces, `"` or `=` is double-quoted with inner quotes turned into single quotes. Order posts, pings, commands and marks are emitted by every module instance. The analyser de-duplicates them, so the log looks the same whether or not modules are shared.
+**Line format:** `[HEV] t=<DotaTime> ev=<name> k=v ...`. A value with spaces, `"` or `=` is double-quoted with inner quotes turned into single quotes. Marks are emitted by every module instance. The analyser de-duplicates them, so the log looks the same whether or not modules are shared.
+
+The full list of events and fields is `tools/hlog/EVENTS.md` (generated from `events.ts`). The ones the bot still writes and the analyser reads:
 
 | `ev` | When | Key fields |
 |---|---|---|
@@ -116,27 +82,10 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 | `lasthit` / `deny` | Last-hit or deny counter rose | `human creep` |
 | `ping` / `cmd` | Human ping or chat command | `context danger order` / `name args only text` |
 | `mark` / `mark_state` | `!mark` | `n by text` / one bot's full state at the mark |
-| `lane_plan` | Laning phase, at most once per wave cycle, gate and bot: the first moment in the cycle farm's GetDesire reaches that gate (the gates are re-checked every frame, so `far` then `planner` in one cycle means the bot came back in reach) | `gate` (`no-camp`: the lane has no resolved pull camp; `far`: the window is shut only because the stand point is over `MaxTravel` away, with `camp travel`; `late`: in reach, but the bot would reach the stand point after `aggro + JobStartLate`, with `camp travel`; `planner`: the planner was asked, with `camp tech reason score fscore w imb feq apow epow plan pullOk partner laners`, `fscore` being the forecast score the pull branch used, `w` the `Foresight` weight, `imb` the clash imbalance, `feq` the forecast eq and `apow`/`epow` the ally and enemy wave power; `far`, `late` and `planner` add `timing`, `wave` or `seed`, for the first camp's full pull; `double-unfit`: the planner chose a full pull that would have been a double, but the double cannot fit, with `camp second why late gap`, `why` being `no-wave`, `far`, `join` or `reach`, see "Double pulls"), then `owner` (`ok` or `MayRunCampJob`'s reason) `eq meet want front efront tower etower` (eqPos, the meet amount, and the eqPos inputs: own and enemy front amounts and tower amounts, all from `GetAmountAlongLane` through `Camps.ToTeamAmount`) |
-| `lane_job_start` / `lane_job_abort` / `lane_job` | A camp job (pull, stack; `contest` only in old logs) registered / aborted / a pull graded | `pid kind camp key data aggroAt forced timing` (`timing`: `wave`, `live` or `seed`, see "Pull timing from wave arrival"; `pre=1` and `take=1` appear in old logs only (the contest job was removed)) / `pid kind camp key reason phase acted divert` (`phase` the job was in, `acted` whether farm's Think ever ran it; a `partner-low-hp` / `partner-dived` abort adds the partner reading `partner php pnear pclose ploss`; a pre-contest's abort adds `pre=1`, a take's `take=1`) / `pid kind camp key aggro planned divert grade`, as the `[H:lane]` lines |
-| `lane_job_end` | A stack job's walk-off ended (its outcome follows on `lane_stack`) / a contest ended (old logs) | `pid kind camp` / `pid kind=contest camp reason pre` (`reason`: `no-target`, `timeout`, `enemy-in-lane` or `no-pull`, and for a take `no-creeps`, `outnumbered`, `lane-wave` or `low-hp`; `pre` 1 for a pre-contest, else 0; a take adds `take=1 swings=<last-hit swings>`), as the `contest-end` line |
-| `lane_signal` | A counter-play signal instance was rolled for, once per bot and instance | `pid kind lane camp enemy noticed inferred` (`camp`/`enemy` -1 when the signal names none; `noticed` the `CounterNotice` roll; `inferred` 1 for a pull read from an unseen support) |
-| `lane_take_skip` | A noticed pull was not taken (see "Take the pull"), once per bot and signal | `pid kind camp reason` (`reason` the first check that declined it: `owner`, `skill`, `committed`, `low-hp` / `retreat` / `fight` (the camp jobs' start gate), `handsoff`, `lane-creeps`, `no-camp`, `far`, `tower`, `path`, `punish`, `wave` / `lastseen` when the signal was not a sighting, `stale` when the sighting was over `Timing.CounterRespondFresh` old, or `start` when `CampJobs.Start` refused) |
-| `lane_enemy_role` | Counter-play's read of a lane's enemy support (side lanes) or mid changed | `team lane role enemy hero members` (`role` `support` or `mid`; `members` the lane's enemy laners, most seen first; the summary prints `enemy roles read by <team>: <lane> <role>=<hero>[pid] (n changes)`) |
-| `lane_job_hold` | `hold=partner`, once per job: the start gate (`PartnerSafe`) fails while the job runs on under its commitment (`PartnerHolding`). `hold=retreat`: retreat is first held below a pull that has drawn its camp (`state=on`), and released for the rest of the job (`state=off`, at most once) | `pid hold kind camp phase`, then `partner php pnear pclose ploss` (partner) or `state reason hp` (retreat; `reason` is `neutrals` for `on`, else `hp`, `hero-hit`, `hero-attack` or `tower`) |
-| `lane_job_ping` | A support pings the camp it leaves for, for a human lane partner (first Think of the job) | `pid kind camp partner` |
-| `lane_cover` | A core starts or stops playing safe while its support is on a camp | `pid state` (`start`/`end`) `partner via` (`job`: this module holds the support's job; `camp`: the support is seen at a pull camp) `kind` / `dur` |
-| `lane_stack` | A stack's outcome settled, as the `[H:lane] stack` line | `pid camp type aggro planned before after grade stacked assumed` (`grade` is timing only; `stacked=1` when the count rose, or when assumed; `assumed=1` is the `stack-assumed` case) |
-| `lane_eq` | Once per team and lane per wave cycle, at the first snapshot refresh at or after `Timing.EqSampleAt` (10 s) into the cycle. The sample for fitting `ForecastModel.K` | `team lane kind eq imb feq a e` (`kind` safe, off or mid; `a`/`e` ally and enemy creep counts) |
-| `rune_skip` | A mid's rune desire stays under `MidRuneSkipDesire` within `MidRuneSkipWindow` of a power spawn, once per spawn | `pid spawn target status raw desire laning gate` |
-| `tr_rotate` | A support's rotation decision for a power spawn, once per spawn (and again if it is called off) | `pid spawn go side leaveAt reason` (`ok`, `roll`, `late`, `phase`, `contested`, a busy or lane-can't-spare reason, `mistake`, `pos4 going`/`pos4 closer`), `enemies ours` on `contested` |
-| `tr_rune_hold` | A rotating support at its spawned rune starts holding it for our mid, or takes it | `pid spawn state` (`hold`/`take`) `reason` (`enemy`, `late`, `max`) `mid` (our mid's distance to the spot) |
-| `tr_caution` | The applied caution level changed, including the drop to 0 when laning ends | `pid level alone missing lane` |
-| `tr_tp` | An enemy TP the team can see was cast (team-wide, repeats per module instance) | `team enemy x y remaining` |
-| `tr_tp_react` | A bot's response to an enemy TP to its lane locked in, or was downgraded from `setup` to `back` | `pid enemy mode lane until` |
-| `tr_ward` | The early lane-ward pick's outcome changed for a bot (inside `WardFrom`–`WardTo`, for the lane's support) | `pid lane result dist` (`roll`, `no-anchor`, `planted`, `covered` with the covering ward's distance, `far` with the nearest spot's distance, `picked`) |
-| `tr_ward_go` | The ward mode accepted a lane-ward pick after its own safety checks | `pid key x y` |
 | `game_end` | An ancient fell or post-game started | |
 | `lua_error` | A guarded humaniser entry point threw (`Telemetry.LuaErrors`) | `pid where n msg tb` (`where` e.g. `Chooser.FarmDesire`, `Retreat.Tick`, `Tick`; `n` running count; `tb` up to six `file.lua:line(fn)` frames, absent for a stack overflow) |
+
+Legacy, declared for banked logs: `ping`, `cmd`, `notice`, `react`, `trainer`, `order_post`, `order_decline`, `order_accept`, `thrash`, `stuck`, `intent_cadence`, `lane_plan`, `lane_job_*`, `lane_signal`, `lane_take_skip`, `lane_enemy_role`, `lane_cover`, `lane_stack`, `lane_eq`, `rune_skip`, `tr_*`. No code writes them now.
 
 **Checks** (`tools/hlog/checks.js`):
 
@@ -144,35 +93,16 @@ node tools/hlog/analyse.js --list          # games in the log; --game N picks on
 |---|---|
 | `script_errors` | **FAIL:** any Lua error line in the console (runtime errors and `[Humaniser] chat subscriber failed`). |
 | `snapshot_gaps` | **FAIL:** a bot stops reporting for more than 10 s (its script stalled or errored). |
-| `notice_delay` | **FAIL:** a sampled notice delay is outside the bot's profile bounds (`base × (1 ± jitter/2)`, plus up to `LapseMaxExtra`), or a hero is noticed before its delay elapsed. **WARN:** it was noticed more than 1 s late; reported as a count per bot plus the five worst. |
-| `react_delay` | **FAIL:** a reaction is under `MinReact` or outside the profile bounds. |
-| `order_read_delay` | **FAIL:** an order's read delay is outside the `ping`/`chat` bounds, or the order was accepted before it. |
-| `order_followed` | **WARN:** an accepted order's mode (assemble, roshan, `defend_<lane>`, `push_<lane>`) never appears within 8 s while the bot is alive. |
-| `intent_health` | **WARN:** `stuck` episodes and genuine `thrash` episodes, one line per bot: episodes grouped by mode (stuck) or by the most frequent mode pair in the thrash window, each with its count and first time for `--from`. A thrash episode whose window has at most `Thrash.MaxSwitches` (4) switches once last-hit blips are removed is counted as a blip episode in the summary, not warned. |
 | `frozen_bots` | **WARN:** a live bot outside fountain range doesn't move for 10 s. |
-| `trainer_selftest` | **FAIL:** with at least 20 self-test verdicts, under 85% `PERFECT`+`OK` or at least 5% `MISSED_EASY`. |
+
+`notice_delay`, `react_delay`, `order_read_delay`, `order_followed`, `intent_health` and `trainer_selftest` are still in `checks.js` but read events nothing writes, so they report no data on a new log.
 
 **Tripwires** (`TRIPWIRES` in the same file): the outcomes every full game owes. `batch.js` runs them on every batch and prints only failures; `node tools/hlog/checks.js <manifest|run>` runs them on banked games and `--help` lists them.
 
 **Mode churn** (summary section): OHA's `mode_team_roam_generic.lua` wants 1.5 whenever `X.GetLastHitCreep()` finds a killable creep, and `CapForLanePush` holds that to 0.72 in the laning phase. Every last-hit attempt is therefore a short team_roam visit out of laning. The analyser calls a team_roam visit entered from laning at exactly 0.72 and left within 2 s (to any mode) a *blip*. The section lists, per bot, total switches, blips, blips/min, other switches/min and the top three non-blip mode pairs. Blips are upstream behaviour, not a humaniser fault.
 
-**Hands-off regression run:** an all-bot lobby (spectate, `host_timescale 4`, about 15 minutes of game time), then `analyse.js --check`. That covers errors, stalls, perception bounds, thrash and freezes. Etiquette, orders and pings need a human on the team.
-
-### Before/after runs
-To show that a behaviour change helps, compare builds on the same lineup, not just eyeballing one game.
-
-- **Build stamp:** `npm run build` writes `bots/FunLib/humaniser/build_info.lua` (git-ignored) with the commit's short sha, plus `+dirty` if there are uncommitted changes. Every `bot` line carries `build=` and `pos=`, and every snapshot carries the scoreboard `kills=`/`deaths=` (snapshots stop while a bot is dead). **Commit first, then build.** The `bots` symlink is shared between worktrees and other sessions re-point it, so trust a game only when `build=` names the commit you meant.
-- **Arms:**
-  - **A (defaults):** `general.lua` as committed.
-  - **B (owned laning):** A with `Lane.OwnLaningThink = 'all'` (a historical arm: the setting was removed, so a new run has no B).
-- **Lineup:** for test runs only, set `Customize.Radiant_Heros = { 'npc_dota_hero_dragon_knight', 'npc_dota_hero_medusa', 'npc_dota_hero_magnataur', 'npc_dota_hero_jakiro', 'npc_dota_hero_shadow_demon' }` and `Customize.Dire_Heros = { 'npc_dota_hero_troll_warlord', 'npc_dota_hero_queenofpain', 'npc_dota_hero_venomancer', 'npc_dota_hero_mirana', 'npc_dota_hero_ogre_magi' }` (pos 1-5 in order). Don't commit the lineup.
-- **Per game:**
-  1. all-bot lobby;
-  2. `host_timescale 4`;
-  3. run to at least 11:00 game time;
-  4. `node tools/hlog/analyse.js --list` should show the game, and `--check` should have no script errors.
-- **Count:** 4 games per arm per build. Laning varies a lot between bot games; a delta the tool marks `noisy` (under two pooled standard errors) is not shown. Add games or call it no change.
-- **Compare:** `node tools/hlog/compare.js --builds <base>,<cand>` reads every `console.*.log` in the Dota folder (or `--dir`), takes the games whose `build` matches and that reach `--until` (default 10:00), and prints per-position rows: `lh dn kills deaths retreatSec retreatHealthySec retreatBy:<claim source> cautiousSec commits commitKills commitSec trades pullsStarted stacksStarted rotations aggroWithLastHit`. Use `--base <logs> --cand <logs>` to compare explicit files instead.
+### Build stamp
+- `npm run build` writes `bots/FunLib/humaniser/build_info.lua` (git-ignored) with the commit's short sha, plus `+dirty` if there are uncommitted changes. Every `bot` line carries `build=` and `pos=`, and every snapshot carries the scoreboard `kills=`/`deaths=` (snapshots stop while a bot is dead). **Commit first, then build.** The `bots` symlink is shared between worktrees and other sessions re-point it, so trust a game only when `build=` names the commit you meant.
 
 ## What our code is now
 `typescript/bots/FunLib/humaniser/` holds the decider (`decider.ts`), the decisions behind `Customize.Ours` (the job
@@ -186,12 +116,12 @@ planner and its camp jobs, intent arbitration, last-hit accuracy, the last-hit t
 Transitions, the state layer's owned and shadowed states) were deleted on 23/11/2026; tag `pre-humaniser-cut` holds
 them, `pre-lane-body-cut` the lane body before it. `!mark <note>` is the one chat command left (telemetry).
 
-## Task runner (spike)
+## Task runner
 Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, ...) resumed once per frame from its host mode's `Think()`. OHA side: `FunLib/humaniser/tasks.lua` (TS: `tasks.ts`), exposed as `J.Humaniser.Tasks`.
 
-- **Engine code:** `bots/FunLib/engine/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/engine/decl/` (declarations) are built from `engine/src` (lua-tasks, moved from dota-bot-sdk in slice 0b). Do not edit them; change `engine/src` (master skill `engine-change`), run `npm run build:engine` (`npm run build` builds the engine first) and commit the outputs. Engine tests: `npm test` in `engine/`.
+- **Engine code:** `bots/FunLib/engine/tasks.lua` (TSTL bundle) and `typescript/bots/FunLib/engine/decl/` (declarations) are built from `engine/src` (lua-tasks). Do not edit them; change `engine/src` (master skill `engine-change`), run `npm run build:engine` (`npm run build` builds the engine first) and commit the outputs. Engine tests: `npm test` in `engine/`.
 - **Loading:** the bundle is required lazily under `pcall`, only when the humaniser and `Tasks.Enable` are on, so a bundle that fails to load cannot break the rest of the humaniser. The first load attempt in each script context always prints one `[H:tasks] support ...` line (not gated on Debug).
-- **Adapter:** no task posts a claim (the jobs hold their host mode through the chooser); skill is 1, with no reaction delay, jitter or last-hit error; `lastHit` leaves a creep to an allied core that can take it (a bot outside positions 1 and 2).
+- **Adapter:** no task posts a claim (the jobs hold their host mode through the chooser); skill is 1, with no reaction delay, jitter or last-hit error; `lastHit` is filtered by `mayTake` (`tasks.ts`): a bot outside positions 1 and 2 leaves a creep to an allied core (position 1-3, within 1,600) that can reach it. That is a direct position check, which master `docs/team/ARCHITECTURE.md` rule 2 (positions differ through one table) does not allow; it describes the code as it is, not a pattern to copy.
 - **API:** `Tasks.Start(bot, { name, host, tier?, floor? }, body)`, `Tasks.Step(bot, mode)` from the host mode's `Think()`, `Tasks.Tick(bot)` (run from `Humaniser.Tick`: cancels the task when the bot dies or leaves the host mode), `Tasks.Describe(bot)`, `Tasks.Verbs()`. All return false/nil when disabled or the bundle failed to load.
 - **Kill switch:** `Customize.Humaniser.Tasks.Enable = false` (or `Humaniser.Enable = false`): the bundle is never required and nothing is printed.
 - **Overlay** (Debug): `task: <name> step=<n>`, or `- last=<name> <ok|reason>` once it ends.
@@ -202,8 +132,7 @@ Generic, skill-scaled bodies for the support clock. Each takes its geometry and 
 as a plan; the host (`camps`/`stacking`, `GetNeutralSpawners()`, rotation) supplies the data and
 decides *when* to start; the verb executes. `JobVerbs.*(bot, plan, hooks?)` report phases through `{ label?, urgent? }`
 (pass the task's `ctx.label`/`ctx.urgent`); `Tasks.Jobs()` returns the module once the engine bundle has loaded (it is
-bound to the bundle and its adapter by `JobVerbs.Bind`). Moved from the engine's `jobs.ts` in slice 0b; tests
-`tests/humaniser/test_job_verbs.lua`. Defaults are OHA's `lane_config` values, so OHA data passes through unchanged.
+bound to the bundle and its adapter by `JobVerbs.Bind`). Tests: `tests/humaniser/test_job_verbs.lua`. Callers: `stack_job.ts` (`stack`), `pull_job.ts` (`pull`, which passes no `first`), `rune_job.ts` (`runeRun`, `runeSpawnRun`); nothing outside the tests calls `clearCamp` or `gank`. Defaults are OHA's `lane_config` values, so OHA data passes through unchanged.
 
 **Camp** `{ stand, box?, origin?, margin? = 300, search? = 700, pick?, confirmed? }`. `campNeutral(bot, camp)`:
 the nearest alive, visible neutral (`GetNearbyNeutralCreeps`) inside the box grown by `margin` (OHA
@@ -220,11 +149,8 @@ and walks back if pushed off. The hit is confirmed by `attackAndConfirm` (hold `
 messages: `timeout`/`late` (not at the stand by aggroAt + err + `startLate` 2 s), `no_target`/`mistake:no-camp`
 (nothing in the box by + `noCampAfter` 1 s), `missed`/`mistake:no-aggro` (hit not seen within `confirmFor` 2 s).
 `onAggro({ camp, planned, error, orderedAt, confirmedAt })` fires on each confirmed hit (OHA `NoteStackAggro`).
-O2 found the hit landing 1.1 s after the planned second (order at the second, then wind-up and walk); the lead
-removes that.
 
-**`stack(bot, { camp, aggroAt, exitPath, exitUntil, ...aggro })`**: the v0.2 port of `stack_task.ts`, promoted
-from `Testing.stack` (removed): urgent travel/wait/aggro, then `exit` along `exitPath` and hold (`stack_exit`)
+**`stack(bot, { camp, aggroAt, exitPath, exitUntil, ...aggro })`**: urgent travel/wait/aggro, then `exit` along `exitPath` and hold (`stack_exit`)
 until `exitUntil`. Labels `travel, wait, aggro, exit`.
 
 **`pull(bot, { camp, aggroAt, lead, first?, watchSec? = 8, watchUntil?, leadDeadline?, ...aggro })`**: full
@@ -245,14 +171,14 @@ agree); `runeLeaveAt(bot, plan)` subtracts the straight walk at the current spee
 `runeLeaveAt` (skill 1 arrives ~4 s early, skill 0.2 ~1.6 s and sometimes late).
 
 **`clearCamp(bot, { at, radius? = 700, arrive? = 300, search? = 1600, deadline?, emptyAfter? = 0.5,
-reorder? = 1, pick?, onEngage? })`** (slice 10): walk to the camp centre, attack its neutrals (the current target
+reorder? = 1, pick?, onEngage? })`**: walk to the camp centre, attack its neutrals (the current target
 kept while alive, else the lowest HP one, or the host's `pick`), one order per target (re-given every `reorder` s),
 one `Skill.react` delay before each new target after a kill. ok `cleared` (it fought) or `empty` (nothing seen for
 `emptyAfter` s at the camp); `timeout` "late" past `deadline`. Labels `go`, then `farm` from the first frame a
 neutral is in attack range + 100 (`onEngage` fires once, there).
 
 **`gank(bot, { target, path, engageRange? = 700, telegraph?: { lead, fn }, commit?, lostGrace? = 2,
-engageFor? = 8, deadline?, reorder? = 1, onEngage? })`** (slice 11): walk the host's approach waypoints, then chase
+engageFor? = 8, deadline?, reorder? = 1, onEngage? })`**: walk the host's approach waypoints, then chase
 the target (re-read every frame through `target()`) into `engageRange` and attack it, the first order one
 `Skill.react` after reaching range. `telegraph.fn(eta)` fires once when the remaining path ETA falls to `lead` s.
 ok `kill` when the target dies; `interrupted` "escaped" (out of sight `lostGrace` s), `timeout` "no-kill" (fighting
@@ -266,4 +192,3 @@ not there until seen available, then retried for 2 s).
 ### In-game: check first
 1. **`coroutine` is present in Dota's bot VM.** Expected console line: `[H:tasks] support coroutine=table bundle=ok`. `coroutine=nil` means the bundle loaded but every task reports `unsupported`.
 2. **The luaBundle `require` shim works in Dota.** The same line shows `bundle=ok`. If it shows `bundle=fail <err>`, record the error here: no task code can run.
-3. **TODO (in-game):** a task's `task:<name>` claim shows on the overlay's `intent:` line while it runs, and disappears within 0.2 s of the task ending or the bot leaving the host mode.

@@ -3,7 +3,7 @@
 -- creep_attempt_rows's (read its header), with who was paid for the creep (`paid`, `mpos`), whether the attempt began with a walk
 -- (`walkin`) and the attempt's `fate`, which the row's own `cls`/`why` undercounts: a row that ended not ok can still have last-hit.
 -- Params: like (a path fragment or run label) or batch (the exact run name), one is required; pid.
-WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
+WITH gm AS MATERIALIZED (SELECT +game_id AS game_id, file, game, label FROM games
     WHERE bots > 0 AND (file LIKE coalesce(:like, '') OR run_label_part(label, 'batch') = :batch)),
 -- include: creep_attempt_rows
 SELECT gm.file, gm.game, a.team, a.pid, a.hero, a.pos, a.t0, a.t1, a.len, a.cid, a.gw, a.rng, a.melee, a.cls, a.why, a.cut, a.arr,

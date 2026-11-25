@@ -850,6 +850,7 @@ local function jobLine(bot, t, phase, why)
                 bot:GetPlayerID()
             },
             {"job", "rune"},
+            {"aid", t.aid},
             {"phase", phase},
             {"why", why},
             {"host", t.host},
@@ -872,6 +873,7 @@ local function finish(bot, t, r, label)
     local ____log_33 = log
     local ____array_32 = __TS__SparseArrayNew(bot, t.kind, t.spawn)
     local ____array_31 = __TS__SparseArrayNew(
+        {"aid", t.aid},
         {"res", r.success and "ok" or "fail"},
         {"why", why},
         {"label", label},
@@ -1090,6 +1092,7 @@ function ____exports.Wants(bot, blocked, host)
                 handled[pid][key(kind, spawn)] = true
                 gateWhy[pid] = nil
                 running[pid] = t
+                t.aid = Telemetry.NextAid(pid)
                 jobLine(bot, t, "start", "trigger")
                 return true
             until true
@@ -1222,6 +1225,7 @@ function ____exports.MidWants(bot)
                 end
                 handled[pid][k] = true
                 running[pid] = t
+                t.aid = Telemetry.NextAid(pid)
                 jobLine(bot, t, "start", kind == "power" and "plan" or "trigger")
                 return true
             until true

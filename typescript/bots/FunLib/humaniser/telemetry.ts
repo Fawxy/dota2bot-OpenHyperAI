@@ -1279,6 +1279,14 @@ export function CreepId(u: Unit): number {
     return id;
 }
 
+/** The next attempt id of a hero: one counter per player id, so an id is unique per hero within a game. Allocated once when a decision goes (or a job starts with no decision line of its own) and carried on that attempt's lines as `aid`. */
+const attemptIds = new LuaTable<number, number>();
+export function NextAid(pid: number): number {
+    const id = (attemptIds.get(pid) ?? 0) + 1;
+    attemptIds.set(pid, id);
+    return id;
+}
+
 // Lane creep deaths (BACKLOG 1.12, WO-025): who got each enemy lane creep that died near the team, and what each own core
 // was doing. Read from what was seen last frame, never through a dead creep's handle (BACKLOG 0.14).
 interface CreepSeen {
