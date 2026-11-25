@@ -32,6 +32,18 @@ export const SETTINGS = {
 
 type Timed = Unit & { GetSecondsPerAttack?(): number };
 
+/**
+ * The read's parts, timed as `CO:<part>` rows when the perf probe is on (kind `step`; PerfStep returns the function itself with the
+ * probe off). Made on first use: the probe's clock is chosen at the first PerfStep.
+ */
+interface Parts {
+    targets: (this: void, bot: Lib.TaskUnit) => Lib.Verbs.LaneTarget[];
+    lists: (this: void, bot: Unit) => { listed: LuaTable<Unit, boolean>; theirs: Unit[] };
+    snapshot: (this: void, bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, others: Offer.Other[]) => Snap;
+    race: (this: void, bot: Unit, creep: Unit) => [string, number | undefined];
+}
+let parts: Parts | undefined;
+
 /** The answers and facts as they stood at one read of the creep. */
 interface Snap {
     walk: number;
@@ -234,7 +246,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         ein++;
         if (e.dmg > ed) ed = e.dmg;
     }
-    const [kb, kt] = race(bot, creep);
+    const [kb, kt] = parts!.race(bot, creep);
     return {
         walk: t.walk,
         due: t.due,
@@ -253,6 +265,24 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
     };
 }
 
+function partsOf(): Parts {
+    if (parts !== undefined) return parts;
+    parts = {
+        targets: Telemetry.PerfStep("CO:targets", (bot: Lib.TaskUnit) => Tasks.Verbs()!.laneTargets(bot, { radius: LaneHits.READER_RADIUS, within: 1 })),
+        lists: Telemetry.PerfStep("CO:lists", (bot: Unit) => {
+            const listed = new LuaTable<Unit, boolean>();
+            const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
+            const theirs = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true);
+            for (const c of mine) listed.set(c, true);
+            for (const c of theirs) listed.set(c, true);
+            return { listed, theirs };
+        }),
+        snapshot: Telemetry.PerfStep("CO:snapshot", snapshot),
+        race: Telemetry.PerfStep("CO:race", race),
+    };
+    return parts;
+}
+
 /**
  * One call per hero (the tick's ten a second): opens, updates and closes the hero's opportunities. Reads and logs; nothing is
  * ordered.
@@ -264,17 +294,11 @@ export function Shadow(bot: Unit): void {
         closeAll(bot, pid);
         return;
     }
-    const verbs = Tasks.Verbs();
-    if (verbs === undefined) return;
+    if (Tasks.Verbs() === undefined) return;
+    const P = partsOf();
     const now = DotaTime();
-    const taskBot = bot as unknown as Lib.TaskUnit;
-    const targets = verbs.laneTargets(taskBot, { radius: LaneHits.READER_RADIUS, within: 1 });
-
-    const listed = new LuaTable<Unit, boolean>();
-    const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
-    const theirs = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true);
-    for (const c of mine) listed.set(c, true);
-    for (const c of theirs) listed.set(c, true);
+    const targets = P.targets(bot as unknown as Lib.TaskUnit);
+    const { listed, theirs } = P.lists(bot);
 
     let m = opps[pid];
     if (m !== undefined) {
@@ -311,12 +335,12 @@ export function Shadow(bot: Unit): void {
                 first: slot,
                 ck: LaneRead.CreepKind(creep.GetUnitName()),
                 who: t.kind === "deny" ? "o" : "t",
-                snap: snapshot(bot, f, t, a.slack, others),
+                snap: P.snapshot(bot, f, t, a.slack, others),
                 atk: false,
             };
             m[cid] = o;
         } else if (o.okFrom === undefined && (a.ok || a.slack > o.snap.slk + SETTINGS.SlackStep)) {
-            o.snap = snapshot(bot, f, t, a.slack, others);
+            o.snap = P.snapshot(bot, f, t, a.slack, others);
         }
         if (a.ok) {
             if (o.okFrom === undefined) o.okFrom = now;

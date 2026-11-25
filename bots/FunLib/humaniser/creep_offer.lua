@@ -15,6 +15,7 @@ local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 ____exports.SETTINGS = {SlackStep = 0.1, SlackCap = 99, TowerRadius = 2500}
+local parts
 --- pid -> creep id -> its opportunity.
 local opps = {}
 function ____exports.ResetCache()
@@ -323,7 +324,7 @@ local function snapshot(bot, f, t, slack, others)
             end
         end
     end
-    local kb, kt = unpack(race(bot, creep))
+    local kb, kt = unpack(parts.race(bot, creep))
     return {
         walk = t.walk,
         due = t.due,
@@ -344,6 +345,35 @@ local function snapshot(bot, f, t, slack, others)
         ein = ein
     }
 end
+local function partsOf()
+    if parts ~= nil then
+        return parts
+    end
+    parts = {
+        targets = Telemetry.PerfStep(
+            "CO:targets",
+            function(bot) return Tasks.Verbs().laneTargets(bot, {radius = LaneHits.READER_RADIUS, within = 1}) end
+        ),
+        lists = Telemetry.PerfStep(
+            "CO:lists",
+            function(bot)
+                local listed = {}
+                local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
+                local theirs = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true)
+                for ____, c in ipairs(mine) do
+                    listed[c] = true
+                end
+                for ____, c in ipairs(theirs) do
+                    listed[c] = true
+                end
+                return {listed = listed, theirs = theirs}
+            end
+        ),
+        snapshot = Telemetry.PerfStep("CO:snapshot", snapshot),
+        race = Telemetry.PerfStep("CO:race", race)
+    }
+    return parts
+end
 --- One call per hero (the tick's ten a second): opens, updates and closes the hero's opportunities. Reads and logs; nothing is
 -- ordered.
 function ____exports.Shadow(bot)
@@ -355,37 +385,30 @@ function ____exports.Shadow(bot)
         closeAll(bot, pid)
         return
     end
-    local verbs = Tasks.Verbs()
-    if verbs == nil then
+    if Tasks.Verbs() == nil then
         return
     end
+    local P = partsOf()
     local now = DotaTime()
-    local taskBot = bot
-    local targets = verbs.laneTargets(taskBot, {radius = LaneHits.READER_RADIUS, within = 1})
-    local listed = {}
-    local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
-    local theirs = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true)
-    for ____, c in ipairs(mine) do
-        listed[c] = true
-    end
-    for ____, c in ipairs(theirs) do
-        listed[c] = true
-    end
+    local targets = P.targets(bot)
+    local ____P_lists_result_10 = P.lists(bot)
+    local listed = ____P_lists_result_10.listed
+    local theirs = ____P_lists_result_10.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue55
+                local __continue59
                 repeat
                     if listed[o.creep] == true then
-                        __continue55 = true
+                        __continue59 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue55 = true
+                    __continue59 = true
                 until true
-                if not __continue55 then
+                if not __continue59 then
                     break
                 end
             end
@@ -431,7 +454,7 @@ function ____exports.Shadow(bot)
                 first = slot,
                 ck = LaneRead.CreepKind(creep:GetUnitName()),
                 who = t.kind == "deny" and "o" or "t",
-                snap = snapshot(
+                snap = P.snapshot(
                     bot,
                     f,
                     t,
@@ -442,7 +465,7 @@ function ____exports.Shadow(bot)
             }
             m[cid] = o
         elseif o.okFrom == nil and (a.ok or a.slack > o.snap.slk + ____exports.SETTINGS.SlackStep) then
-            o.snap = snapshot(
+            o.snap = P.snapshot(
                 bot,
                 f,
                 t,
