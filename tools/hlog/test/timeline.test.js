@@ -529,3 +529,46 @@ test('timeline creeps: one row per lane creep death whichever team logged it, no
     ]);
     store.close();
 });
+
+// An attempt id pairs a go line with its job even when the job started well before it (the stack row writes its go line
+// about 2 s after its job starts); lines without one keep the 1 s time pairing.
+function attemptLines({ aid }) {
+    const a = n => (aid ? ` aid=${n}` : '');
+    const stack = (t, pid, slot, n) => line(t, `choice pid=${pid} kind=stack lane=3 slot=${slot} want=1 go=1 src=own${a(n)}`);
+    const job = (t, pid, phase, why, n) => line(t, `job pid=${pid} job=stack phase=${phase} why=${why}${a(n)}`);
+    return [
+        line(-90, 'bot pid=1 hero=lich team=2 pos=5'),
+        line(-90, 'bot pid=2 hero=luna team=2 pos=1'),
+        // lich: job 100-130, go line 2 s after the start
+        job(100, 1, 'start', 'trigger', 1), stack(102, 1, 100, 1), job(130, 1, 'end', 'ok', 1),
+        // luna: two attempts close in time, the second job starting before the first one's go line is written
+        job(200, 2, 'start', 'trigger', 7), job(205, 2, 'end', 'cancelled:hit', 7),
+        job(206, 2, 'start', 'trigger', 8), stack(207, 2, 260, 7), stack(208, 2, 300, 8), job(240, 2, 'end', 'ok', 8),
+        // lich: the go line first and the job in the same frame, as the pull row writes them
+        stack(300, 1, 320, 9), job(300.5, 1, 'start', 'trigger', 9), job(320, 1, 'end', 'ok', 9),
+    ];
+}
+const decisionsOf = lines => {
+    const { store, file } = storeOf(lines);
+    const rows = only(timelineRows(store, file, { kind: 'decision' }), 'decision');
+    store.close();
+    return rows.map(r => pick(r, ['hero', 'slot', 't', 't1', 'outcome', 'why']));
+};
+
+test('timeline decisions: a go line pairs with the job of its attempt id, even 2 s after the job started', () => {
+    assert.deepStrictEqual(decisionsOf(attemptLines({ aid: true })), [
+        { hero: 'lich', slot: 100, t: 102, t1: 130, outcome: 'done', why: null },
+        { hero: 'luna', slot: 260, t: 207, t1: 205, outcome: 'cut', why: 'cancelled:hit' },
+        { hero: 'luna', slot: 300, t: 208, t1: 240, outcome: 'done', why: null },
+        { hero: 'lich', slot: 320, t: 300, t1: 320, outcome: 'done', why: null },
+    ]);
+});
+
+test('timeline decisions: lines without an attempt id keep the 1 s pairing: a go line after its job starts is no_start', () => {
+    assert.deepStrictEqual(decisionsOf(attemptLines({ aid: false })).map(r => [r.hero, r.slot, r.outcome]), [
+        ['lich', 100, 'no_start'],
+        ['luna', 260, 'no_start'],
+        ['luna', 300, 'no_start'],
+        ['lich', 320, 'done'],
+    ]);
+});

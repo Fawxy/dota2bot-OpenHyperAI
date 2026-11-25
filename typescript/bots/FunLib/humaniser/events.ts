@@ -1310,6 +1310,10 @@ export const EVENTS = {
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
         pid: "num",
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). */
+        aid: "num",
+        /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
+        tgt: "str",
         /** `stack`, `rune`, `pull` or `rune_detour`. */
         job: "str",
         /** `start` (`why=trigger`) or `end`. */
@@ -1334,6 +1338,8 @@ export const EVENTS = {
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {
         pid: "num",
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes and shared by its `ev=job` and, for the stack row, `ev=choice kind=stack go=1` lines. */
+        aid: "num",
         /** The trigger minute. */
         min: "num",
         /** `stacked` (a neutral not seen during the job appeared in the box after :00), `not_stacked`, `unseen` (hit landed, box never in sight after :00), `failed` (no hit landed) or `skip` (no job started). A log's stacked rate is a lower bound; the replay grades it (`stacktruth.js`). */
@@ -2500,6 +2506,8 @@ export const EVENTS = {
     /** One line per rune or wisdom trip (`Ours.RuneRotation`; OHA has none) or per trip it did not start (`res=skip`). View `rune_jobs` reads it. */
     rune_job: {
         pid: "num",
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (at the job start: a trip has no choice line) and shared by its `ev=job` lines. */
+        aid: "num",
         /** The hero's lineup position. */
         pos: "num",
         /** `power`, `wisdom`, `contest` (the enemy shrine play's trip) or `water` (the mid's 2:00 and 4:00 trips, `Ours.MidWater`). */
@@ -2661,6 +2669,8 @@ export const EVENTS = {
     /** One line per pull the support's pull job started (`Ours.SupportPull`). Views `pull_attempts`, `pull_waves` and `pull_watch_cases` read it. */
     pull_job: {
         pid: "num",
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes and shared by its `ev=choice kind=pull go=1` and `ev=job` lines. */
+        aid: "num",
         /** The puller's lineup position. */
         pos: "num",
         /** The lane pulled. */
@@ -2834,6 +2844,8 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
+        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0` and on `kind=creep`, `shadow` and `decider` lines. */
+        aid: "num",
         /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, always `src=shadow go=0 why=off`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */

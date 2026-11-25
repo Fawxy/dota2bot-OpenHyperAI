@@ -6,7 +6,7 @@
 -- params of query timeline: like or batch, arm, game, lane, hero, pid, from, to, kind. Ends with a comma.
 -- ensure: ev_cast(pid, ab)
 -- ensure: ev_creep_death(team, kind, by)
--- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot)
+-- ensure: ev_choice(pid, kind, want, go, why, src, lane, slot, aid)
 gm AS MATERIALIZED (
     SELECT +g.game_id AS game_id, g.file, g.game, r.batch, r.lineup, r.arm, r.seat_team, r.seat, r.rep
     FROM games g JOIN run_label r ON r.game_id = g.game_id
@@ -123,19 +123,20 @@ tl_visit AS (
 -- A decision of ours: an `ev=choice` line of any kind but `shadow` and `decider` (per-second mode lines, not decisions). One
 -- row per opportunity (hero, kind, lane, slot), from its last line unless a line started it; a line with no slot is its own.
 tl_dec0 AS (
-    SELECT c.game_id, c.seq, c.t, c.pid, c.kind AS what, c.want, c.go, c.why, c.src, c.lane, c.slot,
+    SELECT c.game_id, c.seq, c.t, c.pid, c.kind AS what, c.want, c.go, c.why, c.src, c.lane, c.slot, c.aid,
         row_number() OVER (PARTITION BY c.game_id, c.pid, c.kind, c.lane, coalesce(c.slot, 'line ' || c.seq)
             ORDER BY coalesce(c.go, 0) = 1 DESC, c.t DESC, c.seq DESC) AS rn
     FROM gm CROSS JOIN ev_choice c ON c.game_id = gm.game_id
     WHERE c.kind NOT IN ('shadow', 'decider')
 ),
--- A started decision's trip: that hero's first job of the decision's name to start within 1 s of the line (in logs to date it
--- starts in the same frame, just after it).
+-- A started decision's trip: the hero's job with the same attempt id when both lines carry one, else (older logs, or a line
+-- without one) that hero's first job of the decision's name to start within 1 s of the line.
 tl_dec_job AS (
     SELECT d.game_id, d.seq, j.t0, j.t1, j.why,
         row_number() OVER (PARTITION BY d.game_id, d.seq ORDER BY j.t0) AS jn
     FROM tl_dec0 d
-    JOIN ep_job j ON j.game_id = d.game_id AND j.pid = d.pid AND j.src = 'job' AND j.job = d.what AND j.t0 BETWEEN d.t AND d.t + 1
+    JOIN ep_job j ON j.game_id = d.game_id AND j.pid = d.pid AND j.src = 'job' AND j.job = d.what AND (
+        CASE WHEN d.aid IS NOT NULL AND j.aid IS NOT NULL THEN d.aid = j.aid ELSE j.t0 BETWEEN d.t AND d.t + 1 END)
     WHERE d.rn = 1 AND d.go = 1
 ),
 tl_dec AS (
