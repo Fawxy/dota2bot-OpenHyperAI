@@ -32,7 +32,7 @@ local BLOCK = 7 * LINE
 local RING = 140
 local OURS_COLOUR = {255, 220, 0}
 local WAITING_COLOUR = {200, 180, 110}
-local STOCK_COLOUR = {170, 170, 170}
+local STOCK_COLOUR = {140, 140, 140}
 local RING_COLOUR = {pull = {0, 200, 255}, stack = {80, 230, 80}, rune_detour = {230, 80, 230}}
 local headerAt = -1
 local switchesLine
@@ -129,13 +129,7 @@ function ____exports.Draw(bot)
     DebugDrawText(
         X,
         top + pos * LINE,
-        string.format(
-            "%d %-16s %s%s",
-            pos,
-            hero,
-            d.text,
-            extra
-        ),
+        ((((tostring(pos) .. " ") .. hero) .. "  ") .. d.text) .. extra,
         d.colour[1],
         d.colour[2],
         d.colour[3]

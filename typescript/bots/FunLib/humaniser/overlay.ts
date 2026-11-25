@@ -2,7 +2,7 @@
  * The on-screen overlay of a dotactl game: drawn while `Overrides.Label` is set (dotactl passes the run's label; `--no-overlay`
  * leaves it unset). Draws only; nothing reads it to decide.
  *
- * DebugDrawText takes screen coordinates, so a hero's line sits in its team's block at the top left, not above the hero;
+ * DebugDrawText takes screen coordinates and has one large font (a hero line is a fifth of the screen wide on the Mac), so a hero's line sits in its team's block at the top left, not above the hero;
  * a ring on the map marks a hero while one of our jobs has it. Each team's VM draws its own block, and Radiant's draws the
  * label. A draw lasts one frame, so Draw runs every frame.
  */
@@ -26,7 +26,7 @@ const RING = 140;
 
 const OURS_COLOUR: [number, number, number] = [255, 220, 0];
 const WAITING_COLOUR: [number, number, number] = [200, 180, 110];
-const STOCK_COLOUR: [number, number, number] = [170, 170, 170];
+const STOCK_COLOUR: [number, number, number] = [140, 140, 140];
 const RING_COLOUR: Record<string, [number, number, number]> = {
     pull: [0, 200, 255],
     stack: [80, 230, 80],
@@ -94,7 +94,7 @@ export function Draw(bot: Unit): void {
     const d = doing(bot);
     const hero = string.gsub(bot.GetUnitName(), "npc_dota_hero_", "")[0];
     const extra = HDebug.IsEnabled() ? `  ${DesireLog.Competing(bot)}` : "";
-    DebugDrawText(X, top + pos * LINE, string.format("%d %-16s %s%s", pos, hero, d.text, extra), d.colour[0], d.colour[1], d.colour[2]);
+    DebugDrawText(X, top + pos * LINE, `${pos} ${hero}  ${d.text}${extra}`, d.colour[0], d.colour[1], d.colour[2]);
     if (d.ring !== undefined && bot.IsAlive()) {
         const [r, g, b] = RING_COLOUR[d.ring] ?? OURS_COLOUR;
         DebugDrawCircle(bot.GetLocation(), RING, r, g, b);
