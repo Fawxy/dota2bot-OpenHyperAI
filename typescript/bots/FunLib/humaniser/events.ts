@@ -1334,6 +1334,8 @@ export const EVENTS = {
         took: "num",
         /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
         gj: "num",
+        /** `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`). */
+        k: "str",
         /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
         cid: "num",
         /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */

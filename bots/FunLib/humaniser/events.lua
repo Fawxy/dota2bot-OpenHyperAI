@@ -842,6 +842,7 @@ ____exports.EVENTS = {
         ex = "num",
         took = "num",
         gj = "num",
+        k = "str",
         cid = "num",
         gw = "num",
         gd = "num",

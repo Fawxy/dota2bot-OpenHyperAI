@@ -194,9 +194,11 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
 
-/** A bot whose position the trip table lets act on a creep offer. */
+/** A bot whose position the trip table lets act on a creep offer: a last hit (`creep`) or a deny. */
 export function MayOffer(bot: Unit): boolean {
-    return bot.IsBot() && TripTable.Does("creep", LaneConfig.PositionOf(bot));
+    if (!bot.IsBot()) return false;
+    const pos = LaneConfig.PositionOf(bot);
+    return TripTable.Does("creep", pos) || TripTable.Does("deny", pos);
 }
 
 function enemyFormat(es: Offer.EnemyCost[]): string {

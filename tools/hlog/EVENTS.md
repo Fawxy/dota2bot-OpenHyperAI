@@ -693,6 +693,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
 - `took` num: `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot).
 - `gj` num: `job=rune_detour` end: the largest gold gain between two steps of the walk.
+- `k` str: `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`).
 - `cid` num: `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`).
 - `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
 - `rng` num: `job=creep` start: the hero's attack range.

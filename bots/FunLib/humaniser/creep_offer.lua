@@ -75,19 +75,19 @@ function rowOf(bot, creep)
     end
     for ____, lane in ipairs(LANES) do
         do
-            local __continue27
+            local __continue28
             repeat
                 if lane == own then
-                    __continue27 = true
+                    __continue28 = true
                     break
                 end
                 local r = LaneHits.Of(team, lane, creep)
                 if r ~= nil then
                     return r
                 end
-                __continue27 = true
+                __continue28 = true
             until true
-            if not __continue27 then
+            if not __continue28 then
                 break
             end
         end
@@ -108,11 +108,11 @@ function towersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
         do
-            local __continue34
+            local __continue35
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue34 = true
+                    __continue35 = true
                     break
                 end
                 out[#out + 1] = {
@@ -120,9 +120,9 @@ function towersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
                 }
-                __continue34 = true
+                __continue35 = true
             until true
-            if not __continue34 then
+            if not __continue35 then
                 break
             end
         end
@@ -137,11 +137,11 @@ function ownTowersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, false)) do
         do
-            local __continue39
+            local __continue40
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue39 = true
+                    __continue40 = true
                     break
                 end
                 out[#out + 1] = {
@@ -149,9 +149,9 @@ function ownTowersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius()
                 }
-                __continue39 = true
+                __continue40 = true
             until true
-            if not __continue39 then
+            if not __continue40 then
                 break
             end
         end
@@ -166,11 +166,11 @@ function creepsOf(f)
     local out = {}
     for ____, c in ipairs(f.enemyCreeps) do
         do
-            local __continue44
+            local __continue45
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil then
-                    __continue44 = true
+                    __continue45 = true
                     break
                 end
                 local ____this_8
@@ -183,9 +183,9 @@ function creepsOf(f)
                     reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
                     dps = c:GetAttackDamage() / math.max(spa, 0.1)
                 }
-                __continue44 = true
+                __continue45 = true
             until true
-            if not __continue44 then
+            if not __continue45 then
                 break
             end
         end
@@ -201,15 +201,15 @@ function enemiesOf(f)
     local hs = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue49
+            local __continue50
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue49 = true
+                    __continue50 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue49 = true
+                    __continue50 = true
                     break
                 end
                 local ____at_x_11 = at.x
@@ -232,9 +232,9 @@ function enemiesOf(f)
                     speed = e:GetCurrentMovementSpeed()
                 }
                 hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
-                __continue49 = true
+                __continue50 = true
             until true
-            if not __continue49 then
+            if not __continue50 then
                 break
             end
         end
@@ -292,7 +292,7 @@ function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue60
+            local __continue61
             repeat
                 local gap = dist(e, at) - (e.range + e.hull + hull)
                 local reach = math.max(0, gap) / math.max(100, e.speed or 300)
@@ -303,16 +303,16 @@ function snapshot(bot, f, t, slack, others)
                     end
                 end
                 if gap > 0 then
-                    __continue60 = true
+                    __continue61 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue60 = true
+                __continue61 = true
             until true
-            if not __continue60 then
+            if not __continue61 then
                 break
             end
         end
@@ -472,12 +472,13 @@ end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
---- A bot whose position the trip table lets act on a creep offer.
+--- A bot whose position the trip table lets act on a creep offer: a last hit (`creep`) or a deny.
 function ____exports.MayOffer(bot)
-    return bot:IsBot() and TripTable.Does(
-        "creep",
-        LaneConfig.PositionOf(bot)
-    )
+    if not bot:IsBot() then
+        return false
+    end
+    local pos = LaneConfig.PositionOf(bot)
+    return TripTable.Does("creep", pos) or TripTable.Does("deny", pos)
 end
 local function enemyFormat(es)
     local out = {}
@@ -679,17 +680,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue85
+                local __continue86
                 repeat
                     if listed[o.creep] == true then
-                        __continue85 = true
+                        __continue86 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue85 = true
+                    __continue86 = true
                 until true
-                if not __continue85 then
+                if not __continue86 then
                     break
                 end
             end
@@ -720,12 +721,12 @@ function ____exports.Shadow(bot)
     local cands = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue90
+            local __continue91
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue90 = true
+                    __continue91 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -787,9 +788,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue90 = true
+                __continue91 = true
             until true
-            if not __continue90 then
+            if not __continue91 then
                 break
             end
         end

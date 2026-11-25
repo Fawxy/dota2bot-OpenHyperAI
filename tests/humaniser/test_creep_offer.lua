@@ -24,6 +24,7 @@ local function world(every)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
 	-- The read alone: the creep row (test_creep_row.lua) is off, so every line is the shadow's.
 	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = false
+	package.loaded["bots/FunLib/custom_loader"].Ours.CreepDeny = false
 	CURRENT_TEAM = 2
 	T = 100
 	local w = { targets = {}, hits = {}, calls = {} }
@@ -146,7 +147,7 @@ do -- the first-ok snapshot replaces a worse earlier one
 		and near(num(l[1], "wo"), 0.5) and near(num(l[1], "walk"), 0.2) and num(l[1], "slot") == 100, l[1])
 end
 
-do -- a support writes nothing, with a core beside it writing its line from the same world (control)
+do -- a support is read too (its position does the deny), with CreepDeny off and no last hit of its own: a shadow line beside the core's
 	local w = world()
 	local sup = hero(5, 5, 100)
 	local core = hero(1, 1)
@@ -162,7 +163,9 @@ do -- a support writes nothing, with a core beside it writing its line from the 
 		w.CO.Shadow(core)
 	end)
 	local l = lines(out)
-	check("only the core's line", #l == 1 and field(l[1], "pid") == "1", table.concat(out, "\n"))
+	local byPid = {}
+	for _, x in ipairs(l) do byPid[field(x, "pid")] = x end
+	check("both heroes are read; the support's line is a shadow, off", #l == 2 and byPid["5"] ~= nil and field(byPid["5"], "src") == "shadow" and field(byPid["5"], "why") == "off", table.concat(l, "\n"))
 end
 
 do -- the hero dying closes its opportunities once, with the creep still listed
