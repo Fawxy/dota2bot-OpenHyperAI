@@ -613,6 +613,17 @@ function ownWindup(bot: TaskUnit, n: Nearby): number {
     return o.windup;
 }
 
+/**
+ * The centre-to-centre distance within which `attacker` begins an attack on `target` without moving: its attack range plus
+ * both hull radii (`GetBoundingRadius`, 0 for a handle without one). `range` is the attacker's attack range when the caller
+ * has already read it. Source: banked games (commit 628bfdd0, docs/contracts/attackReach.md), 21,212 hero attacks on lane creeps begun
+ * within 0.12 s of the creep's death in 1,394 games: they began up to range + 40 from a melee creep (hull 16) and range + 32
+ * from a ranged creep (hull 8) for heroes of hull 24, and 28 of 21,212 began farther.
+ */
+export function attackReach(attacker: TaskUnit, target: TaskCreep, range?: number): number {
+    return (range ?? attacker.GetAttackRange()) + (attacker.GetBoundingRadius?.() ?? 0) + (target.GetBoundingRadius?.() ?? 0);
+}
+
 function ownRange(bot: TaskUnit, n: Nearby): number {
     const o = ownOf(n, bot);
     if (o.range === undefined) o.range = bot.GetAttackRange();
@@ -901,11 +912,11 @@ export interface LaneTarget {
     creep: TaskCreep;
     /** `prehit`: never offered by laneTargets; a caller's pick that `laneFarm` carries out as one attack (see LaneFarmOpts.pick). */
     kind: "lasthit" | "deny" | "prehit";
-    /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack range if longer. */
+    /** Seconds until a swing ordered then would be due (0: due now), or the walk into attack reach (`attackReach`) if longer. */
     eta: number;
     /** Seconds until a swing ordered then would be due (0: due now). */
     due: number;
-    /** Seconds to walk into attack range at the current speed (0: in range). */
+    /** Seconds to walk into attack reach (`attackReach`) at the current speed (0: in reach). */
     walk: number;
     /** Seconds until the creep dies to the others' damage at their current DPS (exact, as `due`). */
     dies: number;
@@ -944,7 +955,7 @@ function cannotComeDue(bot: TaskUnit, c: TaskCreep, n: Nearby, cur: CreepNow): b
 }
 
 /**
- * Seconds until the creep is killable by a swing ordered then, the walk into attack range, and until it dies to the
+ * Seconds until the creep is killable by a swing ordered then, the walk into attack reach (`attackReach`), and until it dies to the
  * others at their current DPS (hp at our hit over that DPS, plus our hit time; infinite with no one on it).
  */
 function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number, n: Nearby): [number, number, number] | undefined {
@@ -952,7 +963,7 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number, n: Nearby): [numb
     if (cannotComeDue(bot, c, n, cur)) return undefined;
     const b = believe(bot, c, false, 0, n, cur);
     if (!b.survives) return undefined;
-    const walk = math.max(0, dist(locOf(n, bot)!, locOf(n, c)!) - ownRange(bot, n)) / walkSpeed;
+    const walk = math.max(0, dist(locOf(n, bot)!, locOf(n, c)!) - attackReach(bot, c, ownRange(bot, n))) / walkSpeed;
     const margin = b.hpAtHit - b.mine;
     const dps = b.dps + math.max(0, -cur.regen);
     const dies = dps > 0 ? b.tHit + b.hpAtHit / dps : math.huge;
@@ -962,10 +973,10 @@ function etaOf(bot: TaskUnit, c: TaskCreep, walkSpeed: number, n: Nearby): [numb
 }
 
 /**
- * The lane creeps that become killable within `within` seconds of the bot reaching attack range, enemy creeps
+ * The lane creeps that become killable within `within` seconds of the bot reaching attack reach (`attackReach`), enemy creeps
  * first, then allied ones (a caller's tie-break may rely on that order; within each side, the host's creep order): enemy creeps to last-hit (the adapter's `lastHitFilter` applies) and allied creeps to deny. Facts only, with
  * exact prediction and no skill error (the verbs apply that when they swing): eta is when the creep becomes
- * killable by a swing ordered then (from incoming DPS), or the walk into range if longer. Which one to go for is
+ * killable by a swing ordered then (from incoming DPS), or the walk into attack reach if longer. Which one to go for is
  * the caller's choice.
  */
 export function laneTargets(bot: TaskUnit, opts: LaneTargetsOpts = {}): LaneTarget[] {
@@ -998,10 +1009,18 @@ export interface LastHitOpts {
     target?: TaskCreep;
     /** Default attack range + 300. */
     searchRadius?: number;
-    /** Hold tag passed to the adapter's `hold` while standing in range waiting. */
+    /** Hold tag passed to the adapter's `hold` while standing in attack reach (`attackReach`) waiting. */
     hold?: string;
     interruptIf?: (this: void) => boolean;
+    /**
+     * Called once on each change of the verb's phase, with the time it was entered: `walk` (outside attack reach, moving in),
+     * `wait` (in reach, no swing ordered yet), `swing` (the attack is ordered, not yet confirmed). Called on the frame of the change,
+     * after the order of a `swing`. A verb that never reaches a phase never reports it.
+     */
+    onPhase?: (this: void, phase: LastHitPhase, t: number) => void;
 }
+
+export type LastHitPhase = "walk" | "wait" | "swing";
 
 type Mode = "lasthit" | "deny";
 
@@ -1045,6 +1064,12 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // Before a swing, what held it back on the last frame (in-game attribution of a lost creep that was never swung at):
     // `range` walking in, `cd` attack cooldown, `hp50` a deny above half HP, `wait` the kill belief not yet due.
     let held = "start";
+    let phase: LastHitPhase | undefined;
+    const enter = (p: LastHitPhase): void => {
+        if (p === phase) return;
+        phase = p;
+        if (opts.onPhase !== undefined) opts.onPhase(p, now());
+    };
     const win: Window = { at: -1, by: "none", frames: 0, gap: 0 };
     // On a frame that does not judge the swing (walking, cooldown, deny above half HP), whether it would be due: the belief
     // with the bot's error once rolled, exact before (rolling here would draw a random number the decision would not have).
@@ -1072,6 +1097,8 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
     // HP at landing is at most one frame of damage under the kill, but the whole own damage above zero).
     const seen: { t: number; hp: number }[] = [];
     let observedDps = 0;
+    // The count on the last frame the creep was alive: a rise after it, seen with the creep gone, is the hit that took it.
+    let lastCount = baseline;
     while (true) {
         const t = now();
         let gap = 0;
@@ -1084,6 +1111,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
         }
         lastFrame = t;
         if (!gone(creep)) {
+            lastCount = counter();
             const hp = creep.GetHealth();
             seen.push({ t, hp });
             while (seen.length > 1 && t - seen[1].t >= OBSERVE_WINDOW) table.remove(seen, 1);
@@ -1093,17 +1121,29 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
             observedDps = span >= OBSERVE_MIN ? math.max(0, (seen[0].hp - hp - biggest) / span) : 0;
         }
         if (!bot.IsAlive()) return early(fail("dead"));
-        if (gone(creep)) return early(fail(lostReason(enemyOnIt)));
+        if (gone(creep)) {
+            // A swing the bot's host ordered before this verb's (already in flight at the go) took the creep: the count rose with no
+            // swing of this verb's, which the message says (`hit=other`) so the two can be told apart.
+            if (counter() > lastCount) {
+                const r = early(ok());
+                r.message = "hit=other " + r.message;
+                return r;
+            }
+            return early(fail(lostReason(enemyOnIt)));
+        }
         if (opts.interruptIf !== undefined && opts.interruptIf()) return early(fail("interrupted"));
         if (now() - start > maxWait || expired(opts.deadline)) return early(fail("timeout"));
         if (mode === "lasthit") enemyOnIt = enemyTargeting(bot, creep);
         watchHeroes(bot, creep, heroes);
         watchCreeps(bot, creep, creeps);
-        if (dist(bot.GetLocation(), creep.GetLocation()) > bot.GetAttackRange()) {
-            held = string.format("range d=%d", math.floor(dist(bot.GetLocation(), creep.GetLocation()) - bot.GetAttackRange()));
+        const away = dist(bot.GetLocation(), creep.GetLocation()) - attackReach(bot, creep);
+        if (away > 0) {
+            enter("walk");
+            held = string.format("range d=%d", math.floor(away));
             if (openNow()) opened(t, gap, "range");
             bot.Action_MoveToLocation(creep.GetLocation());
         } else {
+            enter("wait");
             const cd = cooldownLeft(bot);
             held = mode === "deny" && !deniable(creep) ? "hp50" : string.format("cd c=%.2f", cd);
             // An order given during the attack cooldown starts the swing later than the prediction's horizon
@@ -1124,6 +1164,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
                         diag = string.format("%s ew=%d er=%d ec=%.2f oc=%.2f", diag, ew.n, b.hpAtHit + physical(creep, ew.raw) > b.mine ? 1 : 0, ew.commit, ownCommitTime(bot, creep, nearby(bot)));
                     }
                     bot.Action_AttackUnit(creep, true);
+                    enter("swing");
                     break;
                 }
             } else if (openNow()) {
@@ -1176,7 +1217,7 @@ function* strike(bot: TaskUnit, mode: Mode, opts: LastHitOpts): TaskBody {
 
 /**
  * Last-hits an enemy lane creep (`opts.target`, or the best one within `searchRadius` that the adapter's
- * `lastHitFilter` allows). Waits in attack range until the bot believes its hit, ordered now, lands after
+ * `lastHitFilter` allows). Waits in attack reach (`attackReach`) until the bot believes its hit, ordered now, lands after
  * everyone else's incoming damage and kills: `creepHP + regen * t - incoming(t) <= ownDamage`, where t is the
  * own hit time (wind-up, cooldown, projectile travel) and incoming counts attack projectiles in flight and
  * wind-ups of creeps, heroes and towers targeting the creep. The belief carries a per-creep error from the

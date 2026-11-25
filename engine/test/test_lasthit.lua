@@ -172,6 +172,112 @@ do
     T.check("lost while walking in: why=range with the distance left", (r.message or ""):match("why=range d=%d+") ~= nil, tostring(r.message))
 end
 
+-- The verb's range test is the attack's reach: range plus both hulls (attackReach). A creep 180 away from a range-150 hero
+-- (hulls 24 and 16) is inside the 190 reach: the swing is ordered at once with no move, and it lands. Outside the reach the
+-- hero walks in first, and the message names the distance left to the reach, not to the bare range.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5 }
+    local creep = sim:addCreep{ x = 180, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("in reach beyond the range: ok", r.reason, "ok")
+    T.eq("in reach beyond the range: no move order", sim:count("Action_MoveToLocation", bot), 0)
+    local swing = firstSwing(bot)
+    T.check("in reach beyond the range: swung on the first frame", swing ~= nil and swing.t == 0, swing and swing.t)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    local left = tonumber((r.message or ""):match("why=range d=(%d+)"))
+    T.check("outside the reach: walks in, and the distance left is to the reach (110 less about 30 walked; to the bare range it would read 120) " .. tostring(r.message), left ~= nil and left >= 76 and left <= 86)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local t = V.laneTargets(bot)
+    T.check("laneTargets: the walk to reach (110 at 100 a second), not to the range (150)", #t == 1 and math.abs(t[1].walk - 1.1) < 0.01, t[1] and t[1].walk)
+end
+
+-- onPhase: the verb reports walk (outside reach), wait (in reach, no swing ordered) and swing (ordered), once each on a change.
+local function phasesOf(sim, bot, creep, opts)
+    local seen = {}
+    opts = opts or {}
+    opts.target = creep
+    opts.maxWait = opts.maxWait or 3
+    opts.onPhase = function(p, at) seen[#seen + 1] = { p = p, t = at } end
+    local r = run(sim, (opts.verb or V.lastHit)(bot, opts))
+    return seen, r
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local seen, r = phasesOf(sim, bot, creep)
+    T.eq("onPhase walk in: ok", r.reason, "ok")
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase walk in: walk, wait, swing once each in order", table.concat(names, ","), "walk,wait,swing")
+    T.check("onPhase walk in: walk from the first frame, wait only once in reach (about 1.1 s)", seen[1].t == 0 and seen[2].t > 0.9 and seen[2].t < 1.3, seen[2] and seen[2].t)
+    T.eq("onPhase walk in: swing is reported on the frame of the attack order", seen[3].t, firstSwing(bot).t)
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5 }
+    local creep = sim:addCreep{ x = 180, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    local seen = phasesOf(sim, bot, creep)
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase already in reach: never walk", table.concat(names, ","), "wait,swing")
+end
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 40, team = 3, passive = true, hull = 16 }
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local seen = phasesOf(sim, bot, creep)
+    T.eq("onPhase lost while walking: only walk", #seen == 1 and seen[1].p or "n=" .. #seen, "walk")
+end
+do
+    -- A creep that never comes due (45 damage against 300 hp): the verb waits in reach until the bot is moved out, walks back, waits again.
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, hull = 24, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 300, y = 0, hp = 300, team = 3, passive = true, hull = 16 }
+    sim:at(2.0, function() bot.loc.x = -100 end)
+    local seen = phasesOf(sim, bot, creep, { maxWait = 5 })
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase pushed out of reach while waiting: walk again, then wait again", table.concat(names, ","), "walk,wait,walk,wait")
+    T.check("onPhase pushed out of reach: the second walk starts at the push", seen[3] ~= nil and seen[3].t >= 2.0 and seen[3].t < 2.1, seen[3] and seen[3].t)
+end
+
+-- A swing the host ordered before the verb's (in flight at the go) takes the creep while the verb walks in: the bot's count rose,
+-- so the verb ends ok with no swing of its own, and says so. The same loss with the creep killed by someone else is not ok.
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.3, function(w) w:kill(creep, bot) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("hit taken by an earlier swing: ok", r.reason, "ok")
+    T.check("hit taken by an earlier swing: the message names it and no swing of the verb's was ordered", (r.message or ""):sub(1, 10) == "hit=other " and (r.message or ""):find(" end=", 1, true) == nil and firstSwing(bot) == nil)
+end
+
+-- The bot's count rose on another creep, then the target died to nobody of ours: not ok (the rise was not the target's).
+do
+    local sim = world()
+    local bot = sim:addBot{ x = 0, y = 0, range = 150, damage = 45, attackPoint = 0.5, speed = 100 }
+    local other = sim:addCreep{ x = 60, y = 0, hp = 40, team = 3, passive = true }
+    local creep = sim:addCreep{ x = 900, y = 0, hp = 40, team = 3, passive = true }
+    sim:at(0.2, function(w) w:kill(other, bot) end)
+    sim:at(0.3, function(w) w:kill(creep) end)
+    local r = run(sim, V.lastHit(bot, { target = creep, maxWait = 3 }))
+    T.eq("a kill on another creep is not the target's: taken_by_other", r.reason, "taken_by_other")
+end
+
 -- A tower shot winding up on a 130 hp creep leaves 30: the swing is ordered before the shot lands.
 do
     local sim = world()
@@ -413,6 +519,14 @@ do
     T.eq("deny ok: creep dead", creep.alive, false)
     local swing = firstSwing(bot)
     T.check("deny: never swung above 50% hp", swing and swing.targetHp < 150)
+end
+do
+    local sim, bot = denyWorld()
+    local seen = phasesOf(sim, bot, nil, { verb = V.deny, maxWait = 5 })
+    local names = {}
+    for _, s in ipairs(seen) do names[#names + 1] = s.p end
+    T.eq("onPhase deny of a creep above half hp: waits in reach, then swings (no walk)", table.concat(names, ","), "wait,swing")
+    T.check("onPhase deny: the swing comes after the creep fell under half hp, not at the first frame", seen[2] ~= nil and seen[2].t > seen[1].t, seen[2] and seen[2].t)
 end
 
 do

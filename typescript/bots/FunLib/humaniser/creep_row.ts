@@ -1,0 +1,555 @@
+/**
+ * The lane's creeps, first group (no-creep-unpaid proposal s5; doctrine D11; switch Ours.LaneCreeps), a hard row of the
+ * decider: a core takes their ranged creep by a right-click, in range with a swing to spare. Which positions act is
+ * `states/trip_table`'s `creep` row (pos 1 to 3; supports wait for the core-first margin, proposal s3).
+ *
+ * The cells were named with the user from step 2's table (25/11/2026): near (in range or a walk up to NearWalk, not
+ * out-damaged) and far and free (a longer walk with no enemy hero's range on the stand spot). The decision is taken at the
+ * creep offer read (`creep_offer.ts`, every 0.2 s a hero), on that read's facts: the read hands its candidates in through
+ * SetRow, so a creep's handle is only called on a read that lists it. `Claim` is the cell rule on the facts; the row goes on
+ * the claimed creep closest to due once it is about to come due (`Due`), whether or not stock is attacking it: the row's swing
+ * landed as often as stock's (53 of 69 with a swing on, oha-creep-ranged), so taking stock's swing costs nothing.
+ *
+ * On time: it goes only while the creep comes due no sooner than the hero can be in the verb's range (`OnTime`, `Need`); else it
+ * refuses and the hero stays stock's, and a later read may still go. Of 152 attempts on cearly1 the 62 that began with under 0.25 s
+ * to spare landed 12 times, the 90 with more 46.
+ *
+ * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
+ * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
+ * Hard from the go (test arm, oha-creep-ontime): the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
+ * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
+ *
+ * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
+ * per attempt.
+ */
+import type * as Lib from "bots/FunLib/engine/tasks";
+import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
+import * as Decider from "bots/FunLib/humaniser/decider";
+import * as Drill from "bots/FunLib/humaniser/drill";
+import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
+import * as Ours from "bots/FunLib/humaniser/ours";
+import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+
+export const SETTINGS = {
+    /** The longest walk (s) in the near cell; past it a covered stand spot is refused (step 2's table split, proposal s5). */
+    NearWalk: 1.0,
+    /** The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`. */
+    WaitSlack: 1.5,
+    /**
+     * The slice's test arm (oha-creep-swing), deleted once judged: when the hold turns hard. `go`: hard from the go, through every phase
+     * (the base's answers). `swing`: the row goes early (`EarlyLead`) and holds soft until the swing is about to be due (`Round`), then hard.
+     */
+    HardFrom: "swing" as "go" | "swing",
+    /**
+     * judgement: with `HardFrom` swing, the row may go once the creep comes due within the walk plus this (s) instead of one attack cycle.
+     * Earlier means more creeps seen in time (43 refusals in six games were creeps not yet offered, due in about 1.6 s with 2.5 s of walk), but
+     * a longer soft hold on a creep that may die to another hit or be taken by a mate before the hero is in reach.
+     */
+    EarlyLead: 3,
+    /**
+     * The decider's round (s) as the row meets it: the wait from a go to the row's first step, which is also the wait for a change of hold
+     * to apply (`wt` of crr1b, crr1ts2 and csw0: median 0.27, max 0.57). The hold turns hard this long (plus the read interval, `Soft`) before the swing is due, and a gap
+     * between steps longer than it means another mode had the hero.
+     */
+    Round: 0.4,
+};
+
+/** The mode the decider hosts its rows in: the engine steps the attempt's task under it. */
+const HOST = BotMode.Farm;
+
+/** The offer's facts the cell rule reads (the read's snapshot, or a fixture's). */
+export interface Facts {
+    kind: string;
+    ck: string;
+    walk: number;
+    slk: number;
+    /** Enemy heroes whose range covers the stand spot. */
+    eh: number;
+    md: number;
+    ed: number;
+    ein: number;
+    /** Enemy heroes with a hit at least ours that can be in range of the creep before it comes due (the race). */
+    erc: number;
+    ptw: boolean;
+    otw: boolean;
+    g2: number;
+    kb: string;
+}
+
+/**
+ * The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (not their ranged creep),
+ * `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
+ * with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
+ * an enemy hero's range covers), `tower` (inside our tower's range: the under-tower hit is a later widening, s6), `etower`
+ * (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
+ * `mate` (a teammate's hit kills it first).
+ */
+export function Claim(this: void, f: Facts): string | undefined {
+    if (f.kind !== "lasthit" || f.ck !== "r") return "kind";
+    if (f.slk <= 0) return "late";
+    if (f.ein > 0 && f.ed > f.md) return "outdmg";
+    // Round 1 (rig cr1: walk-ins landed 17 of 51, 23 denied by a lane opponent not yet in range when the row went). In range
+    // the hero is there first: 8 of 11 landed, none denied.
+    if (f.walk > 0 && f.erc > 0) return "race";
+    if (f.walk > SETTINGS.NearWalk && f.eh > 0) return "covered";
+    if (f.otw) return "tower";
+    if (f.ptw) return "etower";
+    // In range there is no walk, so nothing is given up: which creep to swing at is the row's pick (Consider).
+    if (f.walk > 0 && f.g2 > 0) return "given";
+    if (f.kb === "mate") return "mate";
+    return undefined;
+}
+
+/**
+ * About to come due: due within the walk plus `lead`, one own attack cycle (`GetSecondsPerAttack`), so the hero is in range and
+ * facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
+ * 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
+ * at least one cycle (`CreepOffer.Within`), so such a creep is offered by then.
+ */
+export function Due(this: void, walk: number, due: number, lead: number): boolean {
+    return due <= walk + lead;
+}
+
+/**
+ * Seconds until the hero can order its swing from inside the verb's own range: the walk to the engine's `attackReach` of the creep
+ * (lastHit's `why=range` test, which the offer's `walk` also reads) at the hero's current move speed. No wind-up, flight or turn: `due`
+ * already counts them between the order and the hit (the engine's `ownHit`), so it is the time to the order.
+ */
+export function Need(this: void, bot: Unit, creep: Unit): number {
+    const at = creep.GetLocation();
+    const me = bot.GetLocation();
+    const dx = at.x - me.x;
+    const dy = at.y - me.y;
+    return math.max(0, math.sqrt(dx * dx + dy * dy) - CreepOffer.Reach(bot, creep)) / math.max(100, bot.GetCurrentMovementSpeed());
+}
+
+/** The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`). */
+export function OnTime(this: void, need: number, due: number): boolean {
+    return due >= need;
+}
+
+/** What the reads saw of one creep for one hero; dropped once a read no longer lists the creep. */
+interface Seen {
+    /** The read's time when it was last listed (the prune's mark). */
+    at: number;
+    first: number;
+    /** The first read where the creep was about to come due (`Due`). */
+    due0?: number;
+    /** The last reason the row refused it at a read where it was about to come due, and the hero's mode name then when that was `held`. */
+    why?: string;
+    mode?: string;
+    /** The last reason it refused the creep at a read where it was about to come due and on time (names a `notime_*` refusal). */
+    ok?: string;
+}
+
+const seen: Record<number, Record<number, Seen> | undefined> = {};
+
+/** The record of each listed creep, new ones made now; records of creeps this read does not list are dropped. */
+function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<number, Seen> {
+    let m = seen[pid];
+    if (m === undefined) {
+        m = {};
+        seen[pid] = m;
+    }
+    for (const c of cands) {
+        const r = m[c.cid];
+        if (r === undefined) m[c.cid] = { at: now, first: now };
+        else r.at = now;
+    }
+    for (const [cid, r] of pairs(m)) if (r.at !== now) delete m[cid as number];
+    return m;
+}
+
+/** Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither. */
+function noTime(r: Seen, first: boolean): string {
+    if (first) return "notime_new";
+    return r.ok === "held" || r.ok === "acting" ? "notime_" + r.ok : "notime";
+}
+
+/** The creep is a ranged one of theirs to last-hit and about to come due at this read (the first such read is kept). */
+function dueNow(c: CreepOffer.Candidate, r: Seen, lead: number, now: number): boolean {
+    if (c.t.kind !== "lasthit" || c.ck !== "r" || !Due(c.t.walk, c.t.due, lead)) return false;
+    if (r.due0 === undefined) r.due0 = now;
+    return true;
+}
+
+interface Attempt {
+    cid: number;
+    creep: Unit;
+    t0: number;
+    hp0: number;
+    /** Seconds from the start to the first step that ended inside the verb's range (lastHit's own test: centre distance against the engine's attackReach). */
+    tin?: number;
+    /** Attempt id (Telemetry.NextAid), on the go choice line and the job lines. */
+    aid: number;
+    /** Seconds from the start to the row's first step (the wait for the host mode's next call); undefined until it steps. */
+    wt?: number;
+    /** The verb's phase now and when it began (the engine's onPhase); undefined before it reports one. */
+    phase?: Lib.Verbs.LastHitPhase;
+    phaseAt: number;
+    /** Seconds spent in each phase so far (the open phase is added at the end). */
+    spent: Record<string, number>;
+    /** Seconds from the go to the hold turning hard (`Soft` first answering false), and the creep's due then. Once set, the hold stays hard. */
+    hc?: number;
+    hd?: number;
+    /** The creep's latest due and the hero's walk to it (`Need`), as the last read that listed it had them, and when. Aged by the time since. */
+    due: number;
+    need: number;
+    seenAt: number;
+    /** Seconds from the go to the verb's swing order (the `swing` phase); undefined until then. */
+    so?: number;
+    /** The time of the last step; a gap over `Round` is another mode having the hero. `tk` times and `tks` seconds so far. */
+    lastStep?: number;
+    tk: number;
+    tks: number;
+    /** A step came after such a gap: the next read asks the go rule again (`lateBack`). */
+    back: boolean;
+    /** The row ended the attempt itself because the hero came back too late. */
+    late: boolean;
+}
+
+const running: Record<number, Attempt | undefined> = {};
+/** pid -> the creep of the hero's last attempt: one attempt a creep. */
+const lastCid: Record<number, number | undefined> = {};
+
+export function ResetCache(): void {
+    for (const t of [running, lastCid, seen] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+}
+
+export function On(bot: Unit): boolean {
+    return Ours.On("LaneCreeps") && CreepOffer.MayOffer(bot) && !Drill.Held(bot);
+}
+
+/** OHA's own action holds the hero (the deny and pull rows' check: a queued order, a cast or channel). */
+function acting(bot: Unit): boolean {
+    return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
+}
+
+/** A teammate's hit kills the creep first in the lane read (the attempt drops before its swing then). */
+function mateTakes(bot: Unit, creep: unknown): boolean {
+    const row = LaneHits.Of(bot.GetTeam(), bot.GetAssignedLane(), creep as Unit);
+    if (row === undefined) return false;
+    const k = LaneHits.KillingHit(row);
+    if (k === undefined || (k.by !== "hero" && k.by !== "self")) return false;
+    const a = k.attacker as unknown as Unit;
+    return a !== bot && a.GetTeam() === bot.GetTeam();
+}
+
+function r2(x: number): number {
+    return math.floor(x * 100 + 0.5) / 100;
+}
+
+/**
+ * The one place that says whether the attempt is held soft, from `SETTINGS.HardFrom`, and where the hold turns hard (`hc`, `hd`): a commit,
+ * so once hard it stays hard. `go`: hard from the go. `swing`: soft until the creep's latest due (aged by the time since the read that had
+ * it, as is the walk) is at most the walk left plus `Round` plus the offer read's interval (`CreepOffer.SETTINGS.Every`): a change of hold
+ * takes up to a round to apply, the due is up to one read old, and the verb's `swing` phase is reported only after its order. With `Round`
+ * alone csw1b ordered 6 of 40 swings before the first `hs=hard` decider line, by up to 0.3 s. The verb's own `swing` also makes it hard. The aging assumes the hero is walking in, so while
+ * another mode has the hero, or after it came back and before a read asked the go rule again (`back`), it stays soft: the hold must not
+ * harden on a due the hero may no longer meet.
+ */
+function Soft(this: void, a: Attempt | undefined, now: number): boolean {
+    if (a === undefined || a.hc !== undefined) return false;
+    const dt = now - a.seenAt;
+    const due = a.due - dt;
+    if (SETTINGS.HardFrom === "swing" && a.phase !== "swing") {
+        const away = a.back || (a.lastStep !== undefined && now - a.lastStep > SETTINGS.Round);
+        if (away || due > math.max(0, a.need - dt) + SETTINGS.Round + CreepOffer.SETTINGS.Every) return true;
+    }
+    a.hc = now - a.t0;
+    a.hd = due;
+    return false;
+}
+
+function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
+    if (a.phase !== undefined) a.spent[a.phase] += t - a.phaseAt;
+    a.phase = p;
+    a.phaseAt = t;
+    if (p === "swing" && a.so === undefined) a.so = t - a.t0;
+    Soft(a, t);
+}
+
+/**
+ * The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range (`rng`)
+ * and the engine's reach on the creep (`rch`), and
+ * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
+ * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
+ * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `ld` the lead in force (s: one attack
+ * cycle, or `EarlyLead`).
+ */
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number }): void {
+    Telemetry.Event("job", [
+        ["pid", bot.GetPlayerID()],
+        ["aid", aid],
+        ["job", "creep"],
+        ["phase", "start"],
+        ["why", "trigger"],
+        ["host", HOST],
+        ["cid", cid],
+        ["gw", r2(t.walk)],
+        ["gd", r2(t.due)],
+        ["rng", math.floor(bot.GetAttackRange())],
+        ["rch", math.floor(g.reach)],
+        ["gn", r2(g.need)],
+        ["sp", r2(t.due - g.need)],
+        ["hw", g.seen.why],
+        ["hm", g.seen.mode],
+        ["hs", r2(g.now - (g.seen.due0 ?? g.now))],
+        ["sa", g.sa ? 1 : 0],
+        ["nw", g.seen.first === g.now ? 1 : 0],
+        ["ld", r2(g.lead)],
+    ]);
+}
+
+/**
+ * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `hc` the seconds from the go to the hold turning hard (-1 never)
+ * and `hd` the creep's due then (absent when never), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
+ * mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
+ * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
+ * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
+ * start and end, `msg` the verb's message (what the swing was based on, or what held it).
+ */
+function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined): void {
+    const msg = r.message;
+    let sw: number | undefined;
+    if (r.success) sw = msg !== undefined && string.find(msg, "hit=other", 1, true)[0] === 1 ? 0 : 1;
+    else if (r.reason !== "preempted" && msg !== undefined) sw = string.find(msg, " end=", 1, true)[0] !== undefined ? 1 : 0;
+    Telemetry.Event("job", [
+        ["pid", bot.GetPlayerID()],
+        ["aid", a?.aid],
+        ["job", "creep"],
+        ["phase", "end"],
+        ["why", r.success ? "ok" : r.reason],
+        ["host", HOST],
+        ["cut", cut],
+        ["cid", a?.cid],
+        ["hc", a === undefined ? undefined : a.hc !== undefined ? r2(a.hc) : -1],
+        ["hd", a?.hd !== undefined ? r2(a.hd) : undefined],
+        ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
+        ["tk", a?.tk],
+        ["tks", a === undefined ? undefined : r2(a.tks)],
+        ["pw", a === undefined ? undefined : r2(a.spent.walk)],
+        ["pq", a === undefined ? undefined : r2(a.spent.wait)],
+        ["ps", a === undefined ? undefined : r2(a.spent.swing)],
+        ["wt", a === undefined ? undefined : a.wt !== undefined ? r2(a.wt) : -1],
+        ["tin", a === undefined ? undefined : a.tin !== undefined ? r2(a.tin) : -1],
+        ["sw", sw],
+        ["hp0", a?.hp0],
+        ["hp1", math.floor(bot.GetHealth())],
+        ["msg", msg],
+    ]);
+}
+
+/** As the pull's: an attempt the engine ends because the host lost the hero names what took it. */
+function cutBy(bot: Unit, r: Lib.Result): string | undefined {
+    if (r.success || r.reason !== "preempted") return undefined;
+    if (Decider.LetGo(bot) || bot.GetActiveMode() === BotMode.Retreat) return "retreat";
+    return HDebug.ModeName(bot.GetActiveMode());
+}
+
+function finish(bot: Unit, r: Lib.Result): void {
+    const pid = bot.GetPlayerID();
+    const a = running[pid];
+    running[pid] = undefined;
+    const now = DotaTime();
+    if (a !== undefined) {
+        if (a.phase !== undefined) a.spent[a.phase] += now - a.phaseAt;
+        // Ended while another mode still had the hero (the runner's preempt): that absence counts too.
+        if (a.lastStep !== undefined && now - a.lastStep > SETTINGS.Round) {
+            a.tk++;
+            a.tks += now - a.lastStep;
+        }
+        // An attempt that ended while held soft with no swing ordered did not use the creep's one try.
+        if (a.hc === undefined && a.so === undefined && lastCid[pid] === a.cid) lastCid[pid] = undefined;
+    }
+    endLine(bot, a, r, a !== undefined && a.late ? "late_back" : cutBy(bot, r));
+}
+
+function factsOf(c: CreepOffer.Candidate): Facts {
+    const s = c.facts();
+    return { kind: c.t.kind, ck: c.ck, walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
+}
+
+/**
+ * The lead (s) the row goes on: a creep due within the walk plus this is about to come due (`Due`). One own attack cycle, or `EarlyLead` when
+ * that is longer and `HardFrom` is swing.
+ */
+export function Lead(this: void, bot: Unit): number {
+    const cycle = CreepOffer.AttackCycle(bot);
+    return SETTINGS.HardFrom === "swing" ? math.max(cycle, SETTINGS.EarlyLead) : cycle;
+}
+
+/** What the read asks laneTargets to offer (`within`) for a hero the row acts on: the lead, so a creep is listed by the time the row may go. 0: the read's own. */
+export function OfferLead(this: void, bot: Unit): number {
+    return On(bot) && SETTINGS.HardFrom === "swing" ? SETTINGS.EarlyLead : 0;
+}
+
+/**
+ * A read that lists the running attempt's creep: its latest due and the walk to it (the commit point's inputs, `Soft`), and after a step
+ * that came after another mode had the hero, the go rule asked again: if the hero can no longer be in reach before the creep is due, an attempt
+ * still held soft ends at once (`cut=late_back`, reason `cancelled`) and the creep's one try is not spent (`finish`). A hard attempt is
+ * never ended this way: its hold was the decider's, so the hero cannot have been taken.
+ */
+function follow(bot: Unit, a: Attempt, c: CreepOffer.Candidate, now: number): void {
+    a.due = c.t.due;
+    a.need = Need(bot, c.creep);
+    a.seenAt = now;
+    if (a.back && a.hc === undefined) {
+        if (!OnTime(a.need, a.due)) {
+            a.late = true;
+            Tasks.Cancel(bot, "cancelled", "late_back");
+            return;
+        }
+        a.back = false;
+    }
+    Soft(a, now);
+}
+
+/**
+ * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
+ * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
+ * yet about to come due), `acting`, `held` (stock's retreat holds the hero: a later read may still go),
+ * `tried` (this creep's attempt has ended); then Claim's;
+ * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
+ * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
+ * `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
+ * and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
+ */
+export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
+    if (!On(bot)) return;
+    const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const lead = Lead(bot);
+    const recs = touch(pid, cands, now);
+    if (cands.length === 0) return;
+    const run = running[pid];
+    if (run !== undefined) {
+        for (const c of cands) {
+            const r = recs[c.cid];
+            if (dueNow(c, r, lead, now)) {
+                r.why = "busy";
+                r.mode = undefined;
+            }
+            c.note(false, "busy");
+            if (c.cid === run.cid) follow(bot, run, c, now);
+        }
+        return;
+    }
+    if (Tasks.Jobs() === undefined) return;
+    const busy = acting(bot);
+    // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
+    // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
+    const mode = bot.GetActiveMode();
+    const held = Decider.LetGo(bot) || mode === BotMode.Retreat;
+    let best: CreepOffer.Candidate | undefined;
+    for (const c of cands) {
+        let why: string | undefined;
+        const r = recs[c.cid];
+        const first = r.due0 === undefined;
+        if (c.t.kind !== "lasthit" || c.ck !== "r") why = "kind";
+        else if (!dueNow(c, r, lead, now)) why = "early";
+        else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
+        else if (busy) why = "acting";
+        else if (held) why = "held";
+        else if (lastCid[pid] === c.cid) why = "tried";
+        else why = Claim(factsOf(c));
+        if (why !== undefined && why !== "kind" && why !== "early") {
+            r.why = why;
+            if (string.sub(why, 1, 6) !== "notime") r.ok = why;
+            r.mode = why === "held" ? HDebug.ModeName(mode) : undefined;
+        }
+        if (why !== undefined) c.note(false, why);
+        else if (best === undefined || c.t.eta < best.t.eta) best = c;
+    }
+    if (best === undefined) return;
+    for (const c of cands) {
+        if (c === best || c.t.kind !== "lasthit" || c.ck !== "r") continue;
+        c.note(false, "other");
+        recs[c.cid].why = "other";
+        recs[c.cid].ok = "other";
+    }
+    const t = best.t;
+    const creep = t.creep;
+    const need = Need(bot, best.creep);
+    const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) =>
+        ctx.lastHit({ target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep), onPhase: (p, at) => onPhase(pid, p, at) })
+    );
+    if (!ok) {
+        best.note(false, "refused");
+        recs[best.cid].why = "refused";
+        return;
+    }
+    const aid = Telemetry.NextAid(pid);
+    best.note(true, undefined, aid);
+    const t0 = DotaTime();
+    const a: Attempt = {
+        cid: best.cid,
+        creep: best.creep,
+        t0,
+        hp0: math.floor(bot.GetHealth()),
+        aid,
+        phaseAt: t0,
+        spent: { walk: 0, wait: 0, swing: 0 },
+        due: t.due,
+        need,
+        seenAt: t0,
+        tk: 0,
+        tks: 0,
+        back: false,
+        late: false,
+    };
+    Soft(a, t0);
+    running[pid] = a;
+    lastCid[pid] = best.cid;
+    const sa = bot.GetAttackTarget();
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep, lead });
+}
+
+/** The verb's phase change, from the engine's onPhase. */
+function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
+    const a = running[pid];
+    if (a !== undefined) enterPhase(a, p, t);
+}
+
+/** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
+function rowApplies(bot: Unit): boolean {
+    if (!On(bot)) return false;
+    Tasks.Tick(bot);
+    return running[bot.GetPlayerID()] !== undefined;
+}
+
+/** The row's verb: one frame of the attempt; true once it has ended. */
+function rowStep(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const first = running[pid];
+    if (first === undefined) return true;
+    const now = DotaTime();
+    if (first.wt === undefined) first.wt = now - first.t0;
+    // The host mode steps the verb every frame it has the hero: a longer gap is another mode having it (a soft hold's cost).
+    if (first.lastStep !== undefined && now - first.lastStep > SETTINGS.Round) {
+        first.tk++;
+        first.tks += now - first.lastStep;
+        first.back = true;
+    }
+    first.lastStep = now;
+    Tasks.Step(bot, HOST);
+    const a = running[pid];
+    if (a === undefined) return true;
+    // Still running after the step: the verb read the creep this frame and found it alive, so its handle may be called.
+    if (a.tin === undefined) {
+        const at = a.creep.GetLocation();
+        const me = bot.GetLocation();
+        if (at !== undefined && at !== null) {
+            const dx = at.x - me.x;
+            const dy = at.y - me.y;
+            if (math.sqrt(dx * dx + dy * dy) <= CreepOffer.Reach(bot, a.creep)) a.tin = DotaTime() - a.t0;
+        }
+    }
+    return false;
+}
+
+/** The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3). */
+export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep, soft: (bot) => Soft(running[bot.GetPlayerID()], DotaTime()) };

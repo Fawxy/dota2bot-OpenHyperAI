@@ -73,6 +73,7 @@ function Sim:_add(kind, o)
         blocked = o.blocked or false,
         stunned = o.stunned or false,
         range = o.range or 150,
+        hull = o.hull, -- GetBoundingRadius; a unit without one has none, as a handle that lacks the method
         damage = o.damage or 50,
         attackPoint = o.attackPoint or 0.3,
         attackSpeed = o.attackSpeed or 1,
@@ -167,7 +168,7 @@ function Sim:step(dt)
                 u.pendingAttack = c
                 u.nextSwingAt = sw.start + u.secondsPerAttack
             end
-            if u.alive and c.alive and not u.whiff and (u.autoAttack or dist(u.loc, c.loc) <= u.range + 1e-6) then
+            if u.alive and c.alive and not u.whiff and (u.autoAttack or dist(u.loc, c.loc) <= u.range + (u.hull or 0) + (c.hull or 0) + 1e-6) then
                 if u.projectileSpeed then
                     -- As Dota (GetLastAttackTime is the fire time): `fireTime` units stamp the launch.
                     if u.fireTime then u.lastAttackTime = sw.landAt end
@@ -264,6 +265,7 @@ function Unit:GetLastHits() return self.lastHits end
 function Unit:IsStunned() return self.stunned end
 function Unit:GetHealth() return self.hp end
 function Unit:GetAttackRange() return self.range end
+function Unit:GetBoundingRadius() return self.hull end
 function Unit:GetAttackDamage() return self.damage end
 function Unit:GetAttackPoint() return self.attackPoint end
 function Unit:GetAttackTarget() return self.attackTarget end
