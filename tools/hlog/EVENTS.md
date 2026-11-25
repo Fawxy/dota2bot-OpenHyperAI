@@ -695,7 +695,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
 - `rng` num: `job=creep` start: the hero's attack range.
 - `gn` num: `job=creep` start: seconds until the hero can order its swing from inside the verb's range (the walk to attack range of the creep's centre, at its move speed) and the spare at go (`gd` less it; negative: the creep came due first).
-- `hw` str: `job=creep` start: the last reason the row refused this creep while it was about to come due, and the hero's mode name then when that was `held`; absent when it went at the first such read.
+- `hw` str: `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read.
 - `hs` num: `job=creep` start: seconds from the first read where the creep was about to come due to the go.
 - `sa` num: `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep.
 - `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against attack range); -1 never.

@@ -151,7 +151,7 @@ do -- the start line says what held the row and what the spare was: need from th
 		w.core.range = 150
 		w.core.speed = 300
 		local c = ranged(500)
-		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
+		w.targets = { target(c, { walk = 0.3, due = 1.4, dies = 3 }) }
 		local out = capture(function()
 			prep(w, c)
 			w.CO.Shadow(w.core)
@@ -162,14 +162,14 @@ do -- the start line says what held the row and what the spare was: need from th
 	local first = run(function() end)
 	-- 500 apart, range 150: 350 to walk at 300 a second.
 	check("start line: need and spare from the verb's range; a first read goes with no hw, nw=1 and hs=0", field(first, "gn") == "1.170"
-		and field(first, "sp") == "-0.670" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
+		and field(first, "sp") == "0.230" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
 	local held = run(function(w, c)
 		w.core.mode = 2
 		w.CO.Shadow(w.core)
 		T = T + 0.3
 		w.core.mode = 0
 		w.core.target = c
-		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
+		w.targets = { target(c, { walk = 0.3, due = 1.4, dies = 3 }) }
 	end)
 	check("start line: held by attack, then it went 0.3 s later: hw, hm, hs, sa=1 and nw=0", field(held, "hw") == "held" and field(held, "hm") == "attack"
 		and field(held, "hs") == "0.300" and field(held, "sa") == "1" and field(held, "nw") == "0", held)
@@ -199,6 +199,78 @@ do -- the record is dropped for a creep that is no longer listed: a creep back a
 	end)
 	local start = lines(out, "job=creep")[1]
 	check("pruned: back after a read without it, no hw and nw=1", start ~= nil and field(start, "hw") == nil and field(start, "nw") == "1", tostring(start))
+end
+
+do -- on time: the creep must come due no sooner than the hero can be in the verb's range (range 150, speed 300, creep 300 away: 0.5 s)
+	local function world3(due)
+		local w = world()
+		w.core.range, w.core.speed = 150, 300
+		local c = ranged(300)
+		w.targets = { target(c, { walk = 0.5, due = due, dies = 3 }) }
+		return w, c
+	end
+	local w, c = world3(0.6)
+	readThenClose(w, { c })
+	check("on time: due 0.6 against a need of 0.5 goes", w.starts == 1)
+	w, c = world3(0.4)
+	local ch = lines(readThenClose(w, { c }), "kind=creep")
+	check("not on time: due 0.4 against 0.5 is refused at its first read about to come due: notime_new", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "notime_new", table.concat(ch, " | "))
+	-- The offer's walk (0.3 here) says in range in time; the verb's own range says not: the check reads the verb's.
+	w, c = world3(0.4)
+	w.targets = { target(c, { walk = 0.3, due = 0.4, dies = 3 }) }
+	readThenClose(w, { c })
+	check("the verb's range, not the offer's walk: walk 0.3 and due 0.4 is still refused", w.starts == 0, tostring(w.starts))
+end
+
+do -- the refusal names what happened before, and a later read still goes once the times allow
+	local function history(setup)
+		local w = world()
+		w.core.range, w.core.speed = 150, 300
+		local c = ranged(300)
+		local function read(due, mode)
+			w.targets = { target(c, { walk = 0.5, due = due, dies = 3 }) }
+			w.core.mode = mode or 0
+			w.CO.Shadow(w.core)
+			T = T + 0.1
+		end
+		local out = capture(function() setup(w, c, read) end)
+		local starts = lines(lines(out, "job=creep"), "phase=start")
+		return w, starts[#starts]
+	end
+	local w, start = history(function(w, c, read)
+		read(0.8, 2) -- on time, Valve's attack holds the hero
+		read(0.3) -- not on time any more
+		read(0.7) -- on time again
+	end)
+	check("after a refusal on time for held, a later refusal is notime_held and the creep goes when on time again", w.starts == 1 and field(start, "hw") == "notime_held", tostring(start))
+	w, start = history(function(w, c, read)
+		w.core.channeling = true
+		read(0.8)
+		read(0.3)
+		w.core.channeling = false
+		read(0.7)
+	end)
+	check("after acting on time: notime_acting", w.starts == 1 and field(start, "hw") == "notime_acting", tostring(start))
+	w, start = history(function(w, c, read)
+		read(0.3) -- the first read about to come due is not on time
+		read(0.7)
+	end)
+	check("not on time at the first read about to come due: notime_new, then it goes", w.starts == 1 and field(start, "hw") == "notime_new", tostring(start))
+	w, start = history(function(w, c, read)
+		w.targets = {}
+		local b = ranged(200)
+		local function both(dueA)
+			w.targets = { target(c, { walk = 0.5, due = dueA, dies = 3 }), target(b, { walk = 0.5, due = 0.2, dies = 3 }) }
+			w.CO.Shadow(w.core)
+			T = T + 0.1
+		end
+		both(0.8) -- b is closer to due: it goes, c is refused as other (on time)
+		w.onEnd({ success = false, reason = "timeout" })
+		both(0.3) -- c is no longer on time
+		w.targets = { target(c, { walk = 0.5, due = 0.7, dies = 3 }) }
+		w.CO.Shadow(w.core)
+	end)
+	check("a refusal on time for something else, then not on time: plain notime", w.starts == 2 and field(start, "hw") == "notime" and field(start, "gd") == "0.700", tostring(start))
 end
 
 do -- stock is already attacking the creep: the row goes anyway (its swing lands as often as stock's)
@@ -280,9 +352,10 @@ do -- the cells: a long free walk goes; a covered long walk, an out-damaging ene
 		local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(700, -5000) })
 		foe.dmg, foe.range, foe.spa = 20, 550, 1.7
 	end, "covered")
-	case("an enemy hero in range of the creep that hits harder", function(_, _, t)
+	case("an enemy hero in range of the creep that hits harder", function(_, c, t)
 		t.walk, t.due = 0, 0.2
-		local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(1300, -5000) })
+		c.loc = Vector(300, -5000)
+		local foe = MakeUnit({ pid = 7, team = 3, bot = true, loc = Vector(700, -5000) })
 		foe.dmg, foe.range, foe.spa = 90, 600, 1.7
 	end, "outdmg")
 	case("inside our tower's range", function(_, c)

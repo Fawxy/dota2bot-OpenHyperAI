@@ -1340,7 +1340,7 @@ export const EVENTS = {
         /** `job=creep` start: seconds until the hero can order its swing from inside the verb's range (the walk to attack range of the creep's centre, at its move speed) and the spare at go (`gd` less it; negative: the creep came due first). */
         gn: "num",
         sp: "num",
-        /** `job=creep` start: the last reason the row refused this creep while it was about to come due, and the hero's mode name then when that was `held`; absent when it went at the first such read. */
+        /** `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read. */
         hw: "str",
         hm: "str",
         /** `job=creep` start: seconds from the first read where the creep was about to come due to the go. */

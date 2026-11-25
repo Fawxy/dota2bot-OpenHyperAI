@@ -10,6 +10,10 @@
  * the claimed creep closest to due once it is about to come due (`Due`), whether or not stock is attacking it: the row's swing
  * landed as often as stock's (53 of 69 with a swing on, oha-creep-ranged), so taking stock's swing costs nothing.
  *
+ * On time: it goes only while the creep comes due no sooner than the hero can be in the verb's range (`OnTime`, `Need`); else it
+ * refuses and the hero stays stock's, and a later read may still go. Of 152 attempts on cearly1 the 62 that began with under 0.25 s
+ * to spare landed 12 times, the 90 with more 46.
+ *
  * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
  * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
  * Soft: Valve's attack, item, evasive and defend-ally outbid it; stock's retreat lets go first (the decider's).
@@ -121,6 +125,8 @@ interface Seen {
     /** The last reason the row refused it at a read where it was about to come due, and the hero's mode name then when that was `held`. */
     why?: string;
     mode?: string;
+    /** The last reason it refused the creep at a read where it was about to come due and on time (names a `notime_*` refusal). */
+    ok?: string;
 }
 
 const seen: Record<number, Record<number, Seen> | undefined> = {};
@@ -139,6 +145,12 @@ function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<
     }
     for (const [cid, r] of pairs(m)) if (r.at !== now) delete m[cid as number];
     return m;
+}
+
+/** Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither. */
+function noTime(r: Seen, first: boolean): string {
+    if (first) return "notime_new";
+    return r.ok === "held" || r.ok === "acting" ? "notime_" + r.ok : "notime";
 }
 
 /** The creep is a ranged one of theirs to last-hit and about to come due at this read (the first such read is kept). */
@@ -265,6 +277,8 @@ function factsOf(c: CreepOffer.Candidate): Facts {
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
  * yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
+ * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
+ * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
  * `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
  * and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
  */
@@ -295,14 +309,17 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     for (const c of cands) {
         let why: string | undefined;
         const r = recs[c.cid];
+        const first = r.due0 === undefined;
         if (c.t.kind !== "lasthit" || c.ck !== "r") why = "kind";
         else if (!dueNow(c, r, lead, now)) why = "early";
+        else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(c));
         if (why !== undefined && why !== "kind" && why !== "early") {
             r.why = why;
+            if (string.sub(why, 1, 6) !== "notime") r.ok = why;
             r.mode = why === "held" ? HDebug.ModeName(mode) : undefined;
         }
         if (why !== undefined) c.note(false, why);
@@ -312,7 +329,8 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     for (const c of cands) {
         if (c === best || c.t.kind !== "lasthit" || c.ck !== "r") continue;
         c.note(false, "other");
-        if (recs[c.cid].due0 !== undefined) recs[c.cid].why = "other";
+        recs[c.cid].why = "other";
+        recs[c.cid].ok = "other";
     }
     const t = best.t;
     const creep = t.creep;

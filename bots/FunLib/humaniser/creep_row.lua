@@ -284,6 +284,13 @@ local function touch(pid, cands, now)
     end
     return m
 end
+--- Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither.
+local function noTime(r, first)
+    if first then
+        return "notime_new"
+    end
+    return (r.ok == "held" or r.ok == "acting") and "notime_" .. r.ok or "notime"
+end
 --- The creep is a ranged one of theirs to last-hit and about to come due at this read (the first such read is kept).
 local function dueNow(c, r, lead, now)
     if c.t.kind ~= "lasthit" or c.ck ~= "r" or not ____exports.Due(c.t.walk, c.t.due, lead) then
@@ -468,6 +475,8 @@ end
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
 -- yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
+-- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
+-- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
 -- `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
 -- and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
 function ____exports.Consider(bot, cands)
@@ -499,10 +508,16 @@ function ____exports.Consider(bot, cands)
     for ____, c in ipairs(cands) do
         local why
         local r = recs[c.cid]
+        local first = r.due0 == nil
         if c.t.kind ~= "lasthit" or c.ck ~= "r" then
             why = "kind"
         elseif not dueNow(c, r, lead, now) then
             why = "early"
+        elseif not ____exports.OnTime(
+            ____exports.Need(bot, c.creep),
+            c.t.due
+        ) then
+            why = noTime(r, first)
         elseif busy then
             why = "acting"
         elseif held then
@@ -514,6 +529,9 @@ function ____exports.Consider(bot, cands)
         end
         if why ~= nil and why ~= "kind" and why ~= "early" then
             r.why = why
+            if string.sub(why, 1, 6) ~= "notime" then
+                r.ok = why
+            end
             r.mode = why == "held" and HDebug.ModeName(mode) or nil
         end
         if why ~= nil then
@@ -527,19 +545,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue64
+            local __continue68
             repeat
                 if c == best or c.t.kind ~= "lasthit" or c.ck ~= "r" then
-                    __continue64 = true
+                    __continue68 = true
                     break
                 end
                 c.note(false, "other")
-                if recs[c.cid].due0 ~= nil then
-                    recs[c.cid].why = "other"
-                end
-                __continue64 = true
+                recs[c.cid].why = "other"
+                recs[c.cid].ok = "other"
+                __continue68 = true
             until true
-            if not __continue64 then
+            if not __continue68 then
                 break
             end
         end
