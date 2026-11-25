@@ -91,6 +91,63 @@ export function Due(this: void, walk: number, due: number, lead: number): boolea
     return due <= walk + lead;
 }
 
+/**
+ * Seconds until the hero can order its swing from inside the verb's own range: the walk to `bot.GetAttackRange()` of the creep's
+ * centre (lastHit's `why=range` test; the offer's `walk` uses a wider range, which cost a median 0.3 s on cearly1) at the hero's
+ * current move speed. No wind-up, flight or turn: `due` already counts them between the order and the hit (the engine's
+ * `ownHit`), so it is the time to the order.
+ */
+export function Need(this: void, bot: Unit, creep: Unit): number {
+    const at = creep.GetLocation();
+    const me = bot.GetLocation();
+    const dx = at.x - me.x;
+    const dy = at.y - me.y;
+    const speed = math.max(100, bot.GetCurrentMovementSpeed());
+    return math.max(0, math.sqrt(dx * dx + dy * dy) - bot.GetAttackRange()) / speed;
+}
+
+/** The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`). */
+export function OnTime(this: void, need: number, due: number): boolean {
+    return due >= need;
+}
+
+/** What the reads saw of one creep for one hero; dropped once a read no longer lists the creep. */
+interface Seen {
+    /** The read's time when it was last listed (the prune's mark). */
+    at: number;
+    first: number;
+    /** The first read where the creep was about to come due (`Due`). */
+    due0?: number;
+    /** The last reason the row refused it at a read where it was about to come due, and the hero's mode name then when that was `held`. */
+    why?: string;
+    mode?: string;
+}
+
+const seen: Record<number, Record<number, Seen> | undefined> = {};
+
+/** The record of each listed creep, new ones made now; records of creeps this read does not list are dropped. */
+function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<number, Seen> {
+    let m = seen[pid];
+    if (m === undefined) {
+        m = {};
+        seen[pid] = m;
+    }
+    for (const c of cands) {
+        const r = m[c.cid];
+        if (r === undefined) m[c.cid] = { at: now, first: now };
+        else r.at = now;
+    }
+    for (const [cid, r] of pairs(m)) if (r.at !== now) delete m[cid as number];
+    return m;
+}
+
+/** The creep is a ranged one of theirs to last-hit and about to come due at this read (the first such read is kept). */
+function dueNow(c: CreepOffer.Candidate, r: Seen, lead: number, now: number): boolean {
+    if (c.t.kind !== "lasthit" || c.ck !== "r" || !Due(c.t.walk, c.t.due, lead)) return false;
+    if (r.due0 === undefined) r.due0 = now;
+    return true;
+}
+
 interface Attempt {
     cid: number;
     creep: Unit;
@@ -105,7 +162,7 @@ const running: Record<number, Attempt | undefined> = {};
 const lastCid: Record<number, number | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, lastCid] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, lastCid, seen] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 export function On(bot: Unit): boolean {
@@ -131,8 +188,13 @@ function r2(x: number): number {
     return math.floor(x * 100 + 0.5) / 100;
 }
 
-/** The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range. */
-function startLine(bot: Unit, cid: number, t: { walk: number; due: number }): void {
+/**
+ * The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range, and
+ * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
+ * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
+ * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
+ */
+function startLine(bot: Unit, cid: number, t: { walk: number; due: number }, g: { need: number; seen: Seen; now: number; sa: boolean }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["job", "creep"],
@@ -143,6 +205,13 @@ function startLine(bot: Unit, cid: number, t: { walk: number; due: number }): vo
         ["gw", r2(t.walk)],
         ["gd", r2(t.due)],
         ["rng", math.floor(bot.GetAttackRange())],
+        ["gn", r2(g.need)],
+        ["sp", r2(t.due - g.need)],
+        ["hw", g.seen.why],
+        ["hm", g.seen.mode],
+        ["hs", r2(g.now - (g.seen.due0 ?? g.now))],
+        ["sa", g.sa ? 1 : 0],
+        ["nw", g.seen.first === g.now ? 1 : 0],
     ]);
 }
 
@@ -196,13 +265,24 @@ function factsOf(c: CreepOffer.Candidate): Facts {
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
  * yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
- * `refused` (the task runner said no).
+ * `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
+ * and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
  */
 export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
     if (!On(bot)) return;
     const pid = bot.GetPlayerID();
+    const now = DotaTime();
+    const lead = CreepOffer.AttackCycle(bot);
+    const recs = touch(pid, cands, now);
     if (running[pid] !== undefined) {
-        for (const c of cands) c.note(false, "busy");
+        for (const c of cands) {
+            const r = recs[c.cid];
+            if (dueNow(c, r, lead, now)) {
+                r.why = "busy";
+                r.mode = undefined;
+            }
+            c.note(false, "busy");
+        }
         return;
     }
     if (Tasks.Jobs() === undefined) return;
@@ -211,34 +291,45 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     // retreat, so an attempt started then is cut before its first step and spends the creep's one try.
     const mode = bot.GetActiveMode();
     const held = Decider.LetGo(bot) || mode === BotMode.Attack || mode === BotMode.Retreat;
-    const lead = CreepOffer.AttackCycle(bot);
     let best: CreepOffer.Candidate | undefined;
     for (const c of cands) {
         let why: string | undefined;
+        const r = recs[c.cid];
         if (c.t.kind !== "lasthit" || c.ck !== "r") why = "kind";
-        else if (!Due(c.t.walk, c.t.due, lead)) why = "early";
+        else if (!dueNow(c, r, lead, now)) why = "early";
         else if (busy) why = "acting";
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(c));
+        if (why !== undefined && why !== "kind" && why !== "early") {
+            r.why = why;
+            r.mode = why === "held" ? HDebug.ModeName(mode) : undefined;
+        }
         if (why !== undefined) c.note(false, why);
         else if (best === undefined || c.t.eta < best.t.eta) best = c;
     }
     if (best === undefined) return;
-    for (const c of cands) if (c !== best && c.t.kind === "lasthit" && c.ck === "r") c.note(false, "other");
+    for (const c of cands) {
+        if (c === best || c.t.kind !== "lasthit" || c.ck !== "r") continue;
+        c.note(false, "other");
+        if (recs[c.cid].due0 !== undefined) recs[c.cid].why = "other";
+    }
     const t = best.t;
     const creep = t.creep;
+    const need = Need(bot, best.creep);
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) =>
         ctx.lastHit({ target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) })
     );
     if (!ok) {
         best.note(false, "refused");
+        recs[best.cid].why = "refused";
         return;
     }
     best.note(true);
     running[pid] = { cid: best.cid, creep: best.creep, t0: DotaTime(), hp0: math.floor(bot.GetHealth()) };
     lastCid[pid] = best.cid;
-    startLine(bot, best.cid, t);
+    const sa = bot.GetAttackTarget();
+    startLine(bot, best.cid, t, { need, seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep });
 }
 
 /** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */

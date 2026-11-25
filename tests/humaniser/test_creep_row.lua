@@ -145,6 +145,62 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 	check("lines: a cut leaves the swing unknown", field(jobs[2], "sw") == nil, jobs[2])
 end
 
+do -- the start line says what held the row and what the spare was: need from the verb's own range, not the offer's walk
+	local function run(prep)
+		local w = world()
+		w.core.range = 150
+		w.core.speed = 300
+		local c = ranged(500)
+		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
+		local out = capture(function()
+			prep(w, c)
+			w.CO.Shadow(w.core)
+			w.CR.ROW.applies(w.core)
+		end)
+		return lines(out, "job=creep")[1]
+	end
+	local first = run(function() end)
+	-- 500 apart, range 150: 350 to walk at 300 a second.
+	check("start line: need and spare from the verb's range; a first read goes with no hw, nw=1 and hs=0", field(first, "gn") == "1.170"
+		and field(first, "sp") == "-0.670" and field(first, "nw") == "1" and field(first, "hs") == "0" and field(first, "hw") == nil and field(first, "sa") == "0", first)
+	local held = run(function(w, c)
+		w.core.mode = 2
+		w.CO.Shadow(w.core)
+		T = T + 0.3
+		w.core.mode = 0
+		w.core.target = c
+		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
+	end)
+	check("start line: held by attack, then it went 0.3 s later: hw, hm, hs, sa=1 and nw=0", field(held, "hw") == "held" and field(held, "hm") == "attack"
+		and field(held, "hs") == "0.300" and field(held, "sa") == "1" and field(held, "nw") == "0", held)
+	local acting = run(function(w)
+		w.core.channeling = true
+		w.CO.Shadow(w.core)
+		T = T + 0.2
+		w.core.channeling = false
+	end)
+	check("start line: acting is the reason, and hm is absent", field(acting, "hw") == "acting" and field(acting, "hm") == nil, acting)
+end
+
+do -- the record is dropped for a creep that is no longer listed: a creep back after a gap reads as new
+	local w = world()
+	local c = ranged(500)
+	local out = capture(function()
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		w.core.mode = 2
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		w.targets = { target(ranged(900), { walk = 2.0, due = 9 }) }
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		w.core.mode = 0
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		w.CO.Shadow(w.core)
+	end)
+	local start = lines(out, "job=creep")[1]
+	check("pruned: back after a read without it, no hw and nw=1", start ~= nil and field(start, "hw") == nil and field(start, "nw") == "1", tostring(start))
+end
+
 do -- stock is already attacking the creep: the row goes anyway (its swing lands as often as stock's)
 	local w = world()
 	local c = ranged()

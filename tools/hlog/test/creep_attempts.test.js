@@ -132,3 +132,38 @@ test('creep_attempts: per-game counts by fate, hero-paid and team-paid', () => {
     const sum = k => rows.reduce((a, r) => a + r[k], 0);
     assert.deepStrictEqual(['self_row', 'self_other', 'mate', 'deny', 'unpaid', 'nodeath', 'hero_paid', 'team_paid'].map(sum), [1, 2, 1, 1, 1, 1, 3, 4]);
 });
+
+// The start line's what-held fields and the spare at go (oha-creep-ontime). Radiant sniper pid 2.
+// N1 100  spare 0.3, went at the first read that listed the creep (no hw), attacking it
+// N2 120  spare 0.0 (on time at the edge), held by Valve's attack for 0.6 s
+// N3 140  spare -0.4 (not on time), acting for 0.2 s, landed
+// N4 160  a start line from before the fields: ontime unknown
+function onTimeLines() {
+    const out = [line(-90, 'bot pid=2 hero=sniper team=2 pos=2')];
+    for (let t = 90; t <= 200; t += 1) out.push(snap(t));
+    const row = (t, cid, why, extra) => out.push(
+        line(t, `job pid=2 job=creep phase=start why=trigger host=17 cid=${cid} gw=0.5 gd=1.2 rng=550${extra}`),
+        end(t + 1, why, { cid, tin: 0.3, sw: 1 }), death(t + 0.9, cid, 500, 0, '2'));
+    row(100, 1, 'ok', ' gn=0.2 sp=0.3 hs=0 sa=1 nw=1');
+    row(120, 2, 'taken_by_other', ' gn=0.5 sp=0 hw=held hm=attack hs=0.6 sa=0 nw=0');
+    row(140, 3, 'ok', ' gn=0.9 sp=-0.4 hw=acting hs=0.2 sa=0 nw=0');
+    row(160, 4, 'ok', '');
+    return out;
+}
+
+test('creep_attempt_rows: the start fields and ontime (1 at sp >= 0, 0 under, NULL when unknown)', () => {
+    const rows = load(onTimeLines(), 'ot_A_on_1').query(sqlOf('creep_attempt_rows'), { like: '%ot_A_on_1%' }).map(r => ({ ...r }));
+    assert.deepStrictEqual(rows.map(r => [r.cid, r.gn, r.sp, r.ontime, r.hw, r.hm, r.hs, r.sa, r.nw]), [
+        [1, 0.2, 0.3, 1, null, null, 0, 1, 1],
+        [2, 0.5, 0, 1, 'held', 'attack', 0.6, 0, 0],
+        [3, 0.9, -0.4, 0, 'acting', null, 0.2, 0, 0],
+        [4, null, null, null, null, null, null, null, null],
+    ]);
+});
+
+test('creep_attempts: counts split by ontime', () => {
+    const rows = load(onTimeLines(), 'ot_A_on_1').query(sqlOf('creep_attempts'), { like: '%ot_A_on_1%' }).map(r => ({ ...r }));
+    const by = o => rows.filter(r => r.ontime === o).reduce((a, r) => a + r.n, 0);
+    assert.deepStrictEqual([by(1), by(0), by(null)], [2, 1, 1]);
+    assert.strictEqual(rows.filter(r => r.ontime === 0).reduce((a, r) => a + r.team_paid, 0), 1);
+});

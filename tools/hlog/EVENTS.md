@@ -679,7 +679,7 @@ Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran. D
 
 Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
 
-`pid` num, `gd` num, `hp1` num
+`pid` num, `gd` num, `sp` num, `hm` str, `nw` num, `hp1` num
 
 - `job` str: `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason).
 - `phase` str: `start` (`why=trigger`) or `end`.
@@ -694,6 +694,10 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `cid` num: `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`).
 - `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
 - `rng` num: `job=creep` start: the hero's attack range.
+- `gn` num: `job=creep` start: seconds until the hero can order its swing from inside the verb's range (the walk to attack range of the creep's centre, at its move speed) and the spare at go (`gd` less it; negative: the creep came due first).
+- `hw` str: `job=creep` start: the last reason the row refused this creep while it was about to come due, and the hero's mode name then when that was `held`; absent when it went at the first such read.
+- `hs` num: `job=creep` start: seconds from the first read where the creep was about to come due to the go.
+- `sa` num: `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep.
 - `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against attack range); -1 never.
 - `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one; absent on a cut (`why=preempted`).
 - `hp0` num: `job=creep` end: the hero's HP (absolute) at the start and at the end.

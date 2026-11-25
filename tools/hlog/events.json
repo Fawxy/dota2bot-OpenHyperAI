@@ -945,6 +945,13 @@
    "gw": "num",
    "gd": "num",
    "rng": "num",
+   "gn": "num",
+   "sp": "num",
+   "hw": "str",
+   "hm": "str",
+   "hs": "num",
+   "sa": "num",
+   "nw": "num",
    "tin": "num",
    "sw": "num",
    "hp0": "num",
@@ -2552,6 +2559,8 @@
    "phase": "text",
    "why": "text",
    "cut": "text",
+   "hw": "text",
+   "hm": "text",
    "msg": "text"
   },
   "ev_stack": {

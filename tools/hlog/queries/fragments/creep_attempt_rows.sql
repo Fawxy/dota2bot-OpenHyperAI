@@ -1,7 +1,7 @@
 -- Fragment (`-- include: creep_attempt_rows`): the creep row's attempts (creep_row.ts, `ev=job job=creep`), one row each, joined to
 -- the creep's death and the hero's deaths; one definition for @creep_attempts and @creep_attempt_rows. The includer defines
 -- `gm(game_id)` first. CTE `creep_attempt_rows(game_id, pid, team, pos, hero, t0, t1, len, cid, gw, rng, melee, why, cut, arr, tin,
--- sw, hp0, hp1, hplost, dt, gap, swon, cls, died, msg, paid, mpos, walkin, fate)`:
+-- sw, hp0, hp1, hplost, dt, gap, swon, cls, died, msg, paid, mpos, walkin, fate, gn, sp, hw, hm, hs, sa, nw, ontime)`:
 --   cid, gw    the start line's (logs from oha-creep-early); before them, the creep row's `go=1` choice line whose slot + gat is
 --              within 0.35 s of the start (its cid and gw)
 --   rng        the start line's attack range, else the creep death's for the hero's position, else the nearest snapshot's `ar`;
@@ -20,10 +20,16 @@
 --              towers on it and no hero), `other` (a creep, a spell nobody logged, or a death its owner saw only); NULL when no death
 --              line was joined. `self` is the pid of the line's `by`, so a deny never reads `self`
 --   walkin     1 when the start's walk at go (`gw`) is over 0, 0 when it is 0, NULL when unknown
+--   gn, sp     the start line's need at go (s to order a swing from inside the verb's range) and the spare at go (gd less gn);
+--              hw, hm what held the row for the creep while it was about to come due (last refusal; the hero's mode when it was
+--              `held`; NULL when it went at the first such read), hs seconds from that first read to the go, sa 1 when the hero's
+--              attack target was the creep at the go, nw 1 when the go came at the first read that listed the creep; all NULL on
+--              logs before oha-creep-ontime
+--   ontime     1 when sp >= 0, 0 when under, NULL when sp is unknown
 --   fate       one class from paid and why: self_row (self, why ok), self_other (self, the row did not end ok), mate, deny, tower,
 --              unpaid (paid other), nodeath (no death joined)
 -- Ends with a comma.
--- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, tin, sw, hp0, hp1, msg)
+-- ensure: ev_job(pid, job, phase, why, cut, cid, gw, gd, rng, tin, sw, hp0, hp1, msg, gn, sp, hw, hm, hs, sa, nw)
 -- ensure: ev_choice(pid, kind, go, slot, gat, gw, cid)
 -- ensure: ev_creep_death(team, cid, p1d, p1r, p1t, p2d, p2r, p2t, p3d, p3r, p3t)
 -- ensure: ev_snap(pid, hv, ar)
@@ -35,14 +41,14 @@ ul_gm AS (SELECT game_id FROM gm),
 ca_bot AS MATERIALIZED (SELECT game_id, pid, max(team) AS team, max(pos) AS pos, max(hero) AS hero FROM ev_bot
     WHERE game_id IN (SELECT game_id FROM gm) GROUP BY game_id, pid),
 ca_e AS MATERIALIZED (
-    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, tin, sw, hp0, hp1, msg,
+    SELECT game_id, seq, t, pid, phase, why, cut, cid, gw, rng, gn, sp, hw, hm, hs, sa, nw, tin, sw, hp0, hp1, msg,
         lead(phase) OVER w AS nphase, lead(t) OVER w AS nt, lead(why) OVER w AS nwhy, lead(cut) OVER w AS ncut, lead(cid) OVER w AS ncid,
         lead(tin) OVER w AS ntin, lead(sw) OVER w AS nsw, lead(hp0) OVER w AS nhp0, lead(hp1) OVER w AS nhp1, lead(msg) OVER w AS nmsg
     FROM ev_job WHERE game_id IN (SELECT game_id FROM gm) AND job = 'creep' AND phase IN ('start', 'end')
     WINDOW w AS (PARTITION BY game_id, pid ORDER BY seq)
 ),
 ca_s AS MATERIALIZED (
-    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng,
+    SELECT s.game_id, s.pid, s.t AS t0, s.nt AS t1, s.nwhy AS why, s.ncut AS cut, coalesce(s.cid, s.ncid) AS jcid, s.gw AS jgw, s.rng AS jrng, s.gn, s.sp, s.hw, s.hm, s.hs, s.sa, s.nw,
         s.ntin AS tin, s.nsw AS sw, s.nhp0 AS hp0, s.nhp1 AS hp1, s.nmsg AS msg
     FROM ca_e s WHERE s.phase = 'start' AND s.nphase = 'end'
 ),
@@ -92,7 +98,8 @@ creep_attempt_rows AS (
         CASE WHEN x.why = 'ok' THEN 'landed' WHEN x.why = 'preempted' THEN 'cut' WHEN x.dt IS NULL OR x.dd IS NULL THEN 'lost_nodeath'
             WHEN x.dtg = 1 THEN 'lost_swing' WHEN x.dd <= x.dr + 48 THEN 'lost_inrange' ELSE 'lost_out' END AS cls,
         EXISTS (SELECT 1 FROM ep_death e WHERE e.game_id = x.game_id AND e.pid = x.pid AND e.t >= x.t0 AND e.t <= x.t1 + 5) AS died,
-        x.msg, x.paid, x.mpos, CASE WHEN x.gw IS NULL THEN NULL WHEN x.gw > 0 THEN 1 ELSE 0 END AS walkin,
+        x.msg, x.paid, x.mpos, x.gn, x.sp, x.hw, x.hm, x.hs, x.sa, x.nw,
+        CASE WHEN x.sp IS NULL THEN NULL WHEN x.sp >= 0 THEN 1 ELSE 0 END AS ontime, CASE WHEN x.gw IS NULL THEN NULL WHEN x.gw > 0 THEN 1 ELSE 0 END AS walkin,
         CASE WHEN x.paid IS NULL THEN 'nodeath' WHEN x.paid = 'self' THEN CASE WHEN x.why = 'ok' THEN 'self_row' ELSE 'self_other' END
             WHEN x.paid = 'other' THEN 'unpaid' ELSE x.paid END AS fate
     FROM ca_q x

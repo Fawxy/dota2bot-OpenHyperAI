@@ -1,5 +1,161 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__StringIncludes(self, searchString, position)
+    if not position then
+        position = 1
+    else
+        position = position + 1
+    end
+    local index = string.find(self, searchString, position, true)
+    return index ~= nil
+end
+
+local function __TS__New(target, ...)
+    local instance = setmetatable({}, target.prototype)
+    instance:____constructor(...)
+    return instance
+end
+
+local function __TS__Class(self)
+    local c = {prototype = {}}
+    c.prototype.__index = c.prototype
+    c.prototype.constructor = c
+    return c
+end
+
+local function __TS__ClassExtends(target, base)
+    target.____super = base
+    local staticMetatable = setmetatable({__index = base}, base)
+    setmetatable(target, staticMetatable)
+    local baseMetatable = getmetatable(base)
+    if baseMetatable then
+        if type(baseMetatable.__index) == "function" then
+            staticMetatable.__index = baseMetatable.__index
+        end
+        if type(baseMetatable.__newindex) == "function" then
+            staticMetatable.__newindex = baseMetatable.__newindex
+        end
+    end
+    setmetatable(target.prototype, base.prototype)
+    if type(base.prototype.__index) == "function" then
+        target.prototype.__index = base.prototype.__index
+    end
+    if type(base.prototype.__newindex) == "function" then
+        target.prototype.__newindex = base.prototype.__newindex
+    end
+    if type(base.prototype.__tostring) == "function" then
+        target.prototype.__tostring = base.prototype.__tostring
+    end
+end
+
+local Error, RangeError, ReferenceError, SyntaxError, TypeError, URIError
+do
+    local function getErrorStack(self, constructor)
+        if debug == nil then
+            return nil
+        end
+        local level = 1
+        while true do
+            local info = debug.getinfo(level, "f")
+            level = level + 1
+            if not info then
+                level = 1
+                break
+            elseif info.func == constructor then
+                break
+            end
+        end
+        if __TS__StringIncludes(_VERSION, "Lua 5.0") then
+            return debug.traceback(("[Level " .. tostring(level)) .. "]")
+        else
+            return debug.traceback(nil, level)
+        end
+    end
+    local function wrapErrorToString(self, getDescription)
+        return function(self)
+            local description = getDescription(self)
+            local caller = debug.getinfo(3, "f")
+            local isClassicLua = __TS__StringIncludes(_VERSION, "Lua 5.0") or _VERSION == "Lua 5.1"
+            if isClassicLua or caller and caller.func ~= error then
+                return description
+            else
+                return (description .. "\n") .. tostring(self.stack)
+            end
+        end
+    end
+    local function initErrorClass(self, Type, name)
+        Type.name = name
+        return setmetatable(
+            Type,
+            {__call = function(____, _self, message) return __TS__New(Type, message) end}
+        )
+    end
+    local ____initErrorClass_1 = initErrorClass
+    local ____class_0 = __TS__Class()
+    ____class_0.name = ""
+    function ____class_0.prototype.____constructor(self, message)
+        if message == nil then
+            message = ""
+        end
+        self.message = message
+        self.name = "Error"
+        self.stack = getErrorStack(nil, self.constructor.new)
+        local metatable = getmetatable(self)
+        if metatable and not metatable.__errorToStringPatched then
+            metatable.__errorToStringPatched = true
+            metatable.__tostring = wrapErrorToString(nil, metatable.__tostring)
+        end
+    end
+    function ____class_0.prototype.__tostring(self)
+        return self.message ~= "" and (self.name .. ": ") .. self.message or self.name
+    end
+    Error = ____initErrorClass_1(nil, ____class_0, "Error")
+    local function createErrorClass(self, name)
+        local ____initErrorClass_3 = initErrorClass
+        local ____class_2 = __TS__Class()
+        ____class_2.name = ____class_2.name
+        __TS__ClassExtends(____class_2, Error)
+        function ____class_2.prototype.____constructor(self, ...)
+            ____class_2.____super.prototype.____constructor(self, ...)
+            self.name = name
+        end
+        return ____initErrorClass_3(nil, ____class_2, name)
+    end
+    RangeError = createErrorClass(nil, "RangeError")
+    ReferenceError = createErrorClass(nil, "ReferenceError")
+    SyntaxError = createErrorClass(nil, "SyntaxError")
+    TypeError = createErrorClass(nil, "TypeError")
+    URIError = createErrorClass(nil, "URIError")
+end
+
+local function __TS__ObjectGetOwnPropertyDescriptors(object)
+    local metatable = getmetatable(object)
+    if not metatable then
+        return {}
+    end
+    return rawget(metatable, "_descriptors") or ({})
+end
+
+local function __TS__Delete(target, key)
+    local descriptors = __TS__ObjectGetOwnPropertyDescriptors(target)
+    local descriptor = descriptors[key]
+    if descriptor then
+        if not descriptor.configurable then
+            error(
+                __TS__New(
+                    TypeError,
+                    ((("Cannot delete property " .. tostring(key)) .. " of ") .. tostring(target)) .. "."
+                ),
+                0
+            )
+        end
+        descriptors[key] = nil
+        return true
+    end
+    target[key] = nil
+    return true
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -83,11 +239,66 @@ end
 function ____exports.Due(walk, due, lead)
     return due <= walk + lead
 end
+--- Seconds until the hero can order its swing from inside the verb's own range: the walk to `bot.GetAttackRange()` of the creep's
+-- centre (lastHit's `why=range` test; the offer's `walk` uses a wider range, which cost a median 0.3 s on cearly1) at the hero's
+-- current move speed. No wind-up, flight or turn: `due` already counts them between the order and the hit (the engine's
+-- `ownHit`), so it is the time to the order.
+function ____exports.Need(bot, creep)
+    local at = creep:GetLocation()
+    local me = bot:GetLocation()
+    local dx = at.x - me.x
+    local dy = at.y - me.y
+    local speed = math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+    return math.max(
+        0,
+        math.sqrt(dx * dx + dy * dy) - bot:GetAttackRange()
+    ) / speed
+end
+--- The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`).
+function ____exports.OnTime(need, due)
+    return due >= need
+end
+local seen = {}
+--- The record of each listed creep, new ones made now; records of creeps this read does not list are dropped.
+local function touch(pid, cands, now)
+    local m = seen[pid]
+    if m == nil then
+        m = {}
+        seen[pid] = m
+    end
+    for ____, c in ipairs(cands) do
+        local r = m[c.cid]
+        if r == nil then
+            m[c.cid] = {at = now, first = now}
+        else
+            r.at = now
+        end
+    end
+    for cid, r in pairs(m) do
+        if r.at ~= now then
+            __TS__Delete(m, cid)
+        end
+    end
+    return m
+end
+--- The creep is a ranged one of theirs to last-hit and about to come due at this read (the first such read is kept).
+local function dueNow(c, r, lead, now)
+    if c.t.kind ~= "lasthit" or c.ck ~= "r" or not ____exports.Due(c.t.walk, c.t.due, lead) then
+        return false
+    end
+    if r.due0 == nil then
+        r.due0 = now
+    end
+    return true
+end
 local running = {}
 --- pid -> the creep of the hero's last attempt: one attempt a creep.
 local lastCid = {}
 function ____exports.ResetCache()
-    for ____, t in ipairs({running, lastCid}) do
+    for ____, t in ipairs({running, lastCid, seen}) do
         for k in pairs(t) do
             t[k] = nil
         end
@@ -120,8 +331,11 @@ end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
---- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range.
-local function startLine(bot, cid, t)
+--- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range, and
+-- what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
+-- due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
+-- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep.
+local function startLine(bot, cid, t, g)
     Telemetry.Event(
         "job",
         {
@@ -145,7 +359,23 @@ local function startLine(bot, cid, t)
             {
                 "rng",
                 math.floor(bot:GetAttackRange())
-            }
+            },
+            {
+                "gn",
+                r2(g.need)
+            },
+            {
+                "sp",
+                r2(t.due - g.need)
+            },
+            {"hw", g.seen.why},
+            {"hm", g.seen.mode},
+            {
+                "hs",
+                r2(g.now - (g.seen.due0 or g.now))
+            },
+            {"sa", g.sa and 1 or 0},
+            {"nw", g.seen.first == g.now and 1 or 0}
         }
     )
 end
@@ -238,14 +468,23 @@ end
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
 -- yet about to come due), `acting`, `held` (Valve's attack or stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
--- `refused` (the task runner said no).
+-- `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
+-- and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
 function ____exports.Consider(bot, cands)
     if not ____exports.On(bot) then
         return
     end
     local pid = bot:GetPlayerID()
+    local now = DotaTime()
+    local lead = CreepOffer.AttackCycle(bot)
+    local recs = touch(pid, cands, now)
     if running[pid] ~= nil then
         for ____, c in ipairs(cands) do
+            local r = recs[c.cid]
+            if dueNow(c, r, lead, now) then
+                r.why = "busy"
+                r.mode = nil
+            end
             c.note(false, "busy")
         end
         return
@@ -256,13 +495,13 @@ function ____exports.Consider(bot, cands)
     local busy = acting(bot)
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Attack or mode == BotMode.Retreat
-    local lead = CreepOffer.AttackCycle(bot)
     local best
     for ____, c in ipairs(cands) do
         local why
+        local r = recs[c.cid]
         if c.t.kind ~= "lasthit" or c.ck ~= "r" then
             why = "kind"
-        elseif not ____exports.Due(c.t.walk, c.t.due, lead) then
+        elseif not dueNow(c, r, lead, now) then
             why = "early"
         elseif busy then
             why = "acting"
@@ -272,6 +511,10 @@ function ____exports.Consider(bot, cands)
             why = "tried"
         else
             why = ____exports.Claim(factsOf(c))
+        end
+        if why ~= nil and why ~= "kind" and why ~= "early" then
+            r.why = why
+            r.mode = why == "held" and HDebug.ModeName(mode) or nil
         end
         if why ~= nil then
             c.note(false, why)
@@ -283,12 +526,27 @@ function ____exports.Consider(bot, cands)
         return
     end
     for ____, c in ipairs(cands) do
-        if c ~= best and c.t.kind == "lasthit" and c.ck == "r" then
-            c.note(false, "other")
+        do
+            local __continue64
+            repeat
+                if c == best or c.t.kind ~= "lasthit" or c.ck ~= "r" then
+                    __continue64 = true
+                    break
+                end
+                c.note(false, "other")
+                if recs[c.cid].due0 ~= nil then
+                    recs[c.cid].why = "other"
+                end
+                __continue64 = true
+            until true
+            if not __continue64 then
+                break
+            end
         end
     end
     local t = best.t
     local creep = t.creep
+    local need = ____exports.Need(bot, best.creep)
     local ok = Tasks.Start(
         bot,
         {
@@ -306,6 +564,7 @@ function ____exports.Consider(bot, cands)
     )
     if not ok then
         best.note(false, "refused")
+        recs[best.cid].why = "refused"
         return
     end
     best.note(true)
@@ -316,7 +575,8 @@ function ____exports.Consider(bot, cands)
         hp0 = math.floor(bot:GetHealth())
     }
     lastCid[pid] = best.cid
-    startLine(bot, best.cid, t)
+    local sa = bot:GetAttackTarget()
+    startLine(bot, best.cid, t, {need = need, seen = recs[best.cid], now = now, sa = sa ~= nil and sa ~= nil and sa == creep})
 end
 --- The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here.
 local function rowApplies(bot)
