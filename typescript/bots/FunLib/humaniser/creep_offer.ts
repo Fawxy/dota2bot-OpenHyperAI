@@ -69,6 +69,12 @@ interface Snap {
     /** The highest hit among visible enemy heroes within their own range of the creep, and how many are. */
     ed: number;
     ein: number;
+    /** `GetHeightLevel` of the hero, the stand spot and the creep (undefined when the API gives none), the hero's attack range, and each listed enemy's `pid:level` in `en`'s order. */
+    hh?: number;
+    sh?: number;
+    ch?: number;
+    ra: number;
+    enh?: string;
 }
 
 interface Opp {
@@ -165,6 +171,11 @@ function line(bot: Unit, o: Opp): void {
         ["ed", math.floor(s.ed)],
         ["ein", s.ein],
         ["atk", o.atk ? 1 : 0],
+        ["hh", s.hh],
+        ["sh", s.sh],
+        ["ch", s.ch],
+        ["ra", math.floor(s.ra)],
+        ["enh", s.enh],
     ]);
 }
 
@@ -210,6 +221,14 @@ interface Frame {
     towers?: Offer.PathTower[];
     creeps?: Offer.PathCreep[];
     enemies?: Offer.PathEnemy[];
+    /** `pid:level` of each entry of `enemies`, in its order. */
+    enemyHeights?: string[];
+}
+
+/** The terrain height level at a place; undefined when the API is absent or gives no number. */
+function heightAt(x: number, y: number): number | undefined {
+    const [ok, h] = pcall(GetHeightLevel, Vector(x, y, 0));
+    return ok && type(h) === "number" ? (h as number) : undefined;
 }
 
 function towersOf(bot: Unit, f: Frame): Offer.PathTower[] {
@@ -241,13 +260,16 @@ function creepsOf(f: Frame): Offer.PathCreep[] {
 function enemiesOf(f: Frame): Offer.PathEnemy[] {
     if (f.enemies !== undefined) return f.enemies;
     const out: Offer.PathEnemy[] = [];
+    const hs: string[] = [];
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
         out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1 });
+        hs.push(`${e.GetPlayerID()}:${heightAt(at.x, at.y) ?? "-"}`);
     }
     f.enemies = out;
+    f.enemyHeights = hs;
     return out;
 }
 
@@ -278,6 +300,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         if (e.dmg > ed) ed = e.dmg;
     }
     const [kb, kt] = parts!.race(bot, creep);
+    const hs = f.enemyHeights ?? [];
     return {
         walk: t.walk,
         due: t.due,
@@ -293,6 +316,11 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         md: bot.GetAttackDamage(),
         ed,
         ein,
+        hh: heightAt(f.hero.x, f.hero.y),
+        sh: heightAt(spot.x, spot.y),
+        ch: heightAt(at.x, at.y),
+        ra: bot.GetAttackRange(),
+        enh: hs.length > 0 ? hs.join(";") : undefined,
     };
 }
 

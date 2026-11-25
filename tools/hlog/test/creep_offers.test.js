@@ -26,7 +26,7 @@ const taker = (t, team, cid, by, kind, tw = 0) => line(t, `creep_death team=${te
 const snap = (t, pid, x) => line(t, `snap pid=${pid} x=${x} y=0 alive=1 hp=90 ar=550`);
 const offer = (t, pid, o) => line(t, `choice pid=${pid} kind=creep go=0 want=${o.want ?? 1} why=off src=shadow lane=2 slot=${o.slot ?? 0} cid=${o.cid} ck=${o.ck} who=${o.who}` +
     `${o.want === 0 ? '' : ` wo=${o.wo} wl=1`} walk=${o.walk} due=${o.due ?? 1} dies=${o.dies ?? 2} slk=1 hpp=1 mode=laning crhp=100 g2=0 g2r=0 pc=3 pd=63 ptw=0 ` +
-    `eh=${o.eh ?? 0} exs=0 en=2:800:550:52:1.27:0 kb=${o.kb} md=${o.md ?? 60} ed=${o.ed ?? 0} ein=${o.ein ?? 0} atk=1`);
+    `eh=${o.eh ?? 0} exs=0 en=2:800:550:52:1.27:0 kb=${o.kb} md=${o.md ?? 60} ed=${o.ed ?? 0} ein=${o.ein ?? 0} atk=1${o.ra === undefined ? '' : ` ra=${o.ra}`}${o.h ? ` hh=${o.h[0]} sh=${o.h[1]} ch=${o.h[2]} enh=2:3` : ''}`);
 
 const melee = (team) => `creep_${team === 2 ? 'goodguys' : 'badguys'}_melee`;
 const ranged = (team) => `creep_${team === 2 ? 'goodguys' : 'badguys'}_ranged`;
@@ -41,18 +41,18 @@ function gameLines() {
         gone(100, 2, 1, 0), offer(100.3, 0, { cid: 1, ck: 'm', who: 'o', walk: 0, want: 0, kb: 'none' }),
         offer(130.3, 0, { cid: 5, ck: 'm', who: 'o', walk: 2.5, want: 0, kb: 'tower' }), gone(150, 2, 5),
         gone(200, 3, 2), taker(200, 2, 41, 0, 'melee'),
-        offer(200.3, 0, { cid: 41, ck: 'm', who: 't', walk: 0, slot: 197.5, wo: 0.1, dies: 2, kb: 'me', eh: 1 }),
+        offer(200.3, 0, { cid: 41, ck: 'm', who: 't', walk: 0, slot: 197.5, wo: 0.1, dies: 2, kb: 'me', eh: 1, ra: 550, h: [1, 1, 2] }),
         snap(249.5, 0, -200), gone(250, 3, 3, 'none', 100),
-        offer(250.3, 0, { cid: 77, ck: 'm', who: 't', walk: 0.6, slot: 248, wo: 0.2, dies: 1, due: 1.9, kb: 'foe', ein: 2, ed: 70, md: 60 }),
+        offer(250.3, 0, { cid: 77, ck: 'm', who: 't', walk: 0.6, slot: 248, wo: 0.2, dies: 1, due: 1.9, kb: 'foe', ein: 2, ed: 70, md: 60, ra: 550, h: [1, 1, 2] }),
         gone(300, 3, 41),
-        offer(300.3, 0, { cid: 78, ck: 'r', who: 't', walk: 1.4, want: 0, kb: 'none' }),
+        offer(300.3, 0, { cid: 78, ck: 'r', who: 't', walk: 1.4, want: 0, kb: 'none', ra: 550, h: [2, 2, 2] }),
         gone(400, 2, 33), taker(400, 3, 9, 5, 'ranged'),
-        offer(400.3, 5, { cid: 9, ck: 'r', who: 't', walk: 0, slot: 398, wo: 0.2, dies: 1.5, due: 2.5, kb: 'creep' }),
+        offer(400.3, 5, { cid: 9, ck: 'r', who: 't', walk: 0, slot: 398, wo: 0.2, dies: 1.5, due: 2.5, kb: 'creep', ra: 600, h: [2, 2, 2] }),
         gone(500, 2, 6), taker(500, 3, 99, 5, 'melee'),
         offer(500.3, 0, { cid: 6, ck: 'm', who: 'o', walk: 0, want: 0, kb: 'foe' }),
-        snap(549.5, 0, -200), gone(550, 3, 8, 5), offer(550.3, 0, { cid: 88, ck: 'm', who: 't', walk: 0, want: 0, kb: 'none' }),
+        snap(549.5, 0, -200), gone(550, 3, 8, 5), offer(550.3, 0, { cid: 88, ck: 'm', who: 't', walk: 0, want: 0, kb: 'none', ra: 550 }),
         gone(560, 3, 10), taker(560, 2, 55, 'none', 'melee', 1),
-        offer(560.3, 0, { cid: 55, ck: 'm', who: 't', walk: 0, slot: 558, wo: 0.1, dies: 3, due: 2.5, kb: 'tower' }),
+        offer(560.3, 0, { cid: 55, ck: 'm', who: 't', walk: 0, slot: 558, wo: 0.1, dies: 3, due: 2.5, kb: 'tower', ra: 150, h: [3, 3, 2] }),
     ];
 }
 
@@ -123,4 +123,17 @@ test('creep_offer_grades: dies only where no hero hit, due against every death b
         ['creep', 'me', 1], ['foe', 'foe', 1], ['foe', 'other', 1], ['me', 'me', 1], ['none', 'foe', 1], ['none', 'me', 1],
         ['none', 'unmatched', 1], ['tower', 'other', 1], ['tower', 'unmatched', 1],
     ]);
+});
+
+test('creep_offer_height: their creeps by projectile and by the stand spot against the creep, and how many attacked ones were taken', () => {
+    const store = load();
+    const rows = store.query(sqlOf('creep_offer_height'), { like }).map(r => [r.proj, r.spot, r.n, r.atk, r.took, r.took_pct]);
+    assert.deepStrictEqual(rows, [
+        [1, 'below', 2, 2, 1, 50],
+        [1, 'level', 2, 2, 1, 50],
+        [1, 'unknown', 1, 1, 0, 0],
+        [0, 'above', 1, 1, 0, 0],
+    ]);
+    const cols = store.query(sqlOf('creep_offers'), { like }).map(r => ({ ...r })).find(r => r.cid === 41);
+    assert.deepStrictEqual([cols.hh, cols.sh, cols.ch, cols.ra, cols.enh, cols.up, cols.proj], [1, 1, 2, 550, '2:3', 1, 1]);
 });

@@ -1413,7 +1413,7 @@ Slice support-lane: one sample per started pull per PullJob WatchLogEvery during
 
 Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
 
-`pid` num, `rsrc` str, `rage` num, `ap` num, `rule` str
+`pid` num, `sh` num, `ch` num, `rsrc` str, `rage` num, `ap` num, `rule` str
 
 - `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, always `src=shadow go=0 why=off`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
@@ -1454,6 +1454,9 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ed` num: `kind=creep`: the highest hit damage among visible enemy heroes within their own attack range of the creep.
 - `ein` num: `kind=creep`: how many such enemy heroes.
 - `atk` num: `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it).
+- `hh` num: `kind=creep`: `GetHeightLevel` (0 to 7) of the hero's place, of the stand spot and of the creep, when the answers were taken; absent when the API gave none.
+- `ra` num: `kind=creep`: the hero's attack range (above 320 it attacks with a projectile, as the engine's lasthit.ts reads it).
+- `enh` str: `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.

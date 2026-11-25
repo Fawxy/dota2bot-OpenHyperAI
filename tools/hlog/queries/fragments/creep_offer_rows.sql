@@ -1,9 +1,9 @@
 -- Fragment (`-- include: creep_offer_rows`): the lane creep offer's lines joined to their creep's death, one definition for @creep_offers,
 -- @creep_offer_cells and @creep_offer_grades (read @creep_offers's header for the join and the params). The includer defines `gm(game_id)`
 -- first. CTE `creep_offer_rows(game_id, seq, t, team, pos, hero, pid, lane, slot, want, cid, ck, who, wo, wl, walk, due, dies, slk, hpp, mode,
--- crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, matched, src, dt, how, paid, by_pid, mine, inrange, outdmg, covered, snap)`.
+-- crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, hh, sh, ch, ra, enh, matched, src, dt, how, paid, by_pid, mine, inrange, outdmg, covered, up, proj, snap)`.
 -- Params: from, until, back, fwd, ck, who, pid, hero. Ends with a comma.
--- ensure: ev_choice(pid, kind, src, lane, slot, want, cid, ck, who, wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk)
+-- ensure: ev_choice(pid, kind, src, lane, slot, want, cid, ck, who, wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, hh, sh, ch, ra, enh)
 -- ensure: ev_snap(pid, x, y, alive)
 -- ensure: ev_bot(pid, team, pos, hero)
 -- include: creep_paid_rows
@@ -13,7 +13,7 @@ co_l AS MATERIALIZED (
     SELECT c.game_id, c.seq, c.t, b.team, b.pos, b.hero, c.pid, c.lane, c.slot, c.want, c.cid, c.ck, c.who,
         CASE c.who WHEN 't' THEN 'theirs' ELSE 'ours' END AS whose,
         c.wo, c.wl, c.walk, c.due, c.dies, c.slk, c.hpp, c.mode, c.crhp, c.g2, c.g2r, c.pc, c.pd, c.ptw, c.eh, c.exs, c.en,
-        c.kb, c.kt, c.md, c.ed, c.ein, c.atk
+        c.kb, c.kt, c.md, c.ed, c.ein, c.atk, c.hh, c.sh, c.ch, c.ra, c.enh
     FROM ev_choice c JOIN co_bot b ON b.game_id = c.game_id AND b.pid = c.pid
     WHERE c.kind = 'creep' AND c.src = 'shadow' AND c.game_id IN (SELECT game_id FROM gm)
         AND c.t >= coalesce(:from, 0) AND c.t < coalesce(:until, 600)
@@ -53,10 +53,11 @@ co_f AS MATERIALIZED (
 creep_offer_rows AS (
     SELECT l.game_id, l.seq, l.t, l.team, l.pos, l.hero, l.pid, l.lane, l.slot, l.want, l.cid, l.ck, l.who,
         l.wo, l.wl, l.walk, l.due, l.dies, l.slk, l.hpp, l.mode, l.crhp, l.g2, l.g2r, l.pc, l.pd, l.ptw, l.eh, l.exs, l.en,
-        l.kb, l.kt, l.md, l.ed, l.ein, l.atk,
+        l.kb, l.kt, l.md, l.ed, l.ein, l.atk, l.hh, l.sh, l.ch, l.ra, l.enh,
         d.uid IS NOT NULL AS matched, CASE WHEN c.uid IS NOT NULL THEN 'cid' WHEN f.uid IS NOT NULL THEN 'owner' END AS src,
         d.dt, d.how, d.paid, d.by_pid, coalesce(d.by_pid = l.pid AND d.how IN ('lh', 'deny'), 0) AS mine,
         l.walk = 0 AS inrange, l.ein > 0 AND l.ed > l.md AS outdmg, l.eh > 0 AS covered,
+        l.sh < l.ch AS up, l.ra > 320 AS proj,
         CASE WHEN l.want = 1 THEN round(l.slot + l.wo, 1) END AS snap
     FROM co_l l
     LEFT JOIN co_c c ON c.game_id = l.game_id AND c.seq = l.seq

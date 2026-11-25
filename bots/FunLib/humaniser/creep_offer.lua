@@ -148,7 +148,15 @@ local function line(bot, o)
                 math.floor(s.ed)
             },
             {"ein", s.ein},
-            {"atk", o.atk and 1 or 0}
+            {"atk", o.atk and 1 or 0},
+            {"hh", s.hh},
+            {"sh", s.sh},
+            {"ch", s.ch},
+            {
+                "ra",
+                math.floor(s.ra)
+            },
+            {"enh", s.enh}
         }
     )
 end
@@ -202,6 +210,14 @@ local function rowOf(bot, creep)
     end
     return nil
 end
+--- The terrain height level at a place; undefined when the API is absent or gives no number.
+local function heightAt(x, y)
+    local ok, h = pcall(
+        GetHeightLevel,
+        Vector(x, y, 0)
+    )
+    return ok and type(h) == "number" and h or nil
+end
 local function towersOf(bot, f)
     if f.towers ~= nil then
         return f.towers
@@ -209,11 +225,11 @@ local function towersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
         do
-            local __continue29
+            local __continue30
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue29 = true
+                    __continue30 = true
                     break
                 end
                 out[#out + 1] = {
@@ -221,9 +237,9 @@ local function towersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
                 }
-                __continue29 = true
+                __continue30 = true
             until true
-            if not __continue29 then
+            if not __continue30 then
                 break
             end
         end
@@ -238,11 +254,11 @@ local function creepsOf(f)
     local out = {}
     for ____, c in ipairs(f.enemyCreeps) do
         do
-            local __continue34
+            local __continue35
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil then
-                    __continue34 = true
+                    __continue35 = true
                     break
                 end
                 local ____this_1
@@ -255,9 +271,9 @@ local function creepsOf(f)
                     reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
                     dps = c:GetAttackDamage() / math.max(spa, 0.1)
                 }
-                __continue34 = true
+                __continue35 = true
             until true
-            if not __continue34 then
+            if not __continue35 then
                 break
             end
         end
@@ -270,17 +286,18 @@ local function enemiesOf(f)
         return f.enemies
     end
     local out = {}
+    local hs = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue39
+            local __continue40
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue39 = true
+                    __continue40 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue39 = true
+                    __continue40 = true
                     break
                 end
                 local ____at_x_4 = at.x
@@ -301,14 +318,16 @@ local function enemiesOf(f)
                     dmg = ____temp_9,
                     spa = ____opt_2 and ____opt_2(____this_3) or 1
                 }
-                __continue39 = true
+                hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
+                __continue40 = true
             until true
-            if not __continue39 then
+            if not __continue40 then
                 break
             end
         end
     end
     f.enemies = out
+    f.enemyHeights = hs
     return out
 end
 --- Whose hit the forecast says kills the creep, and when.
@@ -358,24 +377,25 @@ local function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue50
+            local __continue51
             repeat
                 if dist(e, at) > e.range + e.hull + hull then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
     end
     local kb, kt = unpack(parts.race(bot, creep))
+    local hs = f.enemyHeights or ({})
     return {
         walk = t.walk,
         due = t.due,
@@ -393,7 +413,12 @@ local function snapshot(bot, f, t, slack, others)
         kt = kt,
         md = bot:GetAttackDamage(),
         ed = ed,
-        ein = ein
+        ein = ein,
+        hh = heightAt(f.hero.x, f.hero.y),
+        sh = heightAt(spot.x, spot.y),
+        ch = heightAt(at.x, at.y),
+        ra = bot:GetAttackRange(),
+        enh = #hs > 0 and table.concat(hs, ";") or nil
     }
 end
 local function partsOf()
@@ -458,17 +483,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue69
+                local __continue70
                 repeat
                     if listed[o.creep] == true then
-                        __continue69 = true
+                        __continue70 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue69 = true
+                    __continue70 = true
                 until true
-                if not __continue69 then
+                if not __continue70 then
                     break
                 end
             end
@@ -496,12 +521,12 @@ function ____exports.Shadow(bot)
     local slot = math.floor(now * 10) / 10
     for ____, t in ipairs(targets) do
         do
-            local __continue73
+            local __continue74
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue73 = true
+                    __continue74 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -550,9 +575,9 @@ function ____exports.Shadow(bot)
                 if atkTarget ~= nil and atkTarget ~= nil and atkTarget == creep then
                     o.atk = true
                 end
-                __continue73 = true
+                __continue74 = true
             until true
-            if not __continue73 then
+            if not __continue74 then
                 break
             end
         end

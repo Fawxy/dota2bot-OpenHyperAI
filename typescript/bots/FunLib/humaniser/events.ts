@@ -2912,6 +2912,14 @@ export const EVENTS = {
         ein: "num",
         /** `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it). */
         atk: "num",
+        /** `kind=creep`: `GetHeightLevel` (0 to 7) of the hero's place, of the stand spot and of the creep, when the answers were taken; absent when the API gave none. */
+        hh: "num",
+        sh: "num",
+        ch: "num",
+        /** `kind=creep`: the hero's attack range (above 320 it attacks with a projectile, as the engine's lasthit.ts reads it). */
+        ra: "num",
+        /** `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order. */
+        enh: "str",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */
