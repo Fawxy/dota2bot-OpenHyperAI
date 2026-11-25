@@ -17,7 +17,7 @@ local function lines(all) local r = {} for _, l in ipairs(all) do if l:find("kin
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 local function num(line, k) return tonumber(field(line, k)) end
 
-local function world()
+local function world(every)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
 	CURRENT_TEAM = 2
 	T = 100
@@ -41,6 +41,7 @@ local function world()
 	package.loaded["bots/FunLib/humaniser/lane_hits"].Reset()
 	w.CO = H.CreepOffer
 	w.CO.ResetCache()
+	w.CO.SETTINGS.Every = every or 0.1
 	return w
 end
 
@@ -228,6 +229,35 @@ do -- the facts: the race, the enemies' reach and the path's cost
 	check("the enemy covers the spot (550 + hulls from 550 away) and the hero stands still", num(l[1], "eh") == 1 and num(l[1], "exs") == 0, l[1])
 	check("their ranged creep with 500 acquisition range is at the spot and its damage counted", num(l[1], "pc") == 2 and num(l[1], "pd") == 24, l[1])
 	check("the other target in reach due before the walk back counts (the ranged one), the deny due in 5 s does not", num(l[1], "g2") == 1 and num(l[1], "g2r") == 1, l[1])
+end
+
+do -- the rate: a read inside the interval does nothing; the close waits for the next due read and is written once
+	local w = world(0.2)
+	local core = hero(2, 2) -- an even pid reads at 100.0, 100.2, ...
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 80 })
+	local blink = MakeCreep({ team = 3, x = 350, y = -5000, hp = 80 })
+	local out = capture(function()
+		w.targets = { target(c, {}) }
+		w.CO.Shadow(core) -- 100.0, due
+		T = 100.1
+		kill(c)
+		w.targets = { target(blink, {}) }
+		w.CO.Shadow(core) -- inside the interval: the gone creep is not closed yet, the new one is not seen
+		check("a read inside the interval writes nothing", #lines({}) == 0)
+	end)
+	check("nothing is written inside the interval", #lines(out) == 0, table.concat(out, "\n"))
+	out = capture(function()
+		T = 100.15
+		kill(blink)
+		w.targets = {}
+		w.CO.Shadow(core) -- still inside it
+		T = 100.2
+		w.CO.Shadow(core) -- due: the creep is closed
+		T = 100.4
+		w.CO.Shadow(core)
+	end)
+	local l = lines(out)
+	check("the first creep is closed once at the next due read; the one offered and gone inside the interval is missed", #l == 1 and field(l[1], "cid") == "1", table.concat(out, "\n"))
 end
 
 finish()

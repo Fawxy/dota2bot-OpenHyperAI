@@ -14,14 +14,29 @@ local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_t
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
-____exports.SETTINGS = {SlackStep = 0.1, SlackCap = 99, TowerRadius = 2500}
+____exports.SETTINGS = {Every = 0.2, SlackStep = 0.1, SlackCap = 99, TowerRadius = 2500}
 local parts
+--- pid -> the read interval the hero last read in.
+local readAt = {}
 --- pid -> creep id -> its opportunity.
 local opps = {}
 function ____exports.ResetCache()
     for k in pairs(opps) do
         opps[k] = nil
     end
+    for k in pairs(readAt) do
+        readAt[k] = nil
+    end
+    parts = nil
+end
+--- Whether this hero's read is due: once per interval, the heroes' intervals offset by player id.
+local function due(pid, now)
+    local n = math.floor((now + pid % 2 * (____exports.SETTINGS.Every / 2)) / ____exports.SETTINGS.Every + 0.000001)
+    if readAt[pid] == n then
+        return false
+    end
+    readAt[pid] = n
+    return true
 end
 local function r1(x)
     return math.floor(x * 10 + 0.5) / 10
@@ -137,6 +152,16 @@ local function line(bot, o)
         }
     )
 end
+local function hasOpen(pid)
+    local m = opps[pid]
+    if m == nil then
+        return false
+    end
+    for ____ in pairs(m) do
+        return true
+    end
+    return false
+end
 local function closeAll(bot, pid)
     local m = opps[pid]
     if m == nil then
@@ -158,19 +183,19 @@ local function rowOf(bot, creep)
     end
     for ____, lane in ipairs(LANES) do
         do
-            local __continue17
+            local __continue23
             repeat
                 if lane == own then
-                    __continue17 = true
+                    __continue23 = true
                     break
                 end
                 local r = LaneHits.Of(team, lane, creep)
                 if r ~= nil then
                     return r
                 end
-                __continue17 = true
+                __continue23 = true
             until true
-            if not __continue17 then
+            if not __continue23 then
                 break
             end
         end
@@ -221,15 +246,15 @@ local function enemiesOf(f)
     local out = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue31
+            local __continue37
             repeat
                 if not e:IsAlive() or not e:CanBeSeen() then
-                    __continue31 = true
+                    __continue37 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue31 = true
+                    __continue37 = true
                     break
                 end
                 local ____at_x_4 = at.x
@@ -250,9 +275,9 @@ local function enemiesOf(f)
                     dmg = ____temp_9,
                     spa = ____opt_2 and ____opt_2(____this_3) or 1
                 }
-                __continue31 = true
+                __continue37 = true
             until true
-            if not __continue31 then
+            if not __continue37 then
                 break
             end
         end
@@ -307,19 +332,19 @@ local function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue42
+            local __continue48
             repeat
                 if dist(e, at) > e.range + e.hull + hull then
-                    __continue42 = true
+                    __continue48 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue42 = true
+                __continue48 = true
             until true
-            if not __continue42 then
+            if not __continue48 then
                 break
             end
         end
@@ -377,10 +402,16 @@ end
 --- One call per hero (the tick's ten a second): opens, updates and closes the hero's opportunities. Reads and logs; nothing is
 -- ordered.
 function ____exports.Shadow(bot)
-    if not Telemetry.IsEnabled() or not ____exports.MayOffer(bot) then
+    if not Telemetry.IsEnabled() then
         return
     end
     local pid = bot:GetPlayerID()
+    if not due(
+        pid,
+        DotaTime()
+    ) or not ____exports.MayOffer(bot) then
+        return
+    end
     if not bot:IsAlive() or Drill.Held(bot) or not LaneConfig.InLaningPhase() then
         closeAll(bot, pid)
         return
@@ -391,6 +422,9 @@ function ____exports.Shadow(bot)
     local P = partsOf()
     local now = DotaTime()
     local targets = P.targets(bot)
+    if #targets == 0 and not hasOpen(pid) then
+        return
+    end
     local ____P_lists_result_10 = P.lists(bot)
     local listed = ____P_lists_result_10.listed
     local theirs = ____P_lists_result_10.theirs
@@ -398,17 +432,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue59
+                local __continue67
                 repeat
                     if listed[o.creep] == true then
-                        __continue59 = true
+                        __continue67 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue59 = true
+                    __continue67 = true
                 until true
-                if not __continue59 then
+                if not __continue67 then
                     break
                 end
             end

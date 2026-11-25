@@ -22,6 +22,12 @@ import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
 export const SETTINGS = {
+    /**
+     * Seconds between a hero's reads, the six cores offset by player id so they do not read on one frame (judgement: the step
+     * cost 8.6 to 10.2% of script time at ten reads a second). What the lower rate loses: the window's edges and the close are
+     * read to this interval, `atk` is sampled once an interval, and a creep offered and gone inside one interval is missed.
+     */
+    Every: 0.2,
     /** A later read replaces the best-slack snapshot only by this much (s): the snapshot's reads cost more than a tick's (judgement). */
     SlackStep: 0.1,
     /** A slack above this reads as this in the line (the engine's `dies` is infinite for a creep nothing is hitting; judgement). */
@@ -76,11 +82,25 @@ interface Opp {
     atk: boolean;
 }
 
+/** pid -> the read interval the hero last read in. */
+const readAt: Record<number, number | undefined> = {};
+
 /** pid -> creep id -> its opportunity. */
 const opps: Record<number, Record<number, Opp | undefined> | undefined> = {};
 
 export function ResetCache(): void {
     for (const [k] of pairs(opps)) opps[k as number] = undefined;
+    for (const [k] of pairs(readAt)) readAt[k as number] = undefined;
+    parts = undefined;
+}
+
+/** Whether this hero's read is due: once per interval, the heroes' intervals offset by player id. */
+function due(pid: number, now: number): boolean {
+    // The epsilon keeps a clock a hair under a boundary (100.2 / 0.2) in the interval it belongs to.
+    const n = math.floor((now + (pid % 2) * (SETTINGS.Every / 2)) / SETTINGS.Every + 1e-6);
+    if (readAt[pid] === n) return false;
+    readAt[pid] = n;
+    return true;
 }
 
 function r1(x: number): number {
@@ -145,6 +165,13 @@ function line(bot: Unit, o: Opp): void {
         ["ein", s.ein],
         ["atk", o.atk ? 1 : 0],
     ]);
+}
+
+function hasOpen(pid: number): boolean {
+    const m = opps[pid];
+    if (m === undefined) return false;
+    for (const [] of pairs(m)) return true;
+    return false;
 }
 
 function closeAll(bot: Unit, pid: number): void {
@@ -288,8 +315,9 @@ function partsOf(): Parts {
  * ordered.
  */
 export function Shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled() || !MayOffer(bot)) return;
+    if (!Telemetry.IsEnabled()) return;
     const pid = bot.GetPlayerID();
+    if (!due(pid, DotaTime()) || !MayOffer(bot)) return;
     if (!bot.IsAlive() || Drill.Held(bot) || !LaneConfig.InLaningPhase()) {
         closeAll(bot, pid);
         return;
@@ -298,6 +326,8 @@ export function Shadow(bot: Unit): void {
     const P = partsOf();
     const now = DotaTime();
     const targets = P.targets(bot as unknown as Lib.TaskUnit);
+    // Nothing offered and nothing open: no creep to list or close.
+    if (targets.length === 0 && !hasOpen(pid)) return;
     const { listed, theirs } = P.lists(bot);
 
     let m = opps[pid];
