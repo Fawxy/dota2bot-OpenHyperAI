@@ -695,8 +695,16 @@ function believe(bot: TaskUnit, creep: TaskCreep, withError: boolean, observedDp
         hpAtHit: believed,
         relied: reliedUsed,
         // The lowest roll of the damage spread: a swing on the average roll fails about half the borderline creeps.
-        mine: physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * (1 + eps * width)),
+        mine: lowestHit(bot, creep, 1 + eps * width),
     };
+}
+
+/**
+ * The bot's lowest damage roll on the creep after armour, scaled by `scale` before armour. `believe`'s own damage and
+ * `cannotComeDue`'s bound must stay this one expression: the shortcut is exact only while they agree.
+ */
+function lowestHit(bot: TaskUnit, creep: TaskCreep, scale: number = 1): number {
+    return physical(creep, (bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) * scale);
 }
 
 /** Swing now: the creep survives everyone else until our hit lands, and (as believed) our hit then kills it. */
@@ -806,7 +814,7 @@ export interface LaneTargetsOpts {
 function cannotComeDue(bot: TaskUnit, c: TaskCreep): boolean {
     if ((c.GetHealthRegen?.() ?? 0) < 0) return false;
     // The belief adds and subtracts regen terms; within float rounding of the hit, leave the answer to it.
-    if (c.GetHealth() - physical(c, bot.GetAttackDamage!() - (bot.GetBaseDamageVariance?.() ?? 0)) <= 1e-6) return false;
+    if (c.GetHealth() - lowestHit(bot, c) <= 1e-6) return false;
     for (const a of attackersByTarget(bot, nearby(bot)).get(c as TaskAttacker) ?? []) {
         if (a !== (c as TaskAttacker)) return false;
     }

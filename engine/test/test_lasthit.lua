@@ -364,6 +364,18 @@ do
     T.check("targets: a projectile in flight with no attacker left makes it due", t2 ~= nil and t2.due == 0, t2 and t2.due)
 end
 
+-- The cut itself: creeps above our hit with nothing on them are answered without the belief, whose own hit time reads
+-- the bot's facing (turnTime); a scan over three of them reads it never.
+do
+    local sim, bot = laneWorld()
+    bot.facing = 0
+    for i = 1, 3 do sim:addCreep{ x = 100, y = 40 * i, hp = 300, team = 3, name = MELEE, passive = true } end
+    local reads = 0
+    bot.GetFacing = function(self) reads = reads + 1; return self.facing end
+    T.eq("targets: idle creeps offered nothing", #V.laneTargets(bot), 0)
+    T.eq("targets: idle creeps skip the belief (facing reads)", reads, 0)
+end
+
 -- Melee standing outside the 520 ring: a creep 600 away due in 1.5 s is worth setting off for (1.5 s walk),
 -- one due in 3 s is not yet; beyond the search radius (800 for melee) nothing is offered.
 do
