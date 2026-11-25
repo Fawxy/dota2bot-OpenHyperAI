@@ -56,6 +56,11 @@ function heroName(unit: Unit): string {
     return string.gsub(unit.GetUnitName(), "npc_dota_hero_", "")[0];
 }
 
+/** Before the horn OHA's GetPosition can fall back to 2 for heroes whose role is not set, and two lines would overlap. */
+function rolesSettled(): boolean {
+    return DotaTime() >= 0;
+}
+
 function blockTop(team: number): number {
     return TOP + LINE + (team === Team.Radiant ? 0 : BLOCK);
 }
@@ -93,7 +98,7 @@ export function Draw(bot: Unit): void {
         const [r, g, b] = team === Team.Radiant ? [120, 220, 120] : [230, 110, 110];
         DebugDrawText(X, top, `${team === Team.Radiant ? "RADIANT" : "DIRE"}  ${switches()}`, r, g, b);
         // A dead hero's script does not run, so the first live one of the frame draws its line.
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 5 && rolesSettled(); i++) {
             const m = GetTeamMember(i);
             if (m === undefined || m === null || m.IsAlive()) continue;
             const p = LaneConfig.PositionOf(m);
@@ -101,7 +106,7 @@ export function Draw(bot: Unit): void {
         }
     }
     const pos = LaneConfig.PositionOf(bot);
-    if (pos === undefined || pos < 1 || pos > 5 || !bot.IsAlive()) return;
+    if (!rolesSettled() || pos === undefined || pos < 1 || pos > 5 || !bot.IsAlive()) return;
     const d = doing(bot);
     const hero = heroName(bot);
     const extra = HDebug.IsEnabled() ? `  ${DesireLog.Competing(bot)}` : "";

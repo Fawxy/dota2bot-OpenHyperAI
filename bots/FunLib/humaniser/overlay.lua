@@ -65,6 +65,10 @@ local function heroName(unit)
         ""
     ))
 end
+--- Before the horn OHA's GetPosition can fall back to 2 for heroes whose role is not set, and two lines would overlap.
+local function rolesSettled()
+    return DotaTime() >= 0
+end
 local function blockTop(team)
     return TOP + LINE + (team == Team.Radiant and 0 or BLOCK)
 end
@@ -123,13 +127,13 @@ function ____exports.Draw(bot)
         )
         do
             local i = 1
-            while i <= 5 do
+            while i <= 5 and rolesSettled() do
                 do
-                    local __continue18
+                    local __continue19
                     repeat
                         local m = GetTeamMember(i)
                         if m == nil or m == nil or m:IsAlive() then
-                            __continue18 = true
+                            __continue19 = true
                             break
                         end
                         local p = LaneConfig.PositionOf(m)
@@ -143,9 +147,9 @@ function ____exports.Draw(bot)
                                 STOCK_COLOUR[3]
                             )
                         end
-                        __continue18 = true
+                        __continue19 = true
                     until true
-                    if not __continue18 then
+                    if not __continue19 then
                         break
                     end
                 end
@@ -154,7 +158,7 @@ function ____exports.Draw(bot)
         end
     end
     local pos = LaneConfig.PositionOf(bot)
-    if pos == nil or pos < 1 or pos > 5 or not bot:IsAlive() then
+    if not rolesSettled() or pos == nil or pos < 1 or pos > 5 or not bot:IsAlive() then
         return
     end
     local d = doing(bot)
