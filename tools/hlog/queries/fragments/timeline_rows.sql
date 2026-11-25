@@ -130,13 +130,14 @@ tl_dec0 AS (
     WHERE c.kind NOT IN ('shadow', 'decider')
 ),
 -- A started decision's trip: the hero's job with the same attempt id when both lines carry one, else (older logs, or a line
--- without one) that hero's first job of the decision's name to start within 1 s of the line.
+-- without one) that hero's first job of the decision's name to start within 1 s of the line. The id branch is bounded to 60 s
+-- either side (a judgement, not measured): a restarted bot VM counts ids from 1 again, so one id can recur in a game.
 tl_dec_job AS (
     SELECT d.game_id, d.seq, j.t0, j.t1, j.why,
         row_number() OVER (PARTITION BY d.game_id, d.seq ORDER BY j.t0) AS jn
     FROM tl_dec0 d
     JOIN ep_job j ON j.game_id = d.game_id AND j.pid = d.pid AND j.src = 'job' AND j.job = d.what AND (
-        CASE WHEN d.aid IS NOT NULL AND j.aid IS NOT NULL THEN d.aid = j.aid ELSE j.t0 BETWEEN d.t AND d.t + 1 END)
+        CASE WHEN d.aid IS NOT NULL AND j.aid IS NOT NULL THEN d.aid = j.aid AND j.t0 BETWEEN d.t - 60 AND d.t + 60 ELSE j.t0 BETWEEN d.t AND d.t + 1 END)
     WHERE d.rn = 1 AND d.go = 1
 ),
 tl_dec AS (

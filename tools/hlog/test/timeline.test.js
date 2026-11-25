@@ -530,8 +530,8 @@ test('timeline creeps: one row per lane creep death whichever team logged it, no
     store.close();
 });
 
-// An attempt id pairs a go line with its job even when the job started well before it (the stack row writes its go line
-// about 2 s after its job starts); lines without one keep the 1 s time pairing.
+// An attempt id pairs a go line with its job even when the job started before it (synthetic: shaped like the creep row's late
+// go line on its branch); lines without one keep the 1 s time pairing.
 function attemptLines({ aid }) {
     const a = n => (aid ? ` aid=${n}` : '');
     const stack = (t, pid, slot, n) => line(t, `choice pid=${pid} kind=stack lane=3 slot=${slot} want=1 go=1 src=own${a(n)}`);
@@ -571,4 +571,15 @@ test('timeline decisions: lines without an attempt id keep the 1 s pairing: a go
         ['luna', 300, 'no_start'],
         ['lich', 320, 'done'],
     ]);
+});
+
+test('timeline decisions: an aid reused after a restart pairs each go line with the job near it', () => {
+    const stack = (t, slot) => line(t, `choice pid=1 kind=stack lane=3 slot=${slot} want=1 go=1 src=own aid=1`);
+    const job = (t, phase, why) => line(t, `job pid=1 job=stack phase=${phase} why=${why} aid=1`);
+    const rows = decisionsOf([
+        line(-90, 'bot pid=1 hero=lich team=2 pos=5'),
+        job(100, 'start', 'trigger'), stack(101, 100), job(120, 'end', 'cancelled:hit'),
+        job(600, 'start', 'trigger'), stack(601, 600), job(640, 'end', 'ok'),
+    ]);
+    assert.deepStrictEqual(rows.map(r => [r.slot, r.t1, r.outcome]), [[100, 120, 'cut'], [600, 640, 'done']]);
 });
