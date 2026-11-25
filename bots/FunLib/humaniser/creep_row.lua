@@ -487,6 +487,9 @@ function ____exports.Consider(bot, cands)
     local now = DotaTime()
     local lead = CreepOffer.AttackCycle(bot)
     local recs = touch(pid, cands, now)
+    if #cands == 0 then
+        return
+    end
     if running[pid] ~= nil then
         for ____, c in ipairs(cands) do
             local r = recs[c.cid]
@@ -545,18 +548,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue68
+            local __continue69
             repeat
                 if c == best or c.t.kind ~= "lasthit" or c.ck ~= "r" then
-                    __continue68 = true
+                    __continue69 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue68 = true
+                __continue69 = true
             until true
-            if not __continue68 then
+            if not __continue69 then
                 break
             end
         end

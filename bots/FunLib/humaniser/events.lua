@@ -1701,6 +1701,7 @@ ____exports.EVENTS = {
         go = "num",
         want = "num",
         why = "str",
+        lw = "str",
         src = "str",
         lane = "num",
         slot = "num",

@@ -201,6 +201,50 @@ do -- the record is dropped for a creep that is no longer listed: a creep back a
 	check("pruned: back after a read without it, no hw and nw=1", start ~= nil and field(start, "hw") == nil and field(start, "nw") == "1", tostring(start))
 end
 
+do -- a read with no targets at all drops the record too: a creep back after it reads as new, not with the old hw
+	local w = world()
+	local c = ranged(500)
+	local out = capture(function()
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		w.core.mode = 4
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		w.targets = {}
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		w.core.mode = 0
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		w.CO.Shadow(w.core)
+	end)
+	local start = lines(out, "job=creep")[1]
+	check("pruned by a read with no targets: no hw and nw=1", start ~= nil and field(start, "hw") == nil and field(start, "nw") == "1", tostring(start))
+end
+
+do -- the choice line keeps the first refusal in `why` and the last in `lw`, so a notime_* reason can be counted
+	local w = world()
+	w.core.range, w.core.speed = 150, 300
+	local c = ranged(300)
+	local out = capture(function()
+		w.targets = { target(c, { walk = 0.5, due = 0.8, dies = 3 }) }
+		w.core.mode = 4
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		w.targets = { target(c, { walk = 0.5, due = 0.3, dies = 3 }) }
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(w.core)
+	end)
+	local ch = lines(out, "kind=creep")
+	check("lw: held first, then not on time after held", #ch == 1 and field(ch[1], "why") == "held" and field(ch[1], "lw") == "notime_held", table.concat(ch, " | "))
+	w = world()
+	c = ranged(300)
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	ch = lines(readThenClose(w, { c }), "kind=creep")
+	check("lw: absent on a creep that went", #ch == 1 and field(ch[1], "go") == "1" and field(ch[1], "lw") == nil, table.concat(ch, " | "))
+end
+
 do -- on time: the creep must come due no sooner than the hero can be in the verb's range (range 150, speed 300, creep 300 away: 0.5 s)
 	local function world3(due)
 		local w = world()

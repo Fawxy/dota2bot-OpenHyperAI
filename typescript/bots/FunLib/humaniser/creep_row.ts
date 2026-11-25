@@ -289,6 +289,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const now = DotaTime();
     const lead = CreepOffer.AttackCycle(bot);
     const recs = touch(pid, cands, now);
+    if (cands.length === 0) return;
     if (running[pid] !== undefined) {
         for (const c of cands) {
             const r = recs[c.cid];

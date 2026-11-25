@@ -118,6 +118,8 @@ interface Opp {
      * while the row has said nothing (the line then reads `off`).
      */
     why?: string;
+    /** The row's latest reason for not going, as given at its last read of the creep (`early` and `kind` included); the line's `lw`. */
+    last?: string;
 }
 
 /**
@@ -198,6 +200,7 @@ function line(bot: Unit, o: Opp): void {
         ["go", o.go === true ? 1 : 0],
         ["want", want ? 1 : 0],
         ["why", o.go === true ? undefined : o.why ?? "off"],
+        ["lw", o.go === true ? undefined : o.last],
         ["src", o.go === true || o.why !== undefined ? "own" : "shadow"],
         ["lane", o.lane],
         ["slot", o.first],
@@ -448,6 +451,7 @@ export function Shadow(bot: Unit): void {
     if (!due(pid, DotaTime()) || !MayOffer(bot)) return;
     if (!bot.IsAlive() || Drill.Held(bot) || !LaneConfig.InLaningPhase()) {
         closeAll(bot, pid);
+        if (rowHook !== undefined) rowHook(bot, []);
         return;
     }
     if (Tasks.Verbs() === undefined) return;
@@ -466,7 +470,10 @@ export function Shadow(bot: Unit): void {
             m[cid] = undefined;
         }
     }
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+        if (rowHook !== undefined) rowHook(bot, []);
+        return;
+    }
     if (m === undefined) {
         m = {};
         opps[pid] = m;
@@ -537,7 +544,10 @@ function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.
                 o.gat = now - o.first;
                 o.gw = t.walk;
                 o.why = undefined;
-            } else if (o.why === undefined || o.why === "early") o.why = why;
+            } else {
+                if (o.why === undefined || o.why === "early") o.why = why;
+                o.last = why;
+            }
         },
     };
 }

@@ -167,10 +167,10 @@ function creepsOf(f)
                     __continue43 = true
                     break
                 end
-                local ____this_6
-                ____this_6 = c
-                local ____opt_5 = ____this_6.GetSecondsPerAttack
-                local spa = ____opt_5 and ____opt_5(____this_6) or 1
+                local ____this_7
+                ____this_7 = c
+                local ____opt_6 = ____this_7.GetSecondsPerAttack
+                local spa = ____opt_6 and ____opt_6(____this_7) or 1
                 out[#out + 1] = {
                     x = at.x,
                     y = at.y,
@@ -206,23 +206,23 @@ function enemiesOf(f)
                     __continue48 = true
                     break
                 end
-                local ____at_x_9 = at.x
-                local ____at_y_10 = at.y
-                local ____temp_11 = e:GetPlayerID()
-                local ____temp_12 = e:GetAttackRange()
-                local ____temp_13 = e:GetBoundingRadius()
-                local ____temp_14 = e:GetAttackDamage()
-                local ____this_8
-                ____this_8 = e
-                local ____opt_7 = ____this_8.GetSecondsPerAttack
+                local ____at_x_10 = at.x
+                local ____at_y_11 = at.y
+                local ____temp_12 = e:GetPlayerID()
+                local ____temp_13 = e:GetAttackRange()
+                local ____temp_14 = e:GetBoundingRadius()
+                local ____temp_15 = e:GetAttackDamage()
+                local ____this_9
+                ____this_9 = e
+                local ____opt_8 = ____this_9.GetSecondsPerAttack
                 out[#out + 1] = {
-                    x = ____at_x_9,
-                    y = ____at_y_10,
-                    pid = ____temp_11,
-                    range = ____temp_12,
-                    hull = ____temp_13,
-                    dmg = ____temp_14,
-                    spa = ____opt_7 and ____opt_7(____this_8) or 1,
+                    x = ____at_x_10,
+                    y = ____at_y_11,
+                    pid = ____temp_12,
+                    range = ____temp_13,
+                    hull = ____temp_14,
+                    dmg = ____temp_15,
+                    spa = ____opt_8 and ____opt_8(____this_9) or 1,
                     speed = e:GetCurrentMovementSpeed()
                 }
                 hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
@@ -418,8 +418,11 @@ function candidate(bot, f, targets, t, creep, cid, o, a, now)
                 o.gat = now - o.first
                 o.gw = t.walk
                 o.why = nil
-            elseif o.why == nil or o.why == "early" then
-                o.why = why
+            else
+                if o.why == nil or o.why == "early" then
+                    o.why = why
+                end
+                o.last = why
             end
         end
     }
@@ -478,8 +481,8 @@ end
 local function line(bot, o)
     local s = o.snap
     local want = o.okFrom ~= nil
-    local ____Telemetry_Event_4 = Telemetry.Event
-    local ____array_3 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_5 = Telemetry.Event
+    local ____array_4 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -494,9 +497,16 @@ local function line(bot, o)
     else
         ____temp_2 = o.why or "off"
     end
+    __TS__SparseArrayPush(____array_4, {"why", ____temp_2})
+    local ____temp_3
+    if o.go == true then
+        ____temp_3 = nil
+    else
+        ____temp_3 = o.last
+    end
     __TS__SparseArrayPush(
-        ____array_3,
-        {"why", ____temp_2},
+        ____array_4,
+        {"lw", ____temp_3},
         {"src", (o.go == true or o.why ~= nil) and "own" or "shadow"},
         {"lane", o.lane},
         {"slot", o.first},
@@ -594,9 +604,9 @@ local function line(bot, o)
         },
         {"enh", s.enh}
     )
-    ____Telemetry_Event_4(
+    ____Telemetry_Event_5(
         "choice",
-        {__TS__SparseArraySpread(____array_3)}
+        {__TS__SparseArraySpread(____array_4)}
     )
 end
 local function hasOpen(pid)
@@ -635,6 +645,9 @@ function ____exports.Shadow(bot)
     end
     if not bot:IsAlive() or Drill.Held(bot) or not LaneConfig.InLaningPhase() then
         closeAll(bot, pid)
+        if rowHook ~= nil then
+            rowHook(bot, {})
+        end
         return
     end
     if Tasks.Verbs() == nil then
@@ -646,30 +659,33 @@ function ____exports.Shadow(bot)
     if #targets == 0 and not hasOpen(pid) then
         return
     end
-    local ____P_lists_result_15 = P.lists(bot)
-    local listed = ____P_lists_result_15.listed
-    local theirs = ____P_lists_result_15.theirs
+    local ____P_lists_result_16 = P.lists(bot)
+    local listed = ____P_lists_result_16.listed
+    local theirs = ____P_lists_result_16.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue83
+                local __continue84
                 repeat
                     if listed[o.creep] == true then
-                        __continue83 = true
+                        __continue84 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue83 = true
+                    __continue84 = true
                 until true
-                if not __continue83 then
+                if not __continue84 then
                     break
                 end
             end
         end
     end
     if #targets == 0 then
+        if rowHook ~= nil then
+            rowHook(bot, {})
+        end
         return
     end
     if m == nil then
@@ -692,12 +708,12 @@ function ____exports.Shadow(bot)
     local cands = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue87
+            local __continue89
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue87 = true
+                    __continue89 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -759,9 +775,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue87 = true
+                __continue89 = true
             until true
-            if not __continue87 then
+            if not __continue89 then
                 break
             end
         end
