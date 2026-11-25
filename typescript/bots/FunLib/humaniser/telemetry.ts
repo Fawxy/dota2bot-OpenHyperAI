@@ -31,6 +31,10 @@ const BUILD: string = (() => {
     return ok && type(info) === "table" && type((info as any).build) === "string" ? (info as any).build : "unknown";
 })();
 
+export function Build(): string {
+    return BUILD;
+}
+
 export const DEFAULTS = {
     Enable: false,
     SnapshotInterval: 1.0,

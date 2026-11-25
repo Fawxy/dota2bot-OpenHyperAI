@@ -164,6 +164,11 @@ export function Current(bot: Unit): ReturnType<Bundle["Tasks"]["Current"]> {
     return IsActive() ? lib!.Tasks.Current(bot as unknown as Lib.TaskUnit) : undefined;
 }
 
+/** The running task however the bundle was loaded (ForOurs too); never loads it (the overlay). */
+export function Running(bot: Unit): ReturnType<Bundle["Tasks"]["Current"]> {
+    return lib?.Tasks.Current(bot as unknown as Lib.TaskUnit);
+}
+
 export function Cancel(bot: Unit, reason: Lib.Reason, message?: string): void {
     if (IsActive()) lib!.Tasks.Cancel(bot as unknown as Lib.TaskUnit, reason, message);
 }

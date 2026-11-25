@@ -216,6 +216,11 @@ end
 function ____exports.LetGo(bot)
     return stateOf(bot).letAt ~= nil
 end
+--- The row that held this hero at its last farm desire round, if any (the overlay).
+function ____exports.Held(bot)
+    local ____opt_5 = heroes[bot:GetPlayerID()]
+    return ____opt_5 and ____opt_5.held
+end
 --- Tests: forget every hero.
 function ____exports.Reset()
     for k in pairs(heroes) do
