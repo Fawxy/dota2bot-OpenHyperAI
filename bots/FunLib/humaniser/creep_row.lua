@@ -610,7 +610,7 @@ local function rowBegin(bot)
         k == "dn" and "deny" or "creep",
         LaneConfig.PositionOf(bot)
     )
-    local others = CreepClaim.Take(best.cid, {pid = pid, rank = rank or math.huge, k = k, due = pd.now + t.due})
+    local others = CreepClaim.Take(best.cid, {pid = pid, rank = rank, k = k, due = pd.now + t.due})
     local sa = bot:GetAttackTarget()
     startLine(
         bot,

@@ -1,7 +1,9 @@
+import type * as Lib from "bots/FunLib/engine/tasks";
+
 /**
  * The creep claim, a read (`Reads.creep`, hum/reads.ts; ARCHITECTURE rule 3), keyed by the creep's id (`Telemetry.CreepId`; the five
  * teammates share one Lua state). Per creep it holds the claim, which hero is going for it (its rank in the trip table, the game time
- * its hit is due and the verb's phase), and each hero's latest answer on it, go or refusal with the reason, which the creep row writes
+ * its swing is due to be ordered and the verb's phase), and each hero's latest answer on it, go or refusal with the reason, which the creep row writes
  * as the offer reads. Stored knowledge, like the camp's record: it lasts across frames and carries its writers (`Take`, `Release`,
  * `Phase`, `Touch`). It decides nothing. CANDIDATE(creep-claim): nothing reads it to decide yet (slice oha-creep-claim, proposal
  * no-creep-unpaid s6a); a second reader makes it a shared abstraction.
@@ -23,14 +25,14 @@ export interface Answer {
 
 export interface Claim {
     pid: number;
-    /** The rank of the hero's position in the trip table's line for the attempt's kind (lower wins). */
+    /** The trip table's cell for the hero's position and the attempt's kind. Comparing it between heroes is for the behaviour merge to define. */
     rank: number;
     /** `lh` a last hit, `dn` a deny. */
     k: "lh" | "dn";
-    /** The game time the hit is due to land. */
+    /** The game time the swing is due to be ordered (the hit lands one own hit time later, later still if the walk is longer). */
     due: number;
     /** The verb's phase; undefined before it reports one. */
-    phase?: "walk" | "wait" | "swing";
+    phase?: Lib.Verbs.LastHitPhase;
 }
 
 /** pid -> creep id -> the hero's answer. */
@@ -91,18 +93,12 @@ export function Release(this: void, pid: number): boolean {
     const m = claims[cid];
     if (m !== undefined) {
         delete m[pid];
-        let any = false;
-        for (const [k] of pairs(m)) {
-            k;
-            any = true;
-            break;
-        }
-        if (!any) claims[cid] = undefined;
+        if (next(m)[0] === undefined) claims[cid] = undefined;
     }
     return true;
 }
 
-export function Phase(this: void, pid: number, p: "walk" | "wait" | "swing"): void {
+export function Phase(this: void, pid: number, p: Lib.Verbs.LastHitPhase): void {
     const cid = held[pid];
     const c = cid === undefined ? undefined : claims[cid]?.[pid];
     if (c !== undefined) c.phase = p;

@@ -777,7 +777,6 @@ end
 do -- a hero's answer on a creep is dropped once a read no longer lists it
 	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
 	world()
-	Claim.Touch(1, { 5, 6 }, 100).why = nil
 	Claim.Touch(1, { 5, 6 }, 100)[5].why = "race"
 	Claim.Touch(1, { 5 }, 100.2)
 	check("answers: the creep still listed keeps its answer, the one gone is dropped", Claim.AnswerOf(1, 5).why == "race" and Claim.AnswerOf(1, 6) == nil)

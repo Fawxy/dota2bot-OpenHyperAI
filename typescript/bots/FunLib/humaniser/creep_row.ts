@@ -474,7 +474,7 @@ function rowBegin(bot: Unit): boolean {
     running[pid] = a;
     lastCid[pid] = best.cid;
     const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
-    const others = CreepClaim.Take(best.cid, { pid, rank: rank ?? math.huge, k, due: pd.now + t.due });
+    const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k, due: pd.now + t.due });
     const sa = bot.GetAttackTarget();
     startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length });
     return true;

@@ -168,13 +168,7 @@ function ____exports.Release(pid)
     local m = claims[cid]
     if m ~= nil then
         __TS__Delete(m, pid)
-        local any = false
-        for k in pairs(m) do
-            local ____ = k
-            any = true
-            break
-        end
-        if not any then
+        if (next(m)) == nil then
             claims[cid] = nil
         end
     end
