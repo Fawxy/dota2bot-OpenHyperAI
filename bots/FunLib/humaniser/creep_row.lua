@@ -1,5 +1,24 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
+
 local function __TS__CountVarargs(...)
     return select("#", ...)
 end
@@ -26,7 +45,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local enterPhase, onPhase, running
+local lastHits, yieldsTo, enterPhase, yieldNow, onPhase, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local CreepClaim = require(GetScriptDirectory().."/FunLib/humaniser/creep_claim")
@@ -41,6 +60,22 @@ local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+function lastHits(pos)
+    return TripTable.Does("creep", pos) and Ours.On("LaneCreeps") and (not TripTable.Outranked("creep", pos) or Ours.On("SupportCreeps"))
+end
+function yieldsTo(pid, cid)
+    local mine = __TS__ArrayFind(
+        CreepClaim.ClaimsOn(cid),
+        function(____, c) return c.pid == pid end
+    )
+    if mine == nil or mine.k ~= "lh" or mine.phase == "swing" then
+        return false
+    end
+    return __TS__ArraySome(
+        CreepClaim.ClaimsOn(cid),
+        function(____, c) return c.pid ~= pid and c.k == "lh" and c.rank < mine.rank end
+    )
+end
 function enterPhase(a, p, t)
     if a.phase ~= nil then
         local ____a_spent_0, ____a_phase_1 = a.spent, a.phase
@@ -51,6 +86,16 @@ function enterPhase(a, p, t)
     if p == "swing" and a.so == nil then
         a.so = t - a.t0
     end
+end
+function yieldNow(pid, cid)
+    if not yieldsTo(pid, cid) then
+        return false
+    end
+    local a = running[pid]
+    if a ~= nil then
+        a.yielded = true
+    end
+    return true
 end
 function onPhase(pid, p, t)
     local a = running[pid]
@@ -145,7 +190,7 @@ end
 -- position does `creep` with Ours.LaneCreeps on. A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
 function ____exports.KindOf(bot, kind, ck)
     local pos = LaneConfig.PositionOf(bot)
-    if kind == "lasthit" and ck == "r" and TripTable.Does("creep", pos) and Ours.On("LaneCreeps") then
+    if kind == "lasthit" and ck == "r" and lastHits(pos) then
         return "lh"
     end
     if kind == "deny" and TripTable.Does("deny", pos) and Ours.On("CreepDeny") then
@@ -177,7 +222,7 @@ function ____exports.ResetCache()
 end
 function ____exports.On(bot)
     local pos = LaneConfig.PositionOf(bot)
-    local lh = TripTable.Does("creep", pos) and Ours.On("LaneCreeps")
+    local lh = lastHits(pos)
     local dn = TripTable.Does("deny", pos) and Ours.On("CreepDeny")
     return (lh or dn) and bot:IsBot() and not Drill.Held(bot)
 end
@@ -269,7 +314,7 @@ end
 --- The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
 -- mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
 -- is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
--- rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `hp0`/`hp1` the hero's HP at the
+-- rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `yd` 1 when the end was a yield (`why=interrupted`), `hp0`/`hp1` the hero's HP at the
 -- start and end, `msg` the verb's message (what the swing was based on, or what held it).
 local function endLine(bot, a, r, cut, claimed)
     local msg = r.message
@@ -279,8 +324,8 @@ local function endLine(bot, a, r, cut, claimed)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_20 = Telemetry.Event
-    local ____array_19 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_22 = Telemetry.Event
+    local ____array_21 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -293,59 +338,60 @@ local function endLine(bot, a, r, cut, claimed)
         {"host", HOST},
         {"cut", cut},
         {"cl", claimed and 1 or 0},
+        {"yd", (a and a.yielded) == true and 1 or nil},
         {"cid", a and a.cid}
     )
-    local ____temp_8
+    local ____temp_10
     if a == nil then
-        ____temp_8 = nil
+        ____temp_10 = nil
     else
-        ____temp_8 = a.so ~= nil and r2(a.so) or -1
+        ____temp_10 = a.so ~= nil and r2(a.so) or -1
     end
-    __TS__SparseArrayPush(____array_19, {"so", ____temp_8}, {"tk", a and a.tk})
-    local ____temp_11
-    if a == nil then
-        ____temp_11 = nil
-    else
-        ____temp_11 = r2(a.tks)
-    end
-    __TS__SparseArrayPush(____array_19, {"tks", ____temp_11})
-    local ____temp_12
-    if a == nil then
-        ____temp_12 = nil
-    else
-        ____temp_12 = r2(a.spent.walk)
-    end
-    __TS__SparseArrayPush(____array_19, {"pw", ____temp_12})
+    __TS__SparseArrayPush(____array_21, {"so", ____temp_10}, {"tk", a and a.tk})
     local ____temp_13
     if a == nil then
         ____temp_13 = nil
     else
-        ____temp_13 = r2(a.spent.wait)
+        ____temp_13 = r2(a.tks)
     end
-    __TS__SparseArrayPush(____array_19, {"pq", ____temp_13})
+    __TS__SparseArrayPush(____array_21, {"tks", ____temp_13})
     local ____temp_14
     if a == nil then
         ____temp_14 = nil
     else
-        ____temp_14 = r2(a.spent.swing)
+        ____temp_14 = r2(a.spent.walk)
     end
-    __TS__SparseArrayPush(____array_19, {"ps", ____temp_14})
+    __TS__SparseArrayPush(____array_21, {"pw", ____temp_14})
     local ____temp_15
     if a == nil then
         ____temp_15 = nil
     else
-        ____temp_15 = a.wt ~= nil and r2(a.wt) or -1
+        ____temp_15 = r2(a.spent.wait)
     end
-    __TS__SparseArrayPush(____array_19, {"wt", ____temp_15})
+    __TS__SparseArrayPush(____array_21, {"pq", ____temp_15})
     local ____temp_16
     if a == nil then
         ____temp_16 = nil
     else
-        ____temp_16 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_16 = r2(a.spent.swing)
+    end
+    __TS__SparseArrayPush(____array_21, {"ps", ____temp_16})
+    local ____temp_17
+    if a == nil then
+        ____temp_17 = nil
+    else
+        ____temp_17 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_21, {"wt", ____temp_17})
+    local ____temp_18
+    if a == nil then
+        ____temp_18 = nil
+    else
+        ____temp_18 = a.tin ~= nil and r2(a.tin) or -1
     end
     __TS__SparseArrayPush(
-        ____array_19,
-        {"tin", ____temp_16},
+        ____array_21,
+        {"tin", ____temp_18},
         {"sw", sw},
         {"hp0", a and a.hp0},
         {
@@ -354,9 +400,9 @@ local function endLine(bot, a, r, cut, claimed)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_20(
+    ____Telemetry_Event_22(
         "job",
-        {__TS__SparseArraySpread(____array_19)}
+        {__TS__SparseArraySpread(____array_21)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -377,8 +423,8 @@ local function finish(bot, r)
     local now = DotaTime()
     if a ~= nil then
         if a.phase ~= nil then
-            local ____a_spent_21, ____a_phase_22 = a.spent, a.phase
-            ____a_spent_21[____a_phase_22] = ____a_spent_21[____a_phase_22] + (now - a.phaseAt)
+            local ____a_spent_23, ____a_phase_24 = a.spent, a.phase
+            ____a_spent_23[____a_phase_24] = ____a_spent_23[____a_phase_24] + (now - a.phaseAt)
         end
         if a.lastStep ~= nil and now - a.lastStep > ____exports.SETTINGS.Round then
             a.tk = a.tk + 1
@@ -495,7 +541,16 @@ function ____exports.Consider(bot, cands)
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else
-            why = ____exports.Claim(factsOf(bot, c))
+            local ____temp_25
+            if ____exports.KindOf(bot, c.t.kind, c.ck) == "lh" then
+                ____temp_25 = CreepClaim.FreeFor(bot, c.cid, now)
+            else
+                ____temp_25 = nil
+            end
+            why = ____temp_25
+            if why == nil then
+                why = ____exports.Claim(factsOf(bot, c))
+            end
         end
         if why ~= nil and why ~= "kind" and why ~= "early" then
             r.why = why
@@ -515,18 +570,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue76
+            local __continue82
             repeat
                 if c == best or ____exports.KindOf(bot, c.t.kind, c.ck) == nil then
-                    __continue76 = true
+                    __continue82 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue76 = true
+                __continue82 = true
             until true
-            if not __continue76 then
+            if not __continue82 then
                 break
             end
         end
@@ -575,7 +630,7 @@ local function rowBegin(bot)
             local opts = {
                 target = creep,
                 maxWait = t.eta + ____exports.SETTINGS.WaitSlack,
-                interruptIf = function() return mateTakes(bot, creep) end,
+                interruptIf = function() return mateTakes(bot, creep) or yieldNow(pid, best.cid) end,
                 onPhase = function(p, at) return onPhase(pid, p, at) end
             }
             if k == "dn" then

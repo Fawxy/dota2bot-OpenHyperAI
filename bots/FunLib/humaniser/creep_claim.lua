@@ -158,6 +158,8 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local claims, held
+local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 --- The hero lets go of whatever it holds; true when it held a claim.
 function ____exports.Release(pid)
     local cid = held[pid]
@@ -257,5 +259,71 @@ end
 --- The creep the hero holds, if any.
 function ____exports.HeldBy(pid)
     return held[pid]
+end
+--- An answer older than this (s) is not a read of the hero's now: a dead hero's or a hero whose row is off stops touching its answers.
+____exports.ANSWER_FRESH = 1
+--- Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
+-- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it), then over the teammates
+-- with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its creep is never free) and
+-- `wait` (it has the creep on offer and has not refused it yet: its answer has no `why`). A fresh answer with a `why` is a refusal
+-- (`Consider` sets `why` on every refusal, and the next read after an attempt's end gives `tried`, so a stale `why` from before a go is
+-- overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
+function ____exports.FreeFor(bot, cid, now)
+    local pid = bot:GetPlayerID()
+    local pos = LaneConfig.PositionOf(bot)
+    local mine = TripTable.RankOf("creep", pos)
+    if mine == nil or not TripTable.Outranked("creep", pos) then
+        return nil
+    end
+    for ____, c in ipairs(____exports.ClaimsOn(cid)) do
+        if c.pid ~= pid and c.k == "lh" and c.rank < mine then
+            return "claimed"
+        end
+    end
+    local lane = bot:GetAssignedLane()
+    local wait = false
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue33
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m:GetPlayerID() == pid then
+                        __continue33 = true
+                        break
+                    end
+                    local cell = TripTable.RankOf(
+                        "creep",
+                        LaneConfig.PositionOf(m)
+                    )
+                    if cell == nil or cell >= mine then
+                        __continue33 = true
+                        break
+                    end
+                    if not m:IsBot() then
+                        if m:GetAssignedLane() == lane then
+                            return "human"
+                        end
+                        __continue33 = true
+                        break
+                    end
+                    local a = ____exports.AnswerOf(
+                        m:GetPlayerID(),
+                        cid
+                    )
+                    if a ~= nil and a.why == nil and now - a.at <= ____exports.ANSWER_FRESH then
+                        wait = true
+                    end
+                    __continue33 = true
+                until true
+                if not __continue33 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return wait and "wait" or nil
 end
 return ____exports
