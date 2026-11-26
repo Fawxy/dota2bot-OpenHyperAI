@@ -16,7 +16,8 @@
 --   height  a Dire ranged creep on the 128 shelf at a target on the 256 plateau against the same on the flat: hits in 40 s,
 --           first without Dire vision of the target, then with a viewer
 --   repick  a creep on a hero who walks off, two idle creeps of ours still beside it: nearest by centre or by edge
---   threat  as repick, an idle creep of ours nearer and a fighting one farther (on a dummy, or on the attacker)
+--   threat  as repick, an idle creep of ours nearer and a fighting one farther (on a dummy, or on the attacker);
+--           threat2 the same with the idle creep able to attack
 --   lateral switch at offsets 50 and 100
 --   order3  the order on our creep when it is clearly nearer the attacker than the hero (ranged and melee attacker)
 --   fog     a creep on a standing hero; the hero moved 600, 900 or 1300 away, with and without a Dire viewer there
@@ -967,7 +968,7 @@ for rep = 1, 2 do
 end
 
 -- threat: as repick, an idle creep of ours at 250 and a fighting one at 350 (attacking a Dire dummy, or the attacker).
-local function threatTrial(tag, onAttacker)
+local function threatTrial(tag, onAttacker, idleArmed)
 	return {
 		tag = tag,
 		timeout = 8,
@@ -993,7 +994,14 @@ local function threatTrial(tag, onAttacker)
 			if t > 0.8 and not c.f then
 				local o = c.cr:GetAbsOrigin()
 				c.idle = creep("melee", R, at(o, 250, 90), "idle")
-				still(c.idle)
+				if idleArmed then
+					tank(c.idle)
+					pcall(function() c.idle:SetIdleAcquire(false) end)
+					pcall(function() c.idle:SetAcquisitionRange(0) end)
+					pcall(function() c.idle:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+				else
+					still(c.idle)
+				end
 				c.idle:SetAbsOrigin(GetGroundPosition(at(o, 250, 90), c.idle))
 				c.f = creep("ranged", R, at(o, 350, -90), "fighter")
 				tank(c.f)
@@ -1011,6 +1019,11 @@ local function threatTrial(tag, onAttacker)
 			end
 		end,
 	}
+end
+S.threat2 = {}
+for rep = 1, 3 do
+	table.insert(S.threat2, threatTrial("threat2_dummy_" .. rep, false, true))
+	table.insert(S.threat2, threatTrial("threat2_attacker_" .. rep, true, true))
 end
 S.threat = {}
 for rep = 1, 2 do
@@ -1353,8 +1366,8 @@ local function realTrial(kind, rep)
 			if c.cr == nil then error("no real Dire melee creep") end
 			label[c.cr:entindex()] = "real"
 			table.insert(made, c.cr)
-			say(string.format("%s grabbed %s from %s,%s acq=%.0f idle_acquire=%s", c.tag, c.cr:GetUnitName(), f0(c.cr:GetAbsOrigin().x),
-				f0(c.cr:GetAbsOrigin().y), c.cr:GetAcquisitionRange(), tostring(c.cr:GetIdleAcquire())))
+			say(string.format("%s grabbed %s from %s,%s acq=%.0f", c.tag, c.cr:GetUnitName(), f0(c.cr:GetAbsOrigin().x),
+				f0(c.cr:GetAbsOrigin().y), c.cr:GetAcquisitionRange()))
 			order(c.cr, DOTA_UNIT_ORDER_STOP)
 			c.cr:SetAbsOrigin(GetGroundPosition(V(X0, Y), c.cr))
 			tank(c.cr)
@@ -1415,8 +1428,12 @@ local function fogWalkTrial(viewer, rep)
 				c.go = true
 				local p = V(X0 + 900, Y)
 				c.h:SetAbsOrigin(GetGroundPosition(p, c.h))
-				moveOrder(c.h, V(X0 + 900, Y + 500))
+				c.tblink = t
 				say(string.format("%s blink rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+			end
+			if c.go and not c.walked and t - c.tblink > 0.1 then
+				c.walked = true
+				moveOrder(c.h, V(X0 + 900, Y + 500))
 			end
 			if viewer and c.go and t - (c.lastView or -9) > 0.25 then
 				c.lastView = t
@@ -1432,9 +1449,9 @@ local function fogWalkTrial(viewer, rep)
 	}
 end
 S.fogwalk = {}
-for rep = 1, 2 do
+for rep = 1, 3 do
 	table.insert(S.fogwalk, fogWalkTrial(false, rep))
-	table.insert(S.fogwalk, fogWalkTrial(true, rep))
+	if rep < 3 then table.insert(S.fogwalk, fogWalkTrial(true, rep)) end
 end
 
 -- ramp2: more ramp reps (round 2a gave up in 2 of 4).
