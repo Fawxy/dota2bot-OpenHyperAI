@@ -2629,7 +2629,7 @@ export const EVENTS = {
     // the line is written when that trail ends, so `t` is up to TrailSec after the job end); absent on a failed job.
     // cn, cs, chp, cv, cdmg, php: the camp and the puller at the start, as on ev=choice (on a
     // cancelled:empty / cancelled:one / cancelled:camp-dmg line, at the walk's cancel instead). why cancelled:empty /
-    // cancelled:one / cancelled:camp-dmg: the camp seen on the walk (PullJob CampGate, StartReserve); interrupted:bail: the puller stepped
+    // cancelled:one / cancelled:camp-dmg: the camp seen on the walk (CampRead CampGate, StartReserve); interrupted:bail: the puller stepped
     // back from neutrals hitting it too hard after the hit (label bail; PullJob BailReserve).
     // Slice pull-diag: sh the live shift the hit took (hit second = slot + sh; slice pull-timing: the wave's body against
     // the plan, which already holds the lane's WaveAhead; slice pull-live: read again every LiveEvery s up to the order, so
@@ -2767,7 +2767,7 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point; not on walk cancels. */
         se: "num",
-        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+        /** The camp as the puller's record knows it (CampRead Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
          *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
         rn: "num",
         rsrc: "str",
@@ -2887,7 +2887,7 @@ export const EVENTS = {
     // before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost);
     // the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the
     // camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane
-    // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; PullJob CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
+    // wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; CampRead CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy
     // hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`;
     // Ours.Threat on).
     choice: {
@@ -2913,7 +2913,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: CampRead StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
         why: "str",
         /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting`, `notime_row` and `notime`, which `why` overwrites with an earlier one, can be counted. */
         lw: "str",
@@ -3033,7 +3033,7 @@ export const EVENTS = {
         php: "num",
         /** The nearest seen enemy hero's distance to the stand or meet point. */
         se: "num",
-        /** The camp as the puller's record knows it (PullJob Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
+        /** The camp as the puller's record knows it (CampRead Known, families proposal s5): rn its neutrals, rsrc `seen` (a look
          *  set it) or `rules` (the spawn rule or a stack's unseen set since), rage seconds since the last look that set it. */
         rn: "num",
         rsrc: "str",

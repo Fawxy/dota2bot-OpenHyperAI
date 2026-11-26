@@ -19,6 +19,7 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Rune, Unit, Vector } from "bots/ts_libs/dota";
 import * as Decider from "bots/FunLib/humaniser/decider";
+import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as Ours from "bots/FunLib/humaniser/ours";
@@ -260,7 +261,7 @@ function finish(bot: Unit, ex: number, res: Lib.Result): void {
 }
 
 /** The row's `wants`: an offer while a walk runs or when one should start now. */
-function rowWants(bot: Unit): Decider.Offer | undefined {
+function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
     pending[pid] = undefined;
     if (!On() || Drill.Held(bot)) return undefined;

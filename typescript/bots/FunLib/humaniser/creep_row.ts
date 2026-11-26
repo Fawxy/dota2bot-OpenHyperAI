@@ -29,6 +29,7 @@ import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
+import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
@@ -502,7 +503,7 @@ function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
  * The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
  * row decides at the read (Consider), never at the decider's round.
  */
-function rowWants(bot: Unit): Decider.Offer | undefined {
+function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (!On(bot)) return undefined;
     Tasks.Tick(bot);
     const pid = bot.GetPlayerID();

@@ -290,7 +290,7 @@ local function finish(bot, ex, res)
     )
 end
 --- The row's `wants`: an offer while a walk runs or when one should start now.
-local function rowWants(bot)
+local function rowWants(bot, _reads)
     local pid = bot:GetPlayerID()
     pending[pid] = nil
     if not ____exports.On() or Drill.Held(bot) then

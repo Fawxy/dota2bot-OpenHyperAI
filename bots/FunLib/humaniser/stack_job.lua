@@ -806,7 +806,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
-local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
+local CampRead = require(GetScriptDirectory().."/FunLib/humaniser/camp_read")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
@@ -1112,7 +1112,7 @@ function report(bot, a)
     recordOutcome(a.campIdx, a.minute, res)
     if a.row == true and sp ~= nil then
         if landed then
-            local ____PullJob_NoteStack_32 = PullJob.NoteStack
+            local ____CampRead_NoteStack_32 = CampRead.NoteStack
             local ____temp_31 = a.campUnits or ({})
             local ____temp_30
             if res == "stacked" then
@@ -1120,9 +1120,9 @@ function report(bot, a)
             else
                 ____temp_30 = res == "not_stacked" and 0 or nil
             end
-            ____PullJob_NoteStack_32(sp, ____temp_31, ____temp_30)
+            ____CampRead_NoteStack_32(sp, ____temp_31, ____temp_30)
         else
-            PullJob.Hold(sp, 0)
+            CampRead.Hold(sp, 0)
         end
     end
     if a.first ~= nil then
@@ -1354,8 +1354,8 @@ function sample59(bot, a)
     local path = data ~= nil and data.stack ~= nil and ____exports.ExitPath(sp, data) or nil
     a.exit59 = path ~= nil and #path > 0 and math.floor(GetUnitToLocationDistance(bot, path[#path])) or nil
 end
-function rowOn(bot)
-    return Ours.On("SupportPull") and PullJob.IsPuller(bot) and not Drill.Held(bot)
+function rowOn(bot, camp)
+    return Ours.On("SupportPull") and camp.IsPuller(bot) and not Drill.Held(bot)
 end
 ____exports.SETTINGS = {
     TriggerMinutes = {3, 5, 7},
@@ -1798,7 +1798,7 @@ function ____exports.ResetCache()
 end
 --- The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`).
 function ____exports.Applies(bot)
-    if not Ours.On("StackExecute") or rowOn(bot) then
+    if not Ours.On("StackExecute") or rowOn(bot, CampRead) then
         return false
     end
     local pos = LaneConfig.PositionOf(bot)
@@ -2704,7 +2704,7 @@ function ____exports.NoteIdleHeld(bot)
 end
 local ROW_HOST = BotMode.Farm
 --- This minute's stack of the lane's pull camp, once the leave time is reached; undefined before it or once decided.
-local function rowSlot(bot, now)
+local function rowSlot(bot, now, camp)
     local minute = math.floor(now / GameRules.NEUTRAL_EVERY)
     if minute * GameRules.NEUTRAL_EVERY < GameRules.NEUTRAL_FIRST then
         return nil
@@ -2713,7 +2713,7 @@ local function rowSlot(bot, now)
     if (____opt_57 and ____opt_57[minute]) == true or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom then
         return nil
     end
-    local sp = PullJob.SpawnerFor(bot)
+    local sp = camp.SpawnerFor(bot)
     local ____temp_59
     if sp ~= nil then
         ____temp_59 = __TS__ArrayFind(
@@ -2802,12 +2802,12 @@ local function rowBlock(bot)
     return nil
 end
 --- A stack is wanted while the camp holds neutrals to pull out and fewer than the pull's bar; an empty camp fills at the mark.
-local function rowWants(k)
-    return k.n > 0 and k.n < PullJob.SETTINGS.StrongAt
+local function rowWants(k, camp)
+    return k.n > 0 and k.n < camp.SETTINGS.StrongAt
 end
 --- Plan s5's denominator where the row is off: the same minute's read at the same leave time, `go=0 why=off src=shadow`.
 function ____exports.Shadow(bot)
-    if not Telemetry.IsEnabled() or not PullJob.IsPuller(bot) or rowOn(bot) or Drill.Held(bot) then
+    if not Telemetry.IsEnabled() or not CampRead.IsPuller(bot) or rowOn(bot, CampRead) or Drill.Held(bot) then
         return
     end
     if not LaneConfig.InLaningPhase() or not bot:IsAlive() then
@@ -2815,27 +2815,29 @@ function ____exports.Shadow(bot)
     end
     local slot = rowSlot(
         bot,
-        DotaTime()
+        DotaTime(),
+        CampRead
     )
     if slot == nil then
         return
     end
-    local known = PullJob.Known(slot.sp)
+    local known = CampRead.Known(slot.sp)
     rowLine(
         bot,
         slot,
         false,
-        rowWants(known),
+        rowWants(known, CampRead),
         "off",
         known,
         "shadow"
     )
 end
 --- The row's `wants`: an offer while a stack runs for the hero, or when this minute's stack should start now.
-local function rowOffer(bot)
+local function rowOffer(bot, reads)
     local pid = bot:GetPlayerID()
     rowPending[pid] = nil
-    if not rowOn(bot) then
+    local camp = reads.camp
+    if not rowOn(bot, camp) then
         return nil
     end
     readOutcome(bot)
@@ -2852,12 +2854,12 @@ local function rowOffer(bot)
         return nil
     end
     local now = DotaTime()
-    local slot = rowSlot(bot, now)
+    local slot = rowSlot(bot, now, camp)
     if slot == nil then
         return nil
     end
-    local known = PullJob.Known(slot.sp)
-    if not rowWants(known) then
+    local known = camp.Known(slot.sp)
+    if not rowWants(known, camp) then
         rowLine(
             bot,
             slot,
@@ -2944,7 +2946,7 @@ local function rowBegin(bot)
         )
         return false
     end
-    PullJob.Hold(slot.sp, (slot.minute + 1) * 60 + ____exports.SETTINGS.ReadUntil + 1)
+    CampRead.Hold(slot.sp, (slot.minute + 1) * 60 + ____exports.SETTINGS.ReadUntil + 1)
     a.aid = Telemetry.NextAid(pid)
     rowLine(
         bot,

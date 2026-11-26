@@ -44,8 +44,9 @@ local function world(o)
 		max = Vector(SMALL.x + 150, SMALL.y + 150, 0), speed = 0 } }
 	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
+	H.CampRead.ResetCache()
 	-- The puller's record of the camp: strong (the bar) unless the world says `weak`; a look at the camp replaces it.
-	if not o.weak then H.PullJob.NoteStack(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), {}, o.known or 6) end
+	if not o.weak then H.CampRead.NoteStack(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), {}, o.known or 6) end
 	local data = require("bots/FunLib/humaniser/camps").ByIdx(1)
 	local stand = require("bots/FunLib/humaniser/camps").BoxEdgePoint(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1), data.pull.path[1], 150)
 	local sup = MakeUnit({ pid = 5, team = 2, bot = true, loc = o.supAt or Vector(stand.x + 600, stand.y), hp = o.supHp or 600, maxhp = 600 })
@@ -469,9 +470,9 @@ do
 	local w = world({ reading = OUT })
 	local four = MakeUnit({ pid = 4, team = 2, bot = true, loc = Vector(0, -5000) })
 	four.lane, four.pos = Lane.Bot, 4
-	check("shared lane: pos5 is the puller, pos4 is not", w.H.PullJob.IsPuller(w.sup) and not w.H.PullJob.IsPuller(four))
+	check("shared lane: pos5 is the puller, pos4 is not", w.H.CampRead.IsPuller(w.sup) and not w.H.CampRead.IsPuller(four))
 	four.lane = Lane.Top
-	check("pos4 in its own lane with no pull camp there: no puller", not w.H.PullJob.IsPuller(four))
+	check("pos4 in its own lane with no pull camp there: no puller", not w.H.CampRead.IsPuller(four))
 end
 
 
@@ -484,17 +485,17 @@ do
 	check("empty, seen: no start, why=empty, the probe says nothing there in a visible box", #lines(out, "job") == 0 and #choice == 1
 		and field(choice[1], "why") == "empty" and field(choice[1], "cn") == "0" and field(choice[1], "cv") == "1", choice[1])
 	local s = { n = 0, seen = 0, hp = 0, vis = true, units = {} }
-	check("empty, seen, a spawn minute before the hit: no gate", w.H.PullJob.CampGate(s, 58, 63) == nil and w.H.PullJob.CampGate(s, 61, 78) == "empty")
+	check("empty, seen, a spawn minute before the hit: no gate", w.H.CampRead.CampGate(s, 58, 63) == nil and w.H.CampRead.CampGate(s, 61, 78) == "empty")
 	-- One neutral left in a camp the team sees: not pulled (user 04/11/2026); two are; out of sight or a spawn before the
 	-- hit says nothing.
 	local one = { n = 1, seen = 1, hp = 300, vis = true, units = {} }
 	local two = { n = 2, seen = 2, hp = 600, vis = true, units = {} }
 	local fogged = { n = 1, seen = 1, hp = 300, vis = false, units = {} }
-	check("one neutral, seen: why=one; two: no gate; out of sight or a spawn first: no gate", w.H.PullJob.CampGate(one, 61, 78) == "one"
-		and w.H.PullJob.CampGate(two, 61, 78) == nil and w.H.PullJob.CampGate(fogged, 61, 78) == nil and w.H.PullJob.CampGate(one, 58, 63) == nil)
+	check("one neutral, seen: why=one; two: no gate; out of sight or a spawn first: no gate", w.H.CampRead.CampGate(one, 61, 78) == "one"
+		and w.H.CampRead.CampGate(two, 61, 78) == nil and w.H.CampRead.CampGate(fogged, 61, 78) == nil and w.H.CampRead.CampGate(one, 58, 63) == nil)
 	-- drill pull ldr6 (~/.dotactl/logs/2026-11-07T18-31-07-drill_pull_ldr6.log, pid 3 t=249): the origin in sight, part of the
 	-- box in fog, one full-HP neutral returned of a freshly spawned camp: the count is a floor, so no `one` or `empty` yet.
-	check("the live read logs full (the test world sees every point)", w.H.PullJob.CampStateOf(require("bots/FunLib/humaniser/camps").SpawnerByIdx(require("bots/FunLib/humaniser/camps").PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
+	check("the live read logs full (the test world sees every point)", w.H.CampRead.CampStateOf(require("bots/FunLib/humaniser/camps").SpawnerByIdx(require("bots/FunLib/humaniser/camps").PullCampsFor(2, Lane.Bot)[1].campIdx)).full == true)
 end
 
 -- A camp the puller cannot take is not pulled: its estimated damage for HitSeconds would leave less than StartReserve of
@@ -661,7 +662,7 @@ end
 do
 	local w = world({ reading = OUT })
 	w.sup.pos = 3
-	check("a pos3 is no puller", not w.H.PullJob.IsPuller(w.sup))
+	check("a pos3 is no puller", not w.H.CampRead.IsPuller(w.sup))
 end
 
 -- A slot drifts by a fraction of a second as the camp's timing is re-read (neutral-speed-at-order); the bookkeeping keys by the
@@ -688,7 +689,7 @@ do
 		if o.off then tab.rep.control = 1 end
 		-- `o.pos`: the lane's puller is a pos4, which the drill benches.
 		if o.pos then w.sup.pos = o.pos end
-		local puller = w.H.PullJob.IsPuller(w.sup)
+		local puller = w.H.CampRead.IsPuller(w.sup)
 		local role = w.H.Drill.RoleOf(w.sup)
 		local out = run(w, 75)
 		tab.rep.control = control
@@ -746,7 +747,7 @@ end
 -- Between looks it moves by the game's rules: a neutral seen dying drops out, and an empty camp gets a set at the mark.
 do
 	local w = world({ reading = OUT, visible = true, weak = true })
-	local P, sp = w.H.PullJob, require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)
+	local P, sp = w.H.CampRead, require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)
 	T = 70
 	local seen = {}
 	for i = 1, 3 do seen[i] = MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }) end
@@ -784,6 +785,25 @@ do
 	check("record: a stack read unseen adds a set by the rules and ends the hold", P.Known(sp).n == 3 and P.Known(sp).src == "rules", P.Known(sp).n)
 end
 
+-- The look at the camp scans the neutral list once a frame however many rows ask (the pull asks for the record, the decision
+-- and its first step in one frame), and each asker gets a copy it may write its decision onto.
+do
+	local w = world({ reading = OUT, visible = true, weak = true })
+	local P, sp = w.H.CampRead, require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)
+	for i = 1, 3 do MakeNeutral({ x = SMALL.x + 20 * i, y = SMALL.y }) end
+	local scans, list = 0, GetUnitList
+	GetUnitList = function(...) scans = scans + 1 return list(...) end
+	T = 70
+	local a, b = P.CampStateOf(sp), P.CampStateOf(sp)
+	a.dmg = 99
+	local n1 = scans
+	T = 70.1
+	local c = P.CampStateOf(sp)
+	GetUnitList = list
+	check("camp look: two asks in a frame scan once, the next frame scans again", n1 == 1 and scans == 2 and a.n == 3 and b.n == 3 and c.n == 3, n1 .. " " .. scans)
+	check("camp look: a decision field written on one ask is not on the next", b.dmg == nil and c.dmg == nil)
+end
+
 -- Only a strong camp is pulled: a wanted slot with the record under the bar is not started (`why=weak`), the line carries
 -- the record; the stack row is what builds the camp.
 do
@@ -806,7 +826,7 @@ do
 	check("arrival: started on the record of 6", field(choice[1], "go") == "1" and field(choice[1], "rn") == "6", choice[1])
 	check("arrival: the look at the camp cancels it weak", #pulls == 1 and field(pulls[1], "res") == "fail" and (field(pulls[1], "why") or ""):find("weak", 1, true) ~= nil
 		and field(pulls[1], "hit") == "0", pulls[1])
-	check("arrival: the record now holds the look", w.H.PullJob.Known(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)).n == 3)
+	check("arrival: the record now holds the look", w.H.CampRead.Known(require("bots/FunLib/humaniser/camps").SpawnerByIdx(1)).n == 3)
 end
 
 finish()
