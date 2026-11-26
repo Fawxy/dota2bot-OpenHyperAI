@@ -464,7 +464,8 @@ export const EVENTS = {
     },
     /** Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind`
      *  start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the
-     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`). */
+     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`),
+     *  camp (`xy` "idx:team:type:x:y:minx:miny:maxx:maxy" joined by ";", the neutral camps). */
     vmap: {
         kind: "str",
         bx0: "num",
@@ -1342,6 +1343,15 @@ export const EVENTS = {
         cl: "num",
         /** `job=creep` end: 1 when the attempt ended because a hero with a lower `creep` cell took a claim on the creep before this hero's swing was ordered (`why=interrupted`; creep_row `yieldsTo`, Ours.SupportCreeps). Absent otherwise. */
         yd: "num",
+        /** `job=creep` start, when a tower of ours was attacking the creep (Ours.TowerCreeps, the leftover rule, creep_row `Verdict`): `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it after armour, `ts` the tower shots before that one, `vd` the verdict (`wait`, `prehit`; `none` is refused and never starts). */
+        lf: "num",
+        tT: "num",
+        ts: "num",
+        vd: "str",
+        /** `job=creep` end, on an attempt the leftover rule covers: the plain attacks (pre-hits) ordered before the last hit. */
+        ph: "num",
+        /** `job=creep` end, when the leftover rule gave the attempt up: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's refusal (`nowindow`, `mates`, `none`). Absent otherwise. */
+        tl: "str",
         /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
         cid: "num",
         /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */
@@ -2919,7 +2929,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: CampRead StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `claimed`, `wait`, `human` (a support's last hit, Ours.SupportCreeps: a lower-cell hero holds a claim on the creep, has it on offer and has not refused it yet, or is a human in the lane; CreepClaim.FreeFor), `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: CampRead StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `claimed`, `wait`, `human` (a support's last hit, Ours.SupportCreeps: a lower-cell hero holds a claim on the creep, has it on offer and has not refused it yet, or is a human in the lane; CreepClaim.FreeFor), `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `nowindow` (Ours.TowerCreeps: a tower is attacking the creep and no pre-hits make the hero's hit the last, `Verdict` `none`), `mates` (the same, a pre-hit would race our own creeps attacking it), `notarget` (a melee creep inside our tower's range that the tower is not attacking), `other` (it went for another creep), `refused`. */
         why: "str",
         /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting`, `notime_row` and `notime`, which `why` overwrites with an earlier one, can be counted. */
         lw: "str",

@@ -40,6 +40,10 @@ export const DEFAULTS = {
      *  our own lane creeps of every kind on the row's early go and hard hold, in the claimed cells bar `tower` and `given`. A core's
      *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */
     CreepDeny: true,
+    /** The lane's creeps, the under-tower hit, on the creep row (creep_row.ts, slice oha-tower-creeps; no-creep-unpaid proposal s6): a core
+     *  last-hits their lane creep of any kind whose creep is inside our tower's attack range, as well as their ranged creep anywhere, and the
+     *  `tower` refusal is lifted. Needs LaneCreeps. Off: the row takes their ranged creep outside our tower's range only. On: it beat the reference arm on its line (oha-tower-creeps' batch twc1). */
+    TowerCreeps: true,
     /** The lane's creeps, a support's last hit, on the creep row (creep_row.ts, slice oha-support-creeps; no-creep-unpaid proposal s6a): a
      *  support (pos 4 and 5) last-hits their ranged creep when no hero with a lower `creep` cell has it (creep_claim `FreeFor`), and yields
      *  it to one that starts on it before its swing. Needs LaneCreeps. Off: a support takes no last hit and stock plays. */
