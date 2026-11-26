@@ -970,6 +970,9 @@
    "sw": "num",
    "hp0": "num",
    "hp1": "num",
+   "ss": "num",
+   "lt": "num",
+   "lk": "num",
    "msg": "str"
   },
   "stack": {
@@ -1828,6 +1831,20 @@
    "slt": "num",
    "slk": "num"
   },
+  "stay_try": {
+   "pid": "num",
+   "aid": "num",
+   "slot": "num",
+   "k": "str",
+   "cid": "num",
+   "u": "str",
+   "ok": "num",
+   "why": "str",
+   "m": "str",
+   "hp": "num",
+   "hh": "num",
+   "dt": "num"
+  },
   "pull_watch": {
    "pid": "num",
    "slot": "num",
@@ -1874,6 +1891,10 @@
    "rune": "num",
    "ex": "num",
    "dr": "num",
+   "camp": "num",
+   "nc": "num",
+   "nn": "num",
+   "lf": "num",
    "cid": "num",
    "ck": "str",
    "who": "str",
@@ -2864,6 +2885,12 @@
    "rsrc": "text",
    "hr": "text",
    "st": "text"
+  },
+  "ev_stay_try": {
+   "k": "text",
+   "u": "text",
+   "why": "text",
+   "m": "text"
   },
   "ev_pull_watch": {
    "ph": "text",

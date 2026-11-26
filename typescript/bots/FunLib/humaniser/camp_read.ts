@@ -6,9 +6,10 @@
  * look at the game is kept for the frame it was asked in.
  */
 import * as GameRules from "bots/FunLib/humaniser/game_rules";
-import { Lane, Unit, UnitType } from "bots/ts_libs/dota";
+import { DamageType, Lane, Team, Unit, UnitType } from "bots/ts_libs/dota";
 import * as Camps from "bots/FunLib/humaniser/camps";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LanePush from "bots/FunLib/humaniser/lane_push";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 
@@ -77,8 +78,31 @@ const records: Record<number, CampRecord | undefined> = {};
 /** By camp idx: the look `CampStateOf` took in the frame `t`. */
 const looks: Record<number, { t: number; s: CampState } | undefined> = {};
 
+/**
+ * Our lane creeps and the neutrals fighting at a camp once our wave is in it (`FightOf`). Within the pull's watch radius of the
+ * camp's origin (LaneConfig Radii.MeetWatch, 800): a pulled wave fights its neutrals up to about that far out, past the box
+ * that `CampStateOf` counts.
+ */
+export interface CampFight {
+    ours: Unit[];
+    neutrals: Unit[];
+    /** Of `neutrals`, those one of `ours` attacks. */
+    worked: Unit[];
+    /** One of `ours` attacks a neutral, or a neutral attacks one of `ours`. */
+    engaged: boolean;
+    /**
+     * Seconds until `ours` are all dead at the damage the neutrals on them deal now: their summed HP over the summed
+     * `GetEstimatedDamageToTarget` a second of each neutral on one of them on that target. Pooled, since a neutral whose
+     * target dies turns to the next. `math.huge` when no neutral is on them.
+     */
+    life: number;
+}
+
+/** By camp idx: the fight `FightOf` read in the frame `t`. */
+const fights: Record<number, { t: number; f: CampFight } | undefined> = {};
+
 export function ResetCache(): void {
-    for (const t of [records, looks] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [records, looks, fights] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -154,6 +178,53 @@ export function CampStateOf(spawner: Camps.Spawner): CampState {
         looks[spawner.idx] = k;
     }
     return { ...k.s, units: [...k.s.units] };
+}
+
+function within(u: Unit, at: { x: number; y: number }, r: number): boolean {
+    if (!u.IsAlive()) return false;
+    const p = u.GetLocation();
+    if (p === undefined || p === null) return false;
+    const dx = p.x - at.x;
+    const dy = p.y - at.y;
+    return dx * dx + dy * dy <= r * r;
+}
+
+function scanFight(spawner: Camps.Spawner): CampFight {
+    const r = LaneConfig.Settings().Radii.MeetWatch;
+    const at = spawner.location;
+    const f: CampFight = { ours: [], neutrals: [], worked: [], engaged: false, life: math.huge };
+    for (const u of GetUnitList(UnitType.NeutralCreeps)) if (within(u, at, r)) f.neutrals.push(u);
+    for (const c of GetUnitList(UnitType.AlliedCreeps)) if (LanePush.IsLaneCreep(c.GetUnitName()) && within(c, at, r)) f.ours.push(c);
+    if (f.ours.length === 0 || f.neutrals.length === 0) return f;
+    let hp = 0;
+    for (const c of f.ours) {
+        hp += c.GetHealth();
+        const t = c.GetAttackTarget();
+        if (t !== undefined && t !== null && t.GetTeam() === Team.Neutral && f.neutrals.includes(t) && !f.worked.includes(t)) f.worked.push(t);
+    }
+    let dps = 0;
+    for (const n of f.neutrals) {
+        const t = n.GetAttackTarget();
+        if (t === undefined || t === null || !f.ours.includes(t)) continue;
+        dps += n.GetEstimatedDamageToTarget(true, t, 1, DamageType.All);
+    }
+    f.engaged = f.worked.length > 0 || dps > 0;
+    if (dps > 0) f.life = hp / dps;
+    return f;
+}
+
+/**
+ * The fight at the camp now (CampFight). It scans the neutral and creep lists, and every hero of the team at the camp asks it each
+ * round (the stay's `wants`, its verb and its shadow), so the scan is kept for the frame; each asker gets its own copy.
+ */
+export function FightOf(spawner: Camps.Spawner): CampFight {
+    const now = DotaTime();
+    let k = fights[spawner.idx];
+    if (k === undefined || k.t !== now) {
+        k = { t: now, f: scanFight(spawner) };
+        fights[spawner.idx] = k;
+    }
+    return { ...k.f, ours: [...k.f.ours], neutrals: [...k.f.neutrals], worked: [...k.f.worked] };
 }
 
 /** A camp's neutrals within this of its origin, seen alive, stay on the record through a sighting of the box: a stack's

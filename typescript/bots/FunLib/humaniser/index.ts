@@ -27,13 +27,14 @@ import * as CampRead from "bots/FunLib/humaniser/camp_read";
 import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as CreepRow from "bots/FunLib/humaniser/creep_row";
+import * as CampStay from "bots/FunLib/humaniser/camp_stay";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, CampRead, RuneDetour, CreepOffer, CreepRow, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, CampRead, RuneDetour, CreepOffer, CreepRow, CampStay, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -73,6 +74,7 @@ const steps = {
     stackShadow: StackJob.Shadow,
     runeDetourShadow: RuneDetour.Shadow,
     creepOfferShadow: CreepOffer.Shadow,
+    campStayShadow: CampStay.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
 };
@@ -152,6 +154,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.runeDetourShadow, bot);
     // The lane creep offers of the cores (ev=choice kind=creep src=shadow): the offer's answers, one line a creep when it leaves the lists; reads and logs, no order.
     pcall(steps.creepOfferShadow, bot);
+    // The stay's fight at the lane's camp where the row is switched off (ev=choice kind=stay src=shadow): reads and logs, no order.
+    pcall(steps.campStayShadow, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);
@@ -193,6 +197,7 @@ const rows: [string, Decider.Row][] = [
     ["StackRow", StackJob.ROW],
     ["RuneDetourRow", RuneDetour.ROW],
     ["CreepRow", CreepRow.ROW],
+    ["CampStayRow", CampStay.ROW],
 ];
 if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
     for (const [where, row] of rows) {

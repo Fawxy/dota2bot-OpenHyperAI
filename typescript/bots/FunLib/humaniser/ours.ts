@@ -40,6 +40,10 @@ export const DEFAULTS = {
      *  our own lane creeps of every kind on the row's early go and hard hold, in the claimed cells bar `tower` and `given`. A core's
      *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */
     CreepDeny: true,
+    /** The stay at the lane's camp, a soft row of the decider below the creep row (camp_stay.ts, doctrine D17, slice oha-camp-stay):
+     *  while our wave fights the neutrals at the hero's lane's pull camp, the hero stands behind our creeps and takes a neutral's
+     *  last hit when one comes due; it gives no other hit. Off: the opportunity is logged as a shadow and stock plays. */
+    CampStay: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

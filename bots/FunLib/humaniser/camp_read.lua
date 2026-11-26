@@ -56,10 +56,13 @@ end
 local ____exports = {}
 local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local DamageType = ____dota.DamageType
 local Lane = ____dota.Lane
+local Team = ____dota.Team
 local UnitType = ____dota.UnitType
 local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LanePush = require(GetScriptDirectory().."/FunLib/humaniser/lane_push")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 --- What the team sees of the camp now holds at the hit: the origin is in sight and no spawn mark comes before the hit.
@@ -72,8 +75,10 @@ ____exports.SETTINGS = {StrongAt = 6, SetSize = {small = 3, medium = 3, large = 
 local records = {}
 --- By camp idx: the look `CampStateOf` took in the frame `t`.
 local looks = {}
+--- By camp idx: the fight `FightOf` read in the frame `t`.
+local fights = {}
 function ____exports.ResetCache()
-    for ____, t in ipairs({records, looks}) do
+    for ____, t in ipairs({records, looks, fights}) do
         for k in pairs(t) do
             t[k] = nil
         end
@@ -218,6 +223,98 @@ function ____exports.CampStateOf(spawner)
         {units = {unpack(k.s.units)}}
     )
 end
+local function within(u, at, r)
+    if not u:IsAlive() then
+        return false
+    end
+    local p = u:GetLocation()
+    if p == nil or p == nil then
+        return false
+    end
+    local dx = p.x - at.x
+    local dy = p.y - at.y
+    return dx * dx + dy * dy <= r * r
+end
+local function scanFight(spawner)
+    local r = LaneConfig.Settings().Radii.MeetWatch
+    local at = spawner.location
+    local f = {
+        ours = {},
+        neutrals = {},
+        worked = {},
+        engaged = false,
+        life = math.huge
+    }
+    for ____, u in ipairs(GetUnitList(UnitType.NeutralCreeps)) do
+        if within(u, at, r) then
+            local ____f_neutrals_2 = f.neutrals
+            ____f_neutrals_2[#____f_neutrals_2 + 1] = u
+        end
+    end
+    for ____, c in ipairs(GetUnitList(UnitType.AlliedCreeps)) do
+        if LanePush.IsLaneCreep(c:GetUnitName()) and within(c, at, r) then
+            local ____f_ours_3 = f.ours
+            ____f_ours_3[#____f_ours_3 + 1] = c
+        end
+    end
+    if #f.ours == 0 or #f.neutrals == 0 then
+        return f
+    end
+    local hp = 0
+    for ____, c in ipairs(f.ours) do
+        hp = hp + c:GetHealth()
+        local t = c:GetAttackTarget()
+        if t ~= nil and t ~= nil and t:GetTeam() == Team.Neutral and __TS__ArrayIncludes(f.neutrals, t) and not __TS__ArrayIncludes(f.worked, t) then
+            local ____f_worked_4 = f.worked
+            ____f_worked_4[#____f_worked_4 + 1] = t
+        end
+    end
+    local dps = 0
+    for ____, n in ipairs(f.neutrals) do
+        do
+            local __continue41
+            repeat
+                local t = n:GetAttackTarget()
+                if t == nil or t == nil or not __TS__ArrayIncludes(f.ours, t) then
+                    __continue41 = true
+                    break
+                end
+                dps = dps + n:GetEstimatedDamageToTarget(true, t, 1, DamageType.All)
+                __continue41 = true
+            until true
+            if not __continue41 then
+                break
+            end
+        end
+    end
+    f.engaged = #f.worked > 0 or dps > 0
+    if dps > 0 then
+        f.life = hp / dps
+    end
+    return f
+end
+--- The fight at the camp now (CampFight). It scans the neutral and creep lists, and every hero of the team at the camp asks it each
+-- round (the stay's `wants`, its verb and its shadow), so the scan is kept for the frame; each asker gets its own copy.
+function ____exports.FightOf(spawner)
+    local now = DotaTime()
+    local k = fights[spawner.idx]
+    if k == nil or k.t ~= now then
+        k = {
+            t = now,
+            f = scanFight(spawner)
+        }
+        fights[spawner.idx] = k
+    end
+    return __TS__ObjectAssign(
+        {},
+        k.f,
+        {
+            ours = {unpack(k.f.ours)},
+            neutrals = {unpack(k.f.neutrals)},
+            worked = {unpack(k.f.worked)}
+        }
+    )
+end
 --- A camp's neutrals within this of its origin, seen alive, stay on the record through a sighting of the box: a stack's
 -- pulled set walks back over :00 and stands outside the counted box (`judgement`, the pull's TagRadius).
 local RECORD_LEASH = 1200
@@ -283,16 +380,16 @@ function ____exports.NoteSighting(spawner, s, close)
     local units = {unpack(s.units)}
     for ____, u in ipairs(r.units) do
         do
-            local __continue42
+            local __continue62
             repeat
                 if not alive(u) or not u:CanBeSeen() or __TS__ArrayIncludes(units, u) or GetUnitToLocationDistance(u, spawner.location) > RECORD_LEASH then
-                    __continue42 = true
+                    __continue62 = true
                     break
                 end
                 units[#units + 1] = u
-                __continue42 = true
+                __continue62 = true
             until true
-            if not __continue42 then
+            if not __continue62 then
                 break
             end
         end

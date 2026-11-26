@@ -50,6 +50,7 @@ local CampRead = require(GetScriptDirectory().."/FunLib/humaniser/camp_read")
 local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local CreepRow = require(GetScriptDirectory().."/FunLib/humaniser/creep_row")
+local CampStay = require(GetScriptDirectory().."/FunLib/humaniser/camp_stay")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -78,6 +79,7 @@ ____exports.CampRead = CampRead
 ____exports.RuneDetour = RuneDetour
 ____exports.CreepOffer = CreepOffer
 ____exports.CreepRow = CreepRow
+____exports.CampStay = CampStay
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -115,6 +117,7 @@ local steps = {
     stackShadow = StackJob.Shadow,
     runeDetourShadow = RuneDetour.Shadow,
     creepOfferShadow = CreepOffer.Shadow,
+    campStayShadow = CampStay.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick
 }
@@ -178,6 +181,7 @@ local function tick(bot)
     pcall(steps.stackShadow, bot)
     pcall(steps.runeDetourShadow, bot)
     pcall(steps.creepOfferShadow, bot)
+    pcall(steps.campStayShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)
@@ -279,7 +283,13 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
-local rows = {{"PullRow", PullJob.ROW}, {"StackRow", StackJob.ROW}, {"RuneDetourRow", RuneDetour.ROW}, {"CreepRow", CreepRow.ROW}}
+local rows = {
+    {"PullRow", PullJob.ROW},
+    {"StackRow", StackJob.ROW},
+    {"RuneDetourRow", RuneDetour.ROW},
+    {"CreepRow", CreepRow.ROW},
+    {"CampStayRow", CampStay.ROW}
+}
 if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     for ____, ____value in ipairs(rows) do
         local where = ____value[1]
