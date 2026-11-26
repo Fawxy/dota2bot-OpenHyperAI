@@ -904,6 +904,9 @@ function Step(bot)
     sample(bot, p)
     return Tasks.Step(bot, HOST)
 end
+function ____exports.Running(bot)
+    return running[bot:GetPlayerID()] ~= nil
+end
 function End(bot, why)
     if running[bot:GetPlayerID()] ~= nil then
         Tasks.Cancel(bot, "cancelled", why)
@@ -1917,10 +1920,13 @@ local function rowStep(bot)
     return running[bot:GetPlayerID()] == nil
 end
 --- The decider's row (registered in index.ts, so the decider imports no row).
-____exports.ROW = {name = "pull", wants = rowWants, begin = rowBegin, step = rowStep}
-function ____exports.Running(bot)
-    return running[bot:GetPlayerID()] ~= nil
-end
+____exports.ROW = {
+    name = "pull",
+    wants = rowWants,
+    begin = rowBegin,
+    step = rowStep,
+    neutrals = function(bot) return ____exports.Running(bot) end
+}
 function ____exports.NoteIdleHeld(bot)
     local p = running[bot:GetPlayerID()]
     if p ~= nil then

@@ -8,8 +8,8 @@
  * Hold: soft while standing, walking to the spot or walking out (`soft` asks `hardNow`); hard from a last-hit attempt's go to its end
  * (`attempt` is the one place that switches it). A change of hold takes effect at the decider's next round.
  *
- * Go rule (rule 5): worth starting (both neutrals and our creeps at the camp and fighting, HP over the bar) and still possible (the
- * walk to the stand spot shorter than our creeps' life at the neutrals' damage now). Held back by `busy` (attack or retreat has the
+ * Go rule (rule 5): worth starting (both neutrals and our creeps at the camp and fighting, HP over the bar, the hero beside the camp:
+ * its walk to the stand spot at most Beside) and still possible (that walk shorter than our creeps' life at the neutrals' damage now). Held back by `busy` (attack or retreat has the
  * hero), `row` (another task runs), `acting`, `aggro` (a neutral is on the hero), `danger` (the shared read at the stand spot is deadly), or a bar this fight set.
  *
  * Ends, each a read and a named reason on the end line: `creeps` (none of ours left at the camp), `cleared` (no neutral left), `hit`
@@ -67,6 +67,15 @@ export const SETTINGS = {
     AtSpot: 200,
     /** judgement (the old stay's STAY_REORDER): a move to the spot is repeated at most this often while walking. */
     Reorder: 0.5,
+    /**
+     * judgement: the stay is a hero's already beside the camp (the definition: "a hero of ours is beside it"): wanted only while the
+     * straight walk to the stand spot is at most this (s). From the go lines of rigs drill oha-camp-stay 1 and 2 (pull-stack-row,
+     * lineup B): the pullers' walks 1.2 to 3.3 s (1.2, 2.0, 2.4, 2.4, 2.7, 2.8, 1.8, 3.3); the cores' walks from their lane 5.4 to
+     * 11.4 s (5.4, 6.8, 7.7, 7.9, 9.1, 9.7, 10.2, 11.4), and 1.2 and 1.7 s only for a core already at the camp from its own earlier
+     * stay there. Higher lets a hero leave its lane for the camp (the opposite rule's case; a core near also has the engine's filter
+     * refuse the support's attempts, `etiquette`); lower drops a puller that shed or bailed a little farther out.
+     */
+    Beside: 4,
     /** The backstop from a fight's first stay (s): the old stay's StayMax (the old pull farm's MaxFarm; a camp's clear was 7 to 26 s). */
     Max: 35,
     /** judgement: the walk out ends this far past every neutral's reach of the hero (a neutral turning back covers ground). */
@@ -227,6 +236,7 @@ function observe(bot: Unit, read: Reads["camp"], src: string): Read | undefined 
 function worth(bot: Unit, r: Read): string | undefined {
     if (!r.f.engaged) return "idle";
     if (hpShare(bot) < SETTINGS.HpBar) return "hp";
+    if (r.walk > SETTINGS.Beside) return "away";
     if (r.walk >= r.f.life) return "far";
     return undefined;
 }
@@ -552,4 +562,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). Soft but in an attempt (`rowSoft`). */
-export const ROW: Decider.Row = { name: "stay", wants: rowWants, begin: rowBegin, step: rowStep, soft: rowSoft };
+export const ROW: Decider.Row = { name: "stay", wants: rowWants, begin: rowBegin, step: rowStep, soft: rowSoft, neutrals: (bot) => running[bot.GetPlayerID()] !== undefined };

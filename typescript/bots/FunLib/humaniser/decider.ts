@@ -45,10 +45,16 @@ export interface Row {
     step(this: void, bot: Unit): boolean;
     /**
      * True: the row holds at SOFT, so the Valve-only modes take the hero when they want it (plan s3). Absent: HARD. A function is asked once
-     * each round (in `Host`), so a row can hold soft in one phase of its verb and hard in another.
-     * CANDIDATE(soft-per-phase): no row uses the function form today; ARCHITECTURE rule 10 wants a hold per phase.
+     * each round (in `Host`), so a row can hold soft in one phase of its verb and hard in another (the stay, camp_stay.ts: soft but in a
+     * last-hit attempt; ARCHITECTURE rule 10).
      */
     soft?: boolean | ((this: void, bot: Unit) => boolean);
+    /**
+     * True while the row's task takes a camp's neutrals' hits by design and has its own way out of them (the pull's bail, the stack's
+     * walk-off, the stay's `hit` end): stock's retreat then does not count those hits (`TakesNeutrals`, asked by Chooser.PullsNeutrals
+     * for mode_retreat_generic's creep-damage branch). Absent: never.
+     */
+    neutrals?: (this: void, bot: Unit) => boolean;
 }
 
 /**
@@ -85,7 +91,7 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
+/** Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour, creep and stay rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
 export const ROWS: Row[] = [];
 
 /** The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task. */
@@ -307,6 +313,25 @@ export function Offer(bot: Unit, row: Row): boolean {
     if (offer === undefined || cur === row.name || !begin(bot, s, row, offer)) return false;
     pcall(() => note(bot, s, row, isSoft(row, bot)));
     return true;
+}
+
+/**
+ * The hero's running task is a row below `row` in doctrine order, so `row` may be begun over it (`Offer`, `over`). False with no task,
+ * with a row above or equal to `row`, and with a task that is no row's (an older chooser job). For a row that decides between rounds
+ * and refuses to start over another task (the creep row's `row`).
+ */
+export function Yields(bot: Unit, row: Row): boolean {
+    const cur = runningTask(bot);
+    const at = ROWS.indexOf(row);
+    if (cur === undefined || at < 0) return false;
+    for (let i = at + 1; i < ROWS.length; i++) if (ROWS[i].name === cur) return true;
+    return false;
+}
+
+/** A row whose task takes a camp's neutrals' hits by design runs for this hero (`Row.neutrals`). */
+export function TakesNeutrals(bot: Unit): boolean {
+    for (const row of ROWS) if (row.neutrals !== undefined && row.neutrals(bot)) return true;
+    return false;
 }
 
 /** One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running. */

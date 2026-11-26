@@ -23,7 +23,7 @@ local function world(o)
 	o = o or {}
 	package.loaded["bots/FunLib/engine/tasks"] = nil
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
-	package.loaded["bots/FunLib/custom_loader"].Ours = { CampStay = o.on ~= false, SupportPull = false, RuneDetour = false, LaneCreeps = false, CreepDeny = false, StackExecute = false }
+	package.loaded["bots/FunLib/custom_loader"].Ours = { CampStay = o.on ~= false, SupportPull = false, RuneDetour = false, LaneCreeps = false, CreepDeny = o.deny == true, StackExecute = false }
 	CURRENT_TEAM = 2
 	T = 200
 	SPAWNERS = { { team = 2, type = "small", location = SMALL, min = Vector(SMALL.x - 150, SMALL.y - 150, 0),
@@ -136,7 +136,7 @@ end
 
 do -- walking in from afar: no attempt until the hero is at the stand spot, then one on the due neutral
 	local w = world()
-	w.bot.loc = Vector(-1600, -4400)
+	w.bot.loc = Vector(-1600, -4850)
 	w.n1.hp = 40
 	local o1 = capture(function()
 		w.desire = w.H.Decider.Host(w.bot, function() return 0 end)()
@@ -205,40 +205,66 @@ do -- the backstop: 35 s from the fight's first stay, logged as `timeout`
 	check("timeout: ends why=timeout at the backstop", #e == 1 and field(e[1], "why") == "timeout" and tonumber(field(e[1], "ss")) >= 34, table.concat(e, " | "))
 end
 
-do -- a higher row begun over the stay takes the hero (over=stay); once its attempt ends the stay is begun again
-	local w = world()
+do -- the creep row takes the hero for a deny over a running stay (over=stay); once its attempt ends the stay is begun again
+	local w = world({ deny = true })
 	local H = w.H
-	local stub = { applies = false }
-	stub.row = {
-		name = "deny_stub",
-		wants = function()
-			local r = H.Tasks.ForOurs.Running(w.bot)
-			if stub.applies or (r ~= nil and r.name == "deny_stub") then return { tgt = "creep:1" } end
-		end,
-		begin = function()
-			stub.applies = false
-			return H.Tasks.ForOurs.Start(w.bot, { name = "deny_stub", host = FARM }, function() return H.Tasks.ForOurs.Verbs().wait(w.bot, 0.3) end)
-		end,
-		step = function()
-			H.Tasks.ForOurs.Step(w.bot, FARM)
-			local r = H.Tasks.ForOurs.Running(w.bot)
-			return r == nil or r.name ~= "deny_stub"
-		end,
-	}
-	local rows = H.Decider.ROWS
-	table.insert(rows, #rows, stub.row)
-	run(w, 2)
+	-- The creep offer's candidates: the engine's laneTargets offers our first creep as a deny, in reach and about to come due.
+	local V = H.Tasks.ForOurs.Verbs()
+	local offered = {}
+	V.laneTargets = function() return offered end
+	H.CreepOffer.SETTINGS.Every = 0.1
+	run(w, 6)
+	w.c1.hp = 200
+	offered = { { creep = w.c1, kind = "deny", eta = 0.3, due = 0.3, walk = 0, dies = 3, ranged = false } }
 	local out = capture(function()
-		stub.applies = true
-		H.Decider.Offer(w.bot, stub.row)
-		for _ = 1, 8 do frame(w) end
+		H.CreepOffer.Shadow(w.bot)
+		offered = {}
+		w.c1.hp = 0
+		for _ = 1, 12 do
+			frame(w)
+			H.CreepOffer.Shadow(w.bot)
+		end
 	end)
-	local over = lines(out, "beg=deny_stub")
+	local over = lines(out, "beg=creep")
+	local dn = lines(out, "job=creep")
 	local e, st = ends(out), jobs(out, "start")
-	check("over: the decider's line names the stay as replaced", #over == 1 and field(over[1], "over") == "stay", table.concat(out, " | "))
+	check("over: the creep row's deny begins over the stay, the decider's line says over=stay", #over == 1 and field(over[1], "over") == "stay"
+		and #dn >= 1 and field(dn[1], "k") == "dn", table.concat(out, " | "))
 	check("over: the stay ended why=replaced, then was begun again with a new aid", #e == 1 and field(e[1], "why") == "replaced" and #st == 1
 		and field(st[1], "aid") ~= field(e[1], "aid"), table.concat(out, " | "))
 	check("over: one choice line for the fight (the second stay writes none)", #lines(out, "kind=stay") == 0, table.concat(out, " | "))
+end
+
+do -- away: a hero not beside the camp (a walk to the stand spot over Beside) has no stay, and its line says why
+	local w = world()
+	w.bot.loc = Vector(-1600, -3500)
+	local held
+	local out = capture(function()
+		held = w.H.Decider.Ask(w.bot, w.S.ROW)
+		RemoveCreep(w.c1)
+		RemoveCreep(w.c2)
+		T = T + 0.1
+		w.H.Decider.Ask(w.bot, w.S.ROW)
+	end)
+	local ch = lines(out, "kind=stay")
+	local near = world()
+	check("away: not begun, its line go=0 why=away; beside the camp it is (control)", held == false and #ch == 1 and field(ch[1], "why") == "away"
+		and near.H.Decider.Ask(near.bot, near.S.ROW) == true, table.concat(out, " | "))
+end
+
+do -- stock's retreat does not count the camp's neutrals while the stay runs (Chooser.PullsNeutrals), and the stay still ends `hit`
+	local w = world()
+	local before = w.H.Chooser.PullsNeutrals(w.bot)
+	run(w, 2)
+	local during = w.H.Chooser.PullsNeutrals(w.bot)
+	w.n1.target = w.bot
+	run(w, 1)
+	w.n1.target = w.c1
+	w.bot.loc = Vector(-1600, -5000)
+	local out = run(w, 2)
+	local e = ends(out)
+	check("hook: off before the stay, on while it runs, off after", before == false and during == true and w.H.Chooser.PullsNeutrals(w.bot) == false)
+	check("hook: a neutral on the hero still ends the stay with hit", #e == 1 and field(e[1], "why") == "hit", table.concat(out, " | "))
 end
 
 do -- a neutral still on the hero at the go (the puller as its pull ends): held back, then begun once it turns to our creeps

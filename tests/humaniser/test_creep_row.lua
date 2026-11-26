@@ -708,6 +708,20 @@ do -- another task running for the hero (a pull or stack) is not replaced by an 
 	check("row: a support with a pull running starts no deny and notes row", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "row", table.concat(ch, " | "))
 	w, ch = support(nil)
 	check("control: the same support with no task running starts the deny", w.starts == 1 and field(ch[1], "go") == "1", tostring(w.starts))
+	-- Only a row below the creep row yields (Decider.Yields): a row above (the stack) and a task that is no row (the chooser's rune
+	-- job) still refuse `row`; the stay, the one row below, is begun over.
+	w, ch = support({ name = "stack" })
+	check("row: a stack running starts no deny (row)", w.starts == 0 and field(ch[1], "why") == "row", table.concat(ch, " | "))
+	w, ch = support({ name = "rune" })
+	check("row: a chooser job running starts no deny (row)", w.starts == 0 and field(ch[1], "why") == "row", table.concat(ch, " | "))
+	local out
+	w = world({ pos = 5, deny = true, on = false })
+	w.running = { name = "stay" }
+	local c = MakeCreep({ team = 2, x = 300, y = -5000, hp = 60, name = "npc_dota_creep_goodguys_melee" })
+	w.targets = { target(c, { kind = "deny", walk = 0.3, due = 0.5 }) }
+	out = readThenClose(w, { c })
+	local dl = lines(out, "beg=creep")
+	check("over the stay: the deny starts, the decider's line names the stay", w.starts == 1 and #dl == 1 and field(dl[1], "over") == "stay", table.concat(out, " | "))
 end
 
 do -- the read's go is offered to the decider, which begins the row in the same call: its line at the read names the creep

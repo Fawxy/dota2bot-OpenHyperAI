@@ -325,13 +325,14 @@ export function HoldsRun(bot: Unit): boolean {
 }
 
 /**
- * mode_retreat_generic's creep-damage branch: while the decider's pull or stack runs, the neutrals hitting the hero are the
- * row's own doing and not a reason for stock's retreat (the pull's verb bails from them, the stack walks off from them).
- * Lane creeps and heroes still count. The stack row's (pullstack_smoke1): the decider let go to this branch at the hit of
- * 5 of 11 stacks, `d_retreat` 0.75 to 0.83 at 94% HP.
+ * mode_retreat_generic's creep-damage branch: while a decider row whose task takes a camp's neutrals' hits by design runs (the pull,
+ * the stack row's stack, the stay: each row's `neutrals`, Decider.TakesNeutrals), those hits are the row's own doing and not a reason
+ * for stock's retreat (the pull's verb bails from them, the stack walks off from them, the stay ends `hit` and walks out). Lane
+ * creeps and heroes still count. The stack row's (pullstack_smoke1): the decider let go to this branch at the hit of 5 of 11 stacks,
+ * `d_retreat` 0.75 to 0.83 at 94% HP.
  */
 export function PullsNeutrals(bot: Unit): boolean {
-    return PullJob.Running(bot) || StackJob.RowRunning(bot);
+    return Decider.TakesNeutrals(bot);
 }
 
 /**

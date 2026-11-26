@@ -62,7 +62,7 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
+--- Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour, creep and stay rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
 ____exports.ROWS = {}
 --- The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task.
 function ____exports.Add(row)
@@ -334,6 +334,35 @@ function ____exports.Offer(bot, row)
         isSoft(row, bot)
     ) end)
     return true
+end
+--- The hero's running task is a row below `row` in doctrine order, so `row` may be begun over it (`Offer`, `over`). False with no task,
+-- with a row above or equal to `row`, and with a task that is no row's (an older chooser job). For a row that decides between rounds
+-- and refuses to start over another task (the creep row's `row`).
+function ____exports.Yields(bot, row)
+    local cur = runningTask(bot)
+    local at = __TS__ArrayIndexOf(____exports.ROWS, row)
+    if cur == nil or at < 0 then
+        return false
+    end
+    do
+        local i = at + 1
+        while i < #____exports.ROWS do
+            if ____exports.ROWS[i + 1].name == cur then
+                return true
+            end
+            i = i + 1
+        end
+    end
+    return false
+end
+--- A row whose task takes a camp's neutrals' hits by design runs for this hero (`Row.neutrals`).
+function ____exports.TakesNeutrals(bot)
+    for ____, row in ipairs(____exports.ROWS) do
+        if row.neutrals ~= nil and row.neutrals(bot) then
+            return true
+        end
+    end
+    return false
 end
 --- One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running.
 function ____exports.Ask(bot, row)

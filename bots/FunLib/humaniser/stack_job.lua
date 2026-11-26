@@ -2972,5 +2972,11 @@ local function rowStep(bot)
     return running[bot:GetPlayerID()] == nil
 end
 --- The decider's row (registered in index.ts after the pull's).
-____exports.ROW = {name = "stack", wants = rowOffer, begin = rowBegin, step = rowStep}
+____exports.ROW = {
+    name = "stack",
+    wants = rowOffer,
+    begin = rowBegin,
+    step = rowStep,
+    neutrals = function(bot) return ____exports.RowRunning(bot) end
+}
 return ____exports

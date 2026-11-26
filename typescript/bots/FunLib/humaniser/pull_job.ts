@@ -1042,7 +1042,7 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). */
-export const ROW: Decider.Row = { name: "pull", wants: rowWants, begin: rowBegin, step: rowStep };
+export const ROW: Decider.Row = { name: "pull", wants: rowWants, begin: rowBegin, step: rowStep, neutrals: (bot) => Running(bot) };
 
 function Step(bot: Unit): boolean {
     const p = running[bot.GetPlayerID()];

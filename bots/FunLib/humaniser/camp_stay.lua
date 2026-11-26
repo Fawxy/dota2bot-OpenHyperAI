@@ -204,6 +204,7 @@ ____exports.SETTINGS = {
     Arrive = 60,
     AtSpot = 200,
     Reorder = 0.5,
+    Beside = 4,
     Max = 35,
     OutMargin = 150,
     OutFor = 4,
@@ -348,6 +349,9 @@ local function worth(bot, r)
     end
     if hpShare(bot) < ____exports.SETTINGS.HpBar then
         return "hp"
+    end
+    if r.walk > ____exports.SETTINGS.Beside then
+        return "away"
     end
     if r.walk >= r.f.life then
         return "far"
@@ -539,10 +543,10 @@ local function dueNeutral(bot, st, f)
     local best
     for ____, n in ipairs(f.worked) do
         do
-            local __continue58
+            local __continue59
             repeat
                 if __TS__ArrayIncludes(st.skip, n) then
-                    __continue58 = true
+                    __continue59 = true
                     break
                 end
                 local c = n
@@ -565,9 +569,9 @@ local function dueNeutral(bot, st, f)
                 if ahead <= hit and (best == nil or ahead < best.ahead) then
                     best = {n = n, h = h, ahead = ahead, hit = hit}
                 end
-                __continue58 = true
+                __continue59 = true
             until true
-            if not __continue58 then
+            if not __continue59 then
                 break
             end
         end
@@ -679,7 +683,7 @@ local body = __TS__Generator(function(bot, st, ctx)
     local stop = true
     while true do
         do
-            local __continue85
+            local __continue86
             repeat
                 if not bot:IsAlive() then
                     return ctx.fail("dead")
@@ -716,7 +720,7 @@ local body = __TS__Generator(function(bot, st, ctx)
                 if d ~= nil then
                     __TS__DelegatedYield(attempt(bot, st, d, ctx))
                     stop = true
-                    __continue85 = true
+                    __continue86 = true
                     break
                 end
                 ctx.label("stand")
@@ -735,9 +739,9 @@ local body = __TS__Generator(function(bot, st, ctx)
                     stop = false
                 end
                 coroutine.yield()
-                __continue85 = true
+                __continue86 = true
             until true
-            if not __continue85 then
+            if not __continue86 then
                 break
             end
         end
@@ -854,6 +858,7 @@ ____exports.ROW = {
     wants = rowWants,
     begin = rowBegin,
     step = rowStep,
-    soft = rowSoft
+    soft = rowSoft,
+    neutrals = function(bot) return running[bot:GetPlayerID()] ~= nil end
 }
 return ____exports

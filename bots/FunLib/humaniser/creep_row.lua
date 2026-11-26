@@ -627,7 +627,7 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
-    local other = Tasks.Running(bot) ~= nil
+    local other = Tasks.Running(bot) ~= nil and not Decider.Yields(bot, ____exports.ROW)
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best

@@ -1631,4 +1631,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts after the pull's). */
-export const ROW: Decider.Row = { name: "stack", wants: rowOffer, begin: rowBegin, step: rowStep };
+export const ROW: Decider.Row = { name: "stack", wants: rowOffer, begin: rowBegin, step: rowStep, neutrals: (bot) => RowRunning(bot) };
