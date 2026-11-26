@@ -170,6 +170,8 @@ Customize.Humaniser = {
 -- forecast of the lane wants it and the puller's record of the camp holds 6 neutrals, and stacks that camp in a minute the record
 -- is under it (families proposal s5); two rows of the decider (needs no other switch). Off: no pull or stack, both logged as shadows. On by default (it beat the reference arm,
 -- oha-pull-row's batch pullstack1).
+-- CreepDeny (the creep row's second kind, slice oha-creep-deny): a support (pos 4 and 5) denies our own lane creeps of every kind on the
+-- creep row's early go and hard hold (creep_row), in the claimed cells bar `tower` and `given`. On: it beat the reference arm on its line (cden1, cden1r: +12.5 denies a team-game). Off: the read logs a shadow and stock plays.
 -- LaneCreeps (decider row, doctrine D11; no-creep-unpaid proposal s5): a core (pos 1 to 3) last-hits their ranged creep in the
 -- claimed cells (in range or a walk up to 1 s, not out-damaged; a longer walk no enemy hero covers) once it is about to come due,
 -- whether or not stock is attacking it (creep_row). On: it beat the reference arm on its line (batches ceh1, ceh2). Off: the creep offer read logs a shadow (ev=choice kind=creep src=shadow) and stock plays.
@@ -187,7 +189,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, CreepDeny = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

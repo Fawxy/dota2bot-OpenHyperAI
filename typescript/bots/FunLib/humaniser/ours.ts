@@ -36,6 +36,10 @@ export const DEFAULTS = {
      *  about to come due, whether or not stock is attacking it. Off: the read logs every offer as a shadow and stock plays.
      *  On: it beat the reference arm on its line (oha-creep-earlyhard's batches ceh1 and ceh2). */
     LaneCreeps: true,
+    /** The lane's creeps, second kind, the deny, on the creep row (creep_row.ts, slice oha-creep-deny): a support (pos 4 and 5) denies
+     *  our own lane creeps of every kind on the row's early go and hard hold, in the claimed cells bar `tower` and `given`. A core's
+     *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */
+    CreepDeny: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

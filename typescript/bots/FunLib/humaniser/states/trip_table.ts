@@ -7,14 +7,15 @@
  * - Ours.DoubleStack gates position 4's stack (stack_job Applies); the cell is the rank once it is on.
  * - The pull is the decider's row, not a chooser job: its row here says only which positions pull (one puller per lane is
  *   chosen in pull_job). Ours.RuneRotation and the other job switches gate their jobs in code. None changes a cell.
- * - The creep offer (creep_offer) and its row (creep_row, Ours.LaneCreeps) are no chooser job: their row says only which
- *   positions the read covers and the row lets act.
+ * - The creep offer (creep_offer) and its row (creep_row) are no chooser job (the chooser's JOBS list does not hold `creep` or
+ *   `deny`): their rows say only which positions the read covers and the row lets act, `creep` (last hits, Ours.LaneCreeps)
+ *   and `deny` (our own creeps, Ours.CreepDeny).
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
 export type Pos = 1 | 2 | 3 | 4 | 5;
 /** The chooser's job names; logs and other modules read them. */
-export type TripKind = "stack" | "rune" | "pull" | "creep";
+export type TripKind = "stack" | "rune" | "pull" | "creep" | "deny";
 
 export interface TripRow {
     kind: TripKind;
@@ -31,6 +32,7 @@ export const TRIPS: TripRow[] = [
     { kind: "rune", rank: by(undefined, undefined, undefined, 15, 50) },
     { kind: "stack", rank: by(undefined, undefined, undefined, 20, 20) },
     { kind: "creep", rank: by(60, 60, 60, undefined, undefined) },
+    { kind: "deny", rank: by(undefined, undefined, undefined, 60, 60) },
 ];
 
 function rowOf(kind: TripKind): TripRow | undefined {

@@ -219,10 +219,11 @@ ____exports.ForOurs = {
             lib.Tasks.Cancel(bot, reason, message)
         end
     end,
+    Running = function(bot) return lib and lib.Tasks.Current(bot) end,
     Jobs = function() return loadBundle(true) ~= nil and JobVerbs or nil end,
     Verbs = function()
-        local ____opt_19 = loadBundle(true)
-        return ____opt_19 and ____opt_19.Verbs
+        local ____opt_21 = loadBundle(true)
+        return ____opt_21 and ____opt_21.Verbs
     end
 }
 return ____exports

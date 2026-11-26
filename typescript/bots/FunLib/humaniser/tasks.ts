@@ -213,6 +213,7 @@ export const ForOurs = {
     Cancel: (bot: Unit, reason: Lib.Reason, message?: string): void => {
         lib?.Tasks.Cancel(bot as unknown as Lib.TaskUnit, reason, message);
     },
+    Running: (bot: Unit): ReturnType<Bundle["Tasks"]["Current"]> => lib?.Tasks.Current(bot as unknown as Lib.TaskUnit),
     Jobs: (): typeof JobVerbs | undefined => (loadBundle(true) !== undefined ? JobVerbs : undefined),
     Verbs: (): Bundle["Verbs"] | undefined => loadBundle(true)?.Verbs,
 };

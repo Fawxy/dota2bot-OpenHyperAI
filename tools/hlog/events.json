@@ -943,6 +943,7 @@
    "ex": "num",
    "took": "num",
    "gj": "num",
+   "k": "str",
    "cid": "num",
    "gw": "num",
    "gd": "num",
@@ -2578,6 +2579,7 @@
    "phase": "text",
    "why": "text",
    "cut": "text",
+   "k": "text",
    "hw": "text",
    "hm": "text",
    "msg": "text"
