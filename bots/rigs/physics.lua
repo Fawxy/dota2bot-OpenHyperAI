@@ -15,10 +15,25 @@
 --   trees   clear the site's trees again (they regrow about 5 min after the load clears them)
 --   height  a Dire ranged creep on the 128 shelf at a target on the 256 plateau against the same on the flat: hits in 40 s,
 --           first without Dire vision of the target, then with a viewer
+--   repick  a creep on a hero who walks off, two idle creeps of ours still beside it: nearest by centre or by edge
+--   threat  as repick, an idle creep of ours nearer and a fighting one farther (on a dummy, or on the attacker);
+--           threat2 the same with the idle creep able to attack
+--   lateral switch at offsets 50 and 100
+--   order3  the order on our creep when it is clearly nearer the attacker than the hero (ranged and melee attacker)
+--   fog     a creep on a standing hero; the hero moved 600, 900 or 1300 away, with and without a Dire viewer there
+--   ramp    a creep chasing a hero who walks up the ramp north-east of the site (128 to 256), at 310 and 450
+--   height2 uphill with an observer ward, a hero shooter uphill and flat, a ranged creep from the river onto a shelf
+--   towerpref a creep and a hero put in the T2's reach on the same tick at different distances
+--   turn    yaw every tick from facing east to walking west (two heroes, two creeps)
+--   swing   a hero walks off at a creep's landed hit, or 0.5 s after: when the creep first moves
+--   fogwalk as fog at 900, the hero then walks 500 north in the fog; ramp2, towerpref2: more reps, the centre/edge ties
+--   real    a creep of the real Dire waves moved to the site: chase, and re-pick with our creep beside it
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
 -- What it changes in a game: loading clears the trees within 1300 of (-5100,-2050) and precaches axe and sniper; a running
 -- scenario kills the real lane creeps (melee, ranged, siege) within 1800 of its trial site, including near the Radiant top
--- T2 (tower, tower2) and at the height sites.
+-- T2 (tower, tower2, towerpref), around the ramp's foot (-5848,-2136) and at the height sites (one in the river by mid);
+-- height2 makes a Dire observer ward and Dire snipers at its sites for about 48 s; fog, fogwalk and height give Dire vision
+-- (AddFOWViewer); `real` moves a real Dire wave creep to the site and kills it after.
 -- Results and the API calls that read each value: master docs/reference/specifics/engine-physics.md.
 local function say(s) print("[RIG] phys " .. s) end
 local function now() return GameRules:GetDOTATime(false, false) end
@@ -98,6 +113,8 @@ local function clear()
 		end
 	end
 	made = {}
+	-- Every label goes, also of a unit already removed: a reused entity index must not hide a real creep (strays, grabReal).
+	label = {}
 end
 -- Real heroes within 1500 of a point: a trial with one near is contaminated.
 local function intruders(pos)
@@ -891,6 +908,569 @@ S.height = {
 	heightTrial("height_flat", -3600, -250, -4020, -250, false, 45),
 	heightTrial("height_down", -3170, -250, -2750, -250, false, 45),
 }
+
+-- Round 2 (the open questions) ----------------------------------------------------------------------------------------
+local function at(o, d, deg)
+	local a = math.rad(deg)
+	return V(o.x + d * math.cos(a), o.y + d * math.sin(a))
+end
+local function still(u)
+	tank(u)
+	passive(u)
+	pcall(function() u:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+end
+local function visible(u) return u:CanBeSeenByAnyOpposingTeam() and "seen" or "fog" end
+
+-- repick: a Dire ranged creep hitting a standing hero; the hero walks off east at 450; two idle candidates of ours stand
+-- still, north and south of the attacker: which it takes. The split pairs separate nearest by centre from nearest by edge.
+local function repickTrial(tag, cands)
+	return {
+		tag = tag,
+		timeout = 7,
+		setup = function(c)
+			c.cx, c.cy = X0 + 400, Y
+			local o = V(c.cx, c.cy)
+			c.cr = creep("ranged", D, o, "attacker")
+			tank(c.cr)
+			pcall(function() c.cr:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			c.h = hero("npc_dota_hero_sniper", R, V(c.cx + 450, c.cy), "hero")
+			pcall(function() c.h:SetBaseMoveSpeed(450) end)
+			watch(c, c.cr, { c.h })
+			c.go = false
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if t > 1 and not c.placed then
+				-- After the attacker is on the hero (a candidate there at spawn is taken at once, round 2a).
+				c.placed = true
+				local o = c.cr:GetAbsOrigin()
+				for _, k in ipairs(cands) do
+					local u = creep(k[1], R, at(o, k[2], k[3]), k[4])
+					still(u)
+					u:SetAbsOrigin(GetGroundPosition(at(o, k[2], k[3]), u))
+					table.insert(c.w[1].others, u)
+				end
+			end
+			if t > 2 and not c.go then
+				c.go = true
+				say(string.format("%s go rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+				moveOrder(c.h, V(c.cx + 2000, c.cy))
+			end
+		end,
+	}
+end
+S.repick = {}
+for rep = 1, 2 do
+	local n, s = rep == 1 and 90 or -90, rep == 1 and -90 or 90
+	-- centre picks the ranged (300 against 306); edge picks the melee (284 against 282). Spawn order swapped.
+	table.insert(S.repick, repickTrial("repick_split_r" .. rep, { { "ranged", 300, n, "own_r" }, { "melee", 306, s, "own_m" } }))
+	table.insert(S.repick, repickTrial("repick_split_m" .. rep, { { "melee", 306, s, "own_m" }, { "ranged", 300, n, "own_r" } }))
+	-- controls: both rules agree.
+	table.insert(S.repick, repickTrial("repick_melee_near_" .. rep, { { "melee", 280, n, "own_m" }, { "ranged", 330, s, "own_r" } }))
+	table.insert(S.repick, repickTrial("repick_ranged_near_" .. rep, { { "ranged", 280, n, "own_r" }, { "melee", 340, s, "own_m" } }))
+end
+
+-- threat: as repick, an idle creep of ours at 250 and a fighting one at 350 (attacking a Dire dummy, or the attacker).
+local function threatTrial(tag, onAttacker, idleArmed)
+	return {
+		tag = tag,
+		timeout = 8,
+		setup = function(c)
+			c.cx, c.cy = X0 + 400, Y
+			local o = V(c.cx, c.cy)
+			c.cr = creep("ranged", D, o, "attacker")
+			tank(c.cr)
+			pcall(function() c.cr:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			c.h = hero("npc_dota_hero_sniper", R, V(c.cx + 450, c.cy), "hero")
+			pcall(function() c.h:SetBaseMoveSpeed(450) end)
+			if onAttacker then
+				c.victim = c.cr
+			else
+				c.victim = creep("melee", D, at(o, 700, -90), "dummy")
+				still(c.victim)
+			end
+			watch(c, c.cr, { c.h })
+			c.go, c.lastOrder = false, -1
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if t > 0.8 and not c.placed then
+				c.placed = true
+				local o = c.cr:GetAbsOrigin()
+				c.idle = creep("melee", R, at(o, 250, 90), "idle")
+				if idleArmed then
+					tank(c.idle)
+					pcall(function() c.idle:SetIdleAcquire(false) end)
+					pcall(function() c.idle:SetAcquisitionRange(0) end)
+					pcall(function() c.idle:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+				else
+					still(c.idle)
+				end
+				c.idle:SetAbsOrigin(GetGroundPosition(at(o, 250, 90), c.idle))
+				c.f = creep("ranged", R, at(o, 350, -90), "fighter")
+				tank(c.f)
+				pcall(function() c.f:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+				c.w[1].others = { c.h, c.idle, c.f }
+			end
+			if c.f and c.victim and t - c.lastOrder > 0.5 then
+				c.lastOrder = t
+				if c.f:GetAttackTarget() ~= c.victim then attackOrder(c.f, c.victim) end
+			end
+			if t > 2.5 and not c.go then
+				c.go = true
+				say(string.format("%s go rel=%.2f on=%s fighter_on=%s", c.tag, t, L(c.cr:GetAttackTarget()), L(c.f:GetAttackTarget())))
+				moveOrder(c.h, V(c.cx + 2000, c.cy))
+			end
+		end,
+	}
+end
+S.threat2 = {}
+for rep = 1, 3 do
+	table.insert(S.threat2, threatTrial("threat2_dummy_" .. rep, false, true))
+	table.insert(S.threat2, threatTrial("threat2_attacker_" .. rep, true, true))
+end
+S.threat = {}
+for rep = 1, 2 do
+	table.insert(S.threat, threatTrial("threat_dummy_" .. rep, false))
+	table.insert(S.threat, threatTrial("threat_attacker_" .. rep, true))
+end
+
+-- lateral: the chase past our idle creep at the small offsets switch left between 0 and 150.
+S.lateral = {}
+for rep = 1, 2 do
+	for _, off in ipairs({ 50, 100 }) do table.insert(S.lateral, switchTrial("melee", off, rep)) end
+end
+
+-- order3: the hero's attack order on its own creep when that creep is clearly nearer the attacker than the hero.
+-- ranged: attacker on a sniper at 450, our creep 150 beside it. melee: attacker on an axe at 135, our creep set at 50.
+local function order3Trial(kind, withOrder, rep)
+	return {
+		tag = string.format("order3_%s_%s_%d", kind, withOrder and "order" or "control", rep),
+		timeout = 6,
+		setup = function(c)
+			c.cx, c.cy = X0 + 400, Y
+			local o = V(c.cx, c.cy)
+			c.cr = creep(kind, D, o, "attacker")
+			tank(c.cr)
+			pcall(function() c.cr:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			if kind == "ranged" then
+				c.h = hero("npc_dota_hero_sniper", R, V(c.cx + 450, c.cy), "hero", true)
+				c.r = creep("melee", R, at(o, 1500, 90), "own")
+			else
+				c.h = hero("npc_dota_hero_axe", R, V(c.cx + 135, c.cy), "hero", true)
+				c.r = creep("melee", R, V(c.cx - 200, c.cy), "own")
+			end
+			still(c.r)
+			c.step = 0
+			watch(c, c.cr, { c.h, c.r })
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if c.step == 0 and t > 0.3 and kind == "melee" then
+				c.step = 0.5
+				c.r:SetAbsOrigin(GetGroundPosition(V(c.cx - 50, c.cy), c.r))
+			end
+			if c.step == 0 and t > 1 and kind == "ranged" then
+				-- Brought in after the attacker is on the hero (at spawn it takes our creep, round 2a).
+				c.step = 0.5
+				c.r:SetAbsOrigin(GetGroundPosition(at(c.cr:GetAbsOrigin(), 150, 90), c.r))
+			end
+			if c.step < 1 and t > 2.5 then
+				c.step = 1
+				say(string.format("%s %s rel=%.2f on=%s hero_d=%s/%s own_d=%s/%s", c.tag, withOrder and "order" or "no_order", t, L(c.cr:GetAttackTarget()),
+					f0(d2(c.cr, c.h)), f0(edge(c.cr, c.h)), f0(d2(c.cr, c.r)), f0(edge(c.cr, c.r))))
+				if withOrder then attackOrder(c.h, c.r) end
+			end
+		end,
+	}
+end
+S.order3 = {}
+for rep = 1, 3 do
+	table.insert(S.order3, order3Trial("ranged", true, rep))
+	table.insert(S.order3, order3Trial("ranged", false, rep))
+end
+for rep = 1, 2 do
+	table.insert(S.order3, order3Trial("melee", true, rep))
+	table.insert(S.order3, order3Trial("melee", false, rep))
+end
+
+-- fog: a melee creep hitting a standing hero; the hero is moved away along the line (a blink) and stands: does the creep
+-- come, with and without Dire vision of the new spot.
+local function fogTrial(dist, viewer, rep)
+	return {
+		tag = string.format("fog_%d_%s_%d", dist, viewer and "viewer" or "none", rep),
+		timeout = 10,
+		setup = function(c)
+			c.cx, c.cy = X0, Y
+			c.cr = creep("melee", D, V(X0, Y), "melee")
+			tank(c.cr)
+			c.h = hero("npc_dota_hero_axe", R, V(X0 + 90, Y), "hero")
+			c.home = c.cr:GetAbsOrigin()
+			watch(c, c.cr, { c.h })
+			c.go, c.lastLog = false, 0
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if not c.go and t > 1.5 then
+				c.go = true
+				local p = V(X0 + dist, Y)
+				if viewer then AddFOWViewer(D, p, 300, 9, false) end
+				c.h:SetAbsOrigin(GetGroundPosition(p, c.h))
+				say(string.format("%s blink rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+			end
+			if c.go and t - c.lastLog >= 0.5 then
+				c.lastLog = t
+				say(string.format("%s gap rel=%.2f gap=%s from_home=%s vis=%s attack=%s", c.tag, t, f0(d2(c.cr, c.h)),
+					f0((c.cr:GetAbsOrigin() - c.home):Length2D()), visible(c.h), L(c.cr:GetAttackTarget())))
+			end
+		end,
+	}
+end
+S.fog = {}
+for rep = 1, 2 do
+	table.insert(S.fog, fogTrial(900, false, rep))
+	table.insert(S.fog, fogTrial(900, true, rep))
+end
+table.insert(S.fog, fogTrial(600, false, 1))
+table.insert(S.fog, fogTrial(1300, false, 1))
+
+-- ramp: a creep chasing a hero who walks up the ramp north-east of the main site (128 to 256) and stands at the top.
+local RAMP0, RAMP1 = V(-5848, -2136), V(-4858, -1146)
+local function rampTrial(speed, rep)
+	return {
+		tag = string.format("ramp_ms%d_%d", speed, rep),
+		timeout = 18,
+		setup = function(c)
+			c.cx, c.cy = RAMP0.x, RAMP0.y
+			c.cr = creep("melee", D, RAMP0 - Vector(64, 64, 0), "melee")
+			tank(c.cr)
+			c.h = hero("npc_dota_hero_axe", R, RAMP0 + Vector(30, 30, 0), "hero")
+			pcall(function() c.h:SetBaseMoveSpeed(speed) end)
+			watch(c, c.cr, { c.h })
+			c.go, c.lastLog = false, 0
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if not c.go and t > 1.5 then
+				c.go = true
+				moveOrder(c.h, RAMP1)
+				say(string.format("%s go rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+			end
+			if c.go and t - c.lastLog >= 0.5 then
+				c.lastLog = t
+				local p, q = c.cr:GetAbsOrigin(), c.h:GetAbsOrigin()
+				say(string.format("%s gap rel=%.2f gap=%s z_creep=%.0f z_hero=%.0f vis=%s attack=%s", c.tag, t, f0(d2(c.cr, c.h)), p.z, q.z,
+					visible(c.h), L(c.cr:GetAttackTarget())))
+			end
+		end,
+	}
+end
+S.ramp = {}
+for rep = 1, 2 do
+	table.insert(S.ramp, rampTrial(310, rep))
+	table.insert(S.ramp, rampTrial(450, rep))
+end
+
+-- height2: hits over a fixed time. vision "none" | "viewer" | "ward" (a Dire observer ward unit beside the target); the
+-- shooter a ranged creep or a Dire sniper (given the attack order).
+local function height2Trial(tag, sx, sy, tx, ty, vision, shooterHero, secs)
+	return {
+		tag = tag,
+		timeout = secs + 3,
+		setup = function(c)
+			c.cx, c.cy = sx, sy
+			if shooterHero then
+				c.s = hero("npc_dota_hero_sniper", D, V(sx, sy), "shooter", true)
+			else
+				c.s = creep("ranged", D, V(sx, sy), "shooter")
+				tank(c.s)
+			end
+			pcall(function() c.s:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			c.u = creep("melee", R, V(tx, ty), "target")
+			tank(c.u, 100000)
+			passive(c.u)
+			pcall(function() c.u:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			pcall(function() c.u:SetBaseHealthRegen(0) end)
+			if vision == "viewer" then AddFOWViewer(D, V(tx, ty), 300, secs + 2, false) end
+			if vision == "ward" then c.ward = make("npc_dota_observer_wards", V(tx + 120, ty), D, "ward") end
+			c.hits, c.first, c.lastOrder = 0, nil, -1
+			c.hp = c.u:GetHealth()
+		end,
+		tick = function(c, t)
+			if t > 0.5 and not c.logged then
+				c.logged = true
+				say(string.format("%s setup z_shooter=%.0f z_target=%.0f dist=%s vis_dire=%s ward=%s", tag, c.s:GetAbsOrigin().z, c.u:GetAbsOrigin().z,
+					f0(d2(c.s, c.u)), tostring(c.u:CanBeSeenByAnyOpposingTeam()), tostring(c.ward ~= nil)))
+			end
+			if shooterHero and t - c.lastOrder > 1 then
+				c.lastOrder = t
+				if c.s:GetAttackTarget() ~= c.u then attackOrder(c.s, c.u) end
+			end
+			local hp = c.u:GetHealth()
+			if hp < c.hp then
+				c.hits = c.hits + 1
+				c.first = c.first or t
+			end
+			c.hp = hp
+			if t >= secs then
+				local from = c.first or secs
+				local spa = c.s:GetSecondsPerAttack(false)
+				say(string.format("%s result hits=%d first_hit=%.2f span=%.2f spa=%.3f expected=%.1f", tag, c.hits, from, secs - from, spa,
+					(secs - from) / spa + 1))
+				return true
+			end
+		end,
+	}
+end
+S.height2 = {
+	height2Trial("h2_up_ward", -2750, -250, -3170, -250, "ward", false, 45),
+	height2Trial("h2_up_hero", -2750, -250, -3170, -250, "viewer", true, 45),
+	height2Trial("h2_flat_hero", -3600, -250, -4020, -250, "none", true, 45),
+	height2Trial("h2_river_up", -1300, 1150, -900, 1250, "viewer", false, 45),
+}
+
+-- towerpref: a Dire creep and a Dire hero put in the T2's reach on the same tick, at set distances from its centre.
+local function towerPrefTrial(hd, cd, rep)
+	return {
+		tag = string.format("towerpref_h%d_c%d_%d", hd, cd, rep),
+		timeout = 4,
+		setup = function(c)
+			c.tw = tower2()
+			local o = c.tw:GetAbsOrigin()
+			c.cx, c.cy = o.x, o.y
+			local ha, ca = rep == 1 and -40 or -80, rep == 1 and -80 or -40
+			c.h = hero("npc_dota_hero_sniper", D, at(o, hd, ha), "dhero")
+			c.cr = creep("melee", D, at(o, cd, ca), "dcreep")
+			still(c.cr)
+			pcall(function() c.h:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
+			towerWatch(c, c.tw, { c.h, c.cr })
+		end,
+		tick = function(c, t) watchTick(c, t) end,
+	}
+end
+S.towerpref = {}
+for rep = 1, 2 do
+	table.insert(S.towerpref, towerPrefTrial(450, 600, rep))
+	table.insert(S.towerpref, towerPrefTrial(600, 450, rep))
+	table.insert(S.towerpref, towerPrefTrial(520, 520, rep))
+end
+
+-- turn: a unit faced east is ordered to walk west: its yaw every tick until it faces the goal, and when it first moves.
+local function turnTrial(kind, rep)
+	return {
+		tag = string.format("turn_%s_%d", kind, rep),
+		timeout = 5,
+		setup = function(c)
+			c.cx, c.cy = X0 + 700, Y
+			if kind == "axe" or kind == "sniper" then
+				c.u = hero("npc_dota_hero_" .. kind, R, V(c.cx, c.cy), kind)
+			else
+				c.u = creep(kind, R, V(c.cx, c.cy), kind)
+				tank(c.u)
+				passive(c.u)
+			end
+			c.u:SetForwardVector(Vector(1, 0, 0))
+			c.trace, c.step = {}, 0
+			local tr = {}
+			for _, g in ipairs({ "GetTurnRate", "GetBaseTurnRate" }) do
+				local ok, v = pcall(function() return c.u[g](c.u) end)
+				table.insert(tr, g .. "=" .. tostring(ok and v or "x"))
+			end
+			say(c.tag .. " " .. table.concat(tr, " "))
+		end,
+		tick = function(c, t)
+			if c.step == 0 and t > 1 then
+				c.step = 1
+				c.tt0, c.p0 = t, c.u:GetAbsOrigin()
+				moveOrder(c.u, V(c.cx - 1000, c.cy))
+			elseif c.step == 1 then
+				local y = yaw(c.u)
+				table.insert(c.trace, string.format("%.2f:%.0f", t - c.tt0, y))
+				if c.mv == nil and (c.u:GetAbsOrigin() - c.p0):Length2D() > 1 then c.mv = t - c.tt0 end
+				if math.abs(angDiff(y, 180)) < 3 or t - c.tt0 > 3 then
+					say(string.format("%s faced=%.2f first_move=%s trace=%s", c.tag, t - c.tt0, tostring(c.mv and string.format("%.2f", c.mv)),
+						table.concat(c.trace, ",")))
+					return true
+				end
+			end
+		end,
+	}
+end
+S.turn = {}
+for rep = 1, 2 do
+	for _, k in ipairs({ "axe", "sniper", "melee", "ranged" }) do table.insert(S.turn, turnTrial(k, rep)) end
+end
+
+-- swing: a creep hitting a standing hero; the hero walks off at its second landed hit ("hit") or 0.5 s after it ("mid"):
+-- when the creep first moves, after that hit.
+local function swingTrial(kind, when, rep)
+	return {
+		tag = string.format("swing_%s_%s_%d", kind, when, rep),
+		timeout = 8,
+		setup = function(c)
+			c.cx, c.cy = X0 + 400, Y
+			c.cr = creep(kind, D, V(c.cx, c.cy), kind)
+			tank(c.cr)
+			local start = kind == "ranged" and 450 or 90
+			c.h = hero("npc_dota_hero_axe", R, V(c.cx + start, c.cy), "hero")
+			pcall(function() c.h:SetBaseHealthRegen(0) end)
+			pcall(function() c.h:SetBaseMoveSpeed(450) end)
+			c.hp, c.hits, c.step = c.h:GetHealth(), 0, 0
+			watch(c, c.cr, { c.h })
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			local hp = c.h:GetHealth()
+			if hp < c.hp then
+				c.hits = c.hits + 1
+				say(string.format("%s hit rel=%.2f n=%d", c.tag, t, c.hits))
+				if c.hits == 2 and c.step == 0 then
+					c.step = 1
+					c.thit = t
+					c.leaveAt = when == "hit" and t or t + 0.5
+				end
+			end
+			c.hp = hp
+			if c.step == 1 and t >= c.leaveAt then
+				c.step = 2
+				c.p0 = c.cr:GetAbsOrigin()
+				moveOrder(c.h, V(c.cx + 2000, c.cy))
+				say(string.format("%s leave rel=%.2f after_hit=%.2f", c.tag, t, t - c.thit))
+			elseif c.step == 2 and (c.cr:GetAbsOrigin() - c.p0):Length2D() > 1 then
+				c.step = 3
+				say(string.format("%s creep_moves rel=%.2f after_hit=%.2f after_leave=%.2f", c.tag, t, t - c.thit, t - c.leaveAt))
+				return true
+			end
+		end,
+	}
+end
+S.swing = {}
+for rep = 1, 2 do
+	for _, k in ipairs({ "melee", "ranged" }) do
+		table.insert(S.swing, swingTrial(k, "hit", rep))
+		table.insert(S.swing, swingTrial(k, "mid", rep))
+	end
+end
+
+-- real: a creep of the real Dire waves moved to the main site: the chase and the re-pick on it.
+local function grabReal()
+	for _, u in ipairs(Entities:FindAllByClassname("npc_dota_creep_lane")) do
+		if u:IsAlive() and u:GetTeamNumber() == D and label[u:entindex()] == nil and string.find(u:GetUnitName(), "melee") then
+			return u
+		end
+	end
+end
+local function realTrial(kind, rep)
+	return {
+		tag = string.format("real_%s_%d", kind, rep),
+		timeout = 16,
+		setup = function(c)
+			c.cx, c.cy = X0, Y
+			c.cr = grabReal()
+			if c.cr == nil then error("no real Dire melee creep") end
+			label[c.cr:entindex()] = "real"
+			table.insert(made, c.cr)
+			say(string.format("%s grabbed %s from %s,%s acq=%.0f", c.tag, c.cr:GetUnitName(), f0(c.cr:GetAbsOrigin().x),
+				f0(c.cr:GetAbsOrigin().y), c.cr:GetAcquisitionRange()))
+			order(c.cr, DOTA_UNIT_ORDER_STOP)
+			c.cr:SetAbsOrigin(GetGroundPosition(V(X0, Y), c.cr))
+			tank(c.cr)
+			c.h = hero("npc_dota_hero_axe", R, V(X0 + 90, Y), "hero")
+			local others = { c.h }
+			if kind == "repick" then
+				c.r = creep("melee", R, V(X0 + 60, Y + 170), "own")
+				still(c.r)
+				table.insert(others, c.r)
+			end
+			c.home = V(X0, Y)
+			watch(c, c.cr, others)
+			c.go, c.lastLog = false, 0
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if not c.go and t > 2 then
+				c.go = true
+				moveOrder(c.h, V(-4300, Y))
+				say(string.format("%s go rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+			end
+			if t > 0.5 and not c.where then
+				c.where = true
+				local p = c.cr:GetAbsOrigin()
+				say(string.format("%s at %s,%s on=%s", c.tag, f0(p.x), f0(p.y), L(c.cr:GetAttackTarget())))
+			end
+			if c.go and kind == "chase" and t - c.lastLog >= 0.5 then
+				c.lastLog = t
+				say(string.format("%s gap rel=%.2f gap=%s from_home=%s attack=%s", c.tag, t, f0(d2(c.cr, c.h)),
+					f0((c.cr:GetAbsOrigin() - c.home):Length2D()), L(c.cr:GetAttackTarget())))
+			end
+			if kind == "repick" and c.go and t > 6 then return true end
+		end,
+	}
+end
+S.real = {}
+for rep = 1, 2 do
+	table.insert(S.real, realTrial("chase", rep))
+	table.insert(S.real, realTrial("repick", rep))
+end
+
+-- fogwalk: as fog at 900, then the hero walks 500 north in the fog: does the creep go to where it is or where it was seen.
+local function fogWalkTrial(viewer, rep)
+	return {
+		tag = string.format("fogwalk_%s_%d", viewer and "viewer" or "none", rep),
+		timeout = 12,
+		setup = function(c)
+			c.cx, c.cy = X0, Y
+			c.cr = creep("melee", D, V(X0, Y), "melee")
+			tank(c.cr)
+			c.h = hero("npc_dota_hero_axe", R, V(X0 + 90, Y), "hero")
+			watch(c, c.cr, { c.h })
+			c.go, c.lastLog = false, 0
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if not c.go and t > 1.5 then
+				c.go = true
+				local p = V(X0 + 900, Y)
+				c.h:SetAbsOrigin(GetGroundPosition(p, c.h))
+				c.tblink = t
+				say(string.format("%s blink rel=%.2f on=%s", c.tag, t, L(c.cr:GetAttackTarget())))
+			end
+			if c.go and not c.walked and t - c.tblink > 0.1 then
+				c.walked = true
+				moveOrder(c.h, V(X0 + 900, Y + 500))
+			end
+			if viewer and c.go and t - (c.lastView or -9) > 0.25 then
+				c.lastView = t
+				AddFOWViewer(D, c.h:GetAbsOrigin(), 200, 0.4, false)
+			end
+			if c.go and t - c.lastLog >= 0.5 then
+				c.lastLog = t
+				local p, q = c.cr:GetAbsOrigin(), c.h:GetAbsOrigin()
+				say(string.format("%s gap rel=%.2f gap=%s creep=%s,%s hero=%s,%s vis=%s attack=%s", c.tag, t, f0(d2(c.cr, c.h)), f0(p.x - X0), f0(p.y - Y),
+					f0(q.x - X0), f0(q.y - Y), visible(c.h), L(c.cr:GetAttackTarget())))
+			end
+		end,
+	}
+end
+S.fogwalk = {}
+for rep = 1, 3 do
+	table.insert(S.fogwalk, fogWalkTrial(false, rep))
+	if rep < 3 then table.insert(S.fogwalk, fogWalkTrial(true, rep)) end
+end
+
+-- ramp2: more ramp reps (round 2a gave up in 2 of 4).
+S.ramp2 = {}
+for rep = 3, 5 do
+	table.insert(S.ramp2, rampTrial(310, rep))
+	table.insert(S.ramp2, rampTrial(450, rep))
+end
+
+-- towerpref2: the ties that separate nearest by centre from nearest by edge (hero hull 24, creep 16).
+S.towerpref2 = {}
+for rep = 1, 2 do
+	table.insert(S.towerpref2, towerPrefTrial(526, 520, rep)) -- hero farther by centre, nearer by edge (358 against 360)
+	table.insert(S.towerpref2, towerPrefTrial(540, 520, rep)) -- creep nearer both ways
+end
 
 -- rig_phys <scenario> [<scenario> ...]: the scenarios one after another (they share the unit list, so never two at once).
 Convars:RegisterCommand("rig_phys", function(_, ...)
