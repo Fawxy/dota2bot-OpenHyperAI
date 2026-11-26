@@ -19,7 +19,6 @@ import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Offer from "bots/FunLib/humaniser/offer";
-import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -194,11 +193,11 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
 
-/** A bot whose position the trip table lets act on a creep offer: a last hit (`creep`) or a deny. */
+/** A bot the read covers: any of the five positions. Whether the row lets the hero act is the trip table's and the row's own (`CreepRow.On`), not this. */
 export function MayOffer(bot: Unit): boolean {
     if (!bot.IsBot()) return false;
     const pos = LaneConfig.PositionOf(bot);
-    return TripTable.Does("creep", pos) || TripTable.Does("deny", pos);
+    return pos !== undefined && pos >= 1 && pos <= 5;
 }
 
 function enemyFormat(es: Offer.EnemyCost[]): string {

@@ -944,6 +944,8 @@
    "took": "num",
    "gj": "num",
    "k": "str",
+   "oc": "num",
+   "cl": "num",
    "cid": "num",
    "gw": "num",
    "gd": "num",

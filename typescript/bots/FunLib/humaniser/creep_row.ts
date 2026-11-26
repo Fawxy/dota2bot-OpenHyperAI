@@ -22,11 +22,15 @@
  * Hard from the go: the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
+ * The claim (`creep_claim.ts`, `Reads.creep`): the attempt takes it in `begin` and the task's end releases it (`finish`), whatever the end;
+ * the row's per-creep answers (`Seen`) live in that read. Nothing reads the claim to decide yet.
+ *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
  * per attempt, with `k`.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import type { Reads } from "bots/FunLib/humaniser/reads";
@@ -129,36 +133,13 @@ export function OnTime(this: void, need: number, due: number): boolean {
     return due >= need;
 }
 
-/** What the reads saw of one creep for one hero; dropped once a read no longer lists the creep. */
-interface Seen {
-    /** The read's time when it was last listed (the prune's mark). */
-    at: number;
-    first: number;
-    /** The first read where the creep was about to come due (`Due`). */
-    due0?: number;
-    /** The last reason the row refused it at a read where it was about to come due, and the hero's mode name then when that was `held`. */
-    why?: string;
-    mode?: string;
-    /** The last reason it refused the creep at a read where it was about to come due and on time (names a `notime_*` refusal). */
-    ok?: string;
-}
+type Seen = CreepClaim.Answer;
 
-const seen: Record<number, Record<number, Seen> | undefined> = {};
-
-/** The record of each listed creep, new ones made now; records of creeps this read does not list are dropped. */
+/** The record of each listed creep, new ones made now; records of creeps this read does not list are dropped (the claim read's). */
 function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<number, Seen> {
-    let m = seen[pid];
-    if (m === undefined) {
-        m = {};
-        seen[pid] = m;
-    }
-    for (const c of cands) {
-        const r = m[c.cid];
-        if (r === undefined) m[c.cid] = { at: now, first: now };
-        else r.at = now;
-    }
-    for (const [cid, r] of pairs(m)) if (r.at !== now) delete m[cid as number];
-    return m;
+    const cids: number[] = [];
+    for (const c of cands) cids.push(c.cid);
+    return CreepClaim.Touch(pid, cids, now);
 }
 
 /** Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither. */
@@ -228,14 +209,15 @@ interface Pending {
 const pending: Record<number, Pending | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, lastCid, seen, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, lastCid, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    CreepClaim.ResetCache();
 }
 
 export function On(bot: Unit): boolean {
     const pos = LaneConfig.PositionOf(bot);
     const lh = TripTable.Does("creep", pos) && Ours.On("LaneCreeps");
     const dn = TripTable.Does("deny", pos) && Ours.On("CreepDeny");
-    return (lh || dn) && CreepOffer.MayOffer(bot) && !Drill.Held(bot);
+    return (lh || dn) && bot.IsBot() && !Drill.Held(bot);
 }
 
 /** OHA's own action holds the hero (the deny and pull rows' check: a queued order, a cast or channel). */
@@ -270,9 +252,9 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
  * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
- * cycle, or `EarlyLead`).
+ * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take).
  */
-function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" }): void {
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn"; oc: number }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["aid", aid],
@@ -294,6 +276,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
         ["sa", g.sa ? 1 : 0],
         ["nw", g.seen.first === g.now ? 1 : 0],
         ["ld", r2(g.lead)],
+        ["oc", g.oc],
     ]);
 }
 
@@ -301,10 +284,10 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
  * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
  * mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
- * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
+ * rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
  */
-function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined): void {
+function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined, claimed: boolean): void {
     const msg = r.message;
     let sw: number | undefined;
     if (r.success) sw = msg !== undefined && string.find(msg, "hit=other", 1, true)[0] === 1 ? 0 : 1;
@@ -318,6 +301,7 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["why", r.success ? "ok" : r.reason],
         ["host", HOST],
         ["cut", cut],
+        ["cl", claimed ? 1 : 0],
         ["cid", a?.cid],
         ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
         ["tk", a?.tk],
@@ -345,6 +329,7 @@ function finish(bot: Unit, r: Lib.Result): void {
     const pid = bot.GetPlayerID();
     const a = running[pid];
     running[pid] = undefined;
+    const claimed = CreepClaim.Release(pid);
     const now = DotaTime();
     if (a !== undefined) {
         if (a.phase !== undefined) a.spent[a.phase] += now - a.phaseAt;
@@ -354,7 +339,7 @@ function finish(bot: Unit, r: Lib.Result): void {
             a.tks += now - a.lastStep;
         }
     }
-    endLine(bot, a, r, cutBy(bot, r));
+    endLine(bot, a, r, cutBy(bot, r), claimed);
 }
 
 function factsOf(bot: Unit, c: CreepOffer.Candidate): Facts {
@@ -488,8 +473,10 @@ function rowBegin(bot: Unit): boolean {
     };
     running[pid] = a;
     lastCid[pid] = best.cid;
+    const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
+    const others = CreepClaim.Take(best.cid, { pid, rank: rank ?? math.huge, k, due: pd.now + t.due });
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length });
     return true;
 }
 
@@ -497,6 +484,7 @@ function rowBegin(bot: Unit): boolean {
 function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
     const a = running[pid];
     if (a !== undefined) enterPhase(a, p, t);
+    CreepClaim.Phase(pid, p);
 }
 
 /**
