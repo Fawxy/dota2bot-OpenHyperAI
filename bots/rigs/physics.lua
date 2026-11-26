@@ -31,8 +31,9 @@
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
 -- What it changes in a game: loading clears the trees within 1300 of (-5100,-2050) and precaches axe and sniper; a running
 -- scenario kills the real lane creeps (melee, ranged, siege) within 1800 of its trial site, including near the Radiant top
--- T2 (tower, tower2, towerpref), at the ramp and at the height sites (one in the river by mid); `real` moves a real Dire
--- wave creep to the site and kills it after.
+-- T2 (tower, tower2, towerpref), around the ramp's foot (-5848,-2136) and at the height sites (one in the river by mid);
+-- height2 makes a Dire observer ward and Dire snipers at its sites for about 48 s; fog, fogwalk and height give Dire vision
+-- (AddFOWViewer); `real` moves a real Dire wave creep to the site and kills it after.
 -- Results and the API calls that read each value: master docs/reference/specifics/engine-physics.md.
 local function say(s) print("[RIG] phys " .. s) end
 local function now() return GameRules:GetDOTATime(false, false) end
@@ -112,6 +113,8 @@ local function clear()
 		end
 	end
 	made = {}
+	-- Every label goes, also of a unit already removed: a reused entity index must not hide a real creep (strays, grabReal).
+	label = {}
 end
 -- Real heroes within 1500 of a point: a trial with one near is contaminated.
 local function intruders(pos)
@@ -991,7 +994,8 @@ local function threatTrial(tag, onAttacker, idleArmed)
 		end,
 		tick = function(c, t)
 			watchTick(c, t)
-			if t > 0.8 and not c.f then
+			if t > 0.8 and not c.placed then
+				c.placed = true
 				local o = c.cr:GetAbsOrigin()
 				c.idle = creep("melee", R, at(o, 250, 90), "idle")
 				if idleArmed then
@@ -1008,7 +1012,7 @@ local function threatTrial(tag, onAttacker, idleArmed)
 				pcall(function() c.f:SetMoveCapability(DOTA_UNIT_CAP_MOVE_NONE) end)
 				c.w[1].others = { c.h, c.idle, c.f }
 			end
-			if c.f and t - c.lastOrder > 0.5 then
+			if c.f and c.victim and t - c.lastOrder > 0.5 then
 				c.lastOrder = t
 				if c.f:GetAttackTarget() ~= c.victim then attackOrder(c.f, c.victim) end
 			end
