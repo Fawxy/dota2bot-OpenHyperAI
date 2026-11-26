@@ -49,6 +49,7 @@ local function world(o)
 		}
 	end
 	F.Jobs = function() return {} end
+	F.Running = function() return w.running end
 	F.Tick = function() end
 	F.Start = function(_, opts, body)
 		w.starts = w.starts + 1
@@ -636,7 +637,7 @@ do -- the deny: a support denies our own creep of any kind on the same go; the v
 	end
 	local function verbs(w)
 		local called = {}
-		-- The verbs return a task body (truthy), as the engine's do: the ternary in the row's body would otherwise fall through to lastHit.
+		-- The verbs return a task body (truthy), as the engine's do.
 		w.body({ lastHit = function(opts) called.lastHit = opts return true end, deny = function(opts) called.deny = opts return true end })
 		return called
 	end
@@ -683,6 +684,20 @@ do -- the deny: a support denies our own creep of any kind on the same go; the v
 	w.targets = { target(melee, { kind = "deny", walk = 2.0, due = 2.2, dies = 4 }), target(near, { walk = 0, due = 1.0, dies = 5 }) }
 	readThenClose(w, { melee, near })
 	check("deny: another target due where the support stands does not refuse the walk-in (no given)", w.starts == 1, tostring(w.starts))
+end
+
+do -- another task running for the hero (a pull or stack) is not replaced by an attempt
+	local function support(running)
+		local w = world({ pos = 5, deny = true, on = false })
+		w.running = running
+		local c = MakeCreep({ team = 2, x = 300, y = -5000, hp = 60, name = "npc_dota_creep_goodguys_melee" })
+		w.targets = { target(c, { kind = "deny", walk = 0.3, due = 0.5 }) }
+		return w, lines(readThenClose(w, { c }), "kind=creep")
+	end
+	local w, ch = support({ name = "pull" })
+	check("row: a support with a pull running starts no deny and notes row", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "row", table.concat(ch, " | "))
+	w, ch = support(nil)
+	check("control: the same support with no task running starts the deny", w.starts == 1 and field(ch[1], "go") == "1", tostring(w.starts))
 end
 
 finish()

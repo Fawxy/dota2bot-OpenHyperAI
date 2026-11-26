@@ -308,7 +308,7 @@ local function noTime(r, first)
     if first then
         return "notime_new"
     end
-    return (r.ok == "held" or r.ok == "acting") and "notime_" .. r.ok or "notime"
+    return (r.ok == "held" or r.ok == "acting" or r.ok == "row") and "notime_" .. r.ok or "notime"
 end
 --- The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, for a hero whose
 -- position does `creep` with Ours.LaneCreeps on. A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
@@ -587,7 +587,7 @@ function ____exports.OfferLead(bot)
 end
 --- The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
--- yet about to come due), `acting`, `held` (stock's retreat holds the hero: a later read may still go),
+-- yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
 -- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
 -- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
@@ -625,6 +625,7 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
+    local other = Tasks.Running(bot) ~= nil
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best
@@ -649,6 +650,8 @@ function ____exports.Consider(bot, cands)
             why = noTime(r, first)
         elseif busy then
             why = "acting"
+        elseif other then
+            why = "row"
         elseif held then
             why = "held"
         elseif lastCid[pid] == c.cid then
@@ -674,18 +677,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue80
+            local __continue81
             repeat
                 if c == best or ____exports.KindOf(bot, c.t.kind, c.ck) == nil then
-                    __continue80 = true
+                    __continue81 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue80 = true
+                __continue81 = true
             until true
-            if not __continue80 then
+            if not __continue81 then
                 break
             end
         end

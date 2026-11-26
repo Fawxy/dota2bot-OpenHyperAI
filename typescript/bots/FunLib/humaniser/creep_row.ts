@@ -1,26 +1,29 @@
 /**
- * The lane's creeps, first group (no-creep-unpaid proposal s5; doctrine D11; switch Ours.LaneCreeps), a hard row of the
- * decider: a core takes their ranged creep by a right-click, in range with a swing to spare. Which positions act is
- * `states/trip_table`'s `creep` row (pos 1 to 3; supports wait for the core-first margin, proposal s3).
+ * The lane's creeps (no-creep-unpaid proposal s5; doctrine D11), a hard row of the decider with two kinds and one hold, both merged on.
+ * `lh` (switch Ours.LaneCreeps): a core takes their ranged creep by a right-click, in range with a swing to spare; trip table row `creep`
+ * (pos 1 to 3). `dn` (switch Ours.CreepDeny, slice oha-creep-deny): a support denies our own lane creep of any kind; trip table row
+ * `deny` (pos 4 and 5). `KindOf` is the one predicate per kind; the cells, the go and the hold are shared, a deny skipping the `tower`
+ * and `given` cells.
  *
  * The cells were named with the user from step 2's table (25/11/2026): near (in range or a walk up to NearWalk, not
  * out-damaged) and far and free (a longer walk with no enemy hero's range on the stand spot). The decision is taken at the
  * creep offer read (`creep_offer.ts`, every 0.2 s a hero), on that read's facts: the read hands its candidates in through
  * SetRow, so a creep's handle is only called on a read that lists it. `Claim` is the cell rule on the facts; the row goes on
  * the claimed creep closest to due once it is about to come due (`Due`), whether or not stock is attacking it: the row's swing
- * landed as often as stock's (53 of 69 with a swing on, oha-creep-ranged), so taking stock's swing costs nothing.
+ * landed as often as stock's (53 of 69 with a swing on, oha-creep-ranged), so taking stock's swing costs nothing. It never starts
+ * while another task runs for the hero (a pull or stack: the runner would replace it), reason `row`.
  *
  * On time: it goes only while the creep comes due no sooner than the hero can be in the verb's range (`OnTime`, `Need`); else it
  * refuses and the hero stays stock's, and a later read may still go. Of 152 attempts on cearly1 the 62 that began with under 0.25 s
  * to spare landed 12 times, the 90 with more 46.
  *
- * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
- * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
+ * The verb is the engine's `lastHit` (`lh`) or `deny` (`dn`) on that creep (it walks into range, waits and swings when its hit kills);
+ * the attempt latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
  * Hard from the go: the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
- * per attempt.
+ * per attempt, with `k`.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, Unit } from "bots/ts_libs/dota";
@@ -160,7 +163,7 @@ function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<
 /** Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither. */
 function noTime(r: Seen, first: boolean): string {
     if (first) return "notime_new";
-    return r.ok === "held" || r.ok === "acting" ? "notime_" + r.ok : "notime";
+    return r.ok === "held" || r.ok === "acting" || r.ok === "row" ? "notime_" + r.ok : "notime";
 }
 
 /**
@@ -362,7 +365,7 @@ export function OfferLead(this: void, bot: Unit): number {
 /**
  * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
- * yet about to come due), `acting`, `held` (stock's retreat holds the hero: a later read may still go),
+ * yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
  * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
  * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
@@ -389,6 +392,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     }
     if (Tasks.Jobs() === undefined) return;
     const busy = acting(bot);
+    // Starting a task replaces the hero's running one (the engine's `replaced`): a pull or stack in progress is not ours to take. The
+    // runner's current task is asked, not the decider's Held: Held names the row that held the hero at its last round, while the runner's
+    // task is what Start would replace, whichever row or job started it.
+    const other = Tasks.Running(bot) !== undefined;
     // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
     // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
     const mode = bot.GetActiveMode();
@@ -402,6 +409,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (!dueNow(bot, c, r, lead, now)) why = "early";
         else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
+        else if (other) why = "row";
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(bot, c));

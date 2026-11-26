@@ -1348,7 +1348,7 @@ export const EVENTS = {
         /** `job=creep` start: seconds until the hero can order its swing from inside the verb's range (the walk to the engine's attackReach of the creep (attack range and both hulls, centre to centre), at its move speed) and the spare at go (`gd` less it; negative: the creep came due first). */
         gn: "num",
         sp: "num",
-        /** `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read. */
+        /** `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, `row` (another task runs for the hero), a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime_row`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read. */
         hw: "str",
         hm: "str",
         /** `job=creep` start: seconds from the first read where the creep was about to come due to the go. */
@@ -2908,7 +2908,7 @@ export const EVENTS = {
         want: "num",
         /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
         why: "str",
-        /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting` and `notime`, which `why` overwrites with an earlier one, can be counted. */
+        /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting`, `notime_row` and `notime`, which `why` overwrites with an earlier one, can be counted. */
         lw: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
