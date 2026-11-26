@@ -1202,7 +1202,8 @@ local function rowWorld(o)
 	GetTower = function(team, id) if team == RAD and id == dota.Tower.Bot1 then return tower end return nil end
 	require("bots/FunLib/humaniser/camps").ResetCache()
 	H.PullJob.ResetCache()
-	local sp = H.PullJob.SpawnerFor(bot)
+	H.CampRead.ResetCache()
+	local sp = H.CampRead.SpawnerFor(bot)
 	return H, bot, sp
 end
 local function rowFrame(H, bot)
@@ -1257,8 +1258,21 @@ do
 	check("weak: one stack line for 3:5x, wanted, started, the record's 3 from the rules", #c >= 1 and field(c[1], "go") == "1" and field(c[1], "want") == "1"
 		and field(c[1], "rn") == "3" and field(c[1], "src") == "own", c[1])
 	check("weak: the stack ran and stacked good_1", #st == 1 and field(st[1], "res") == "stacked" and tonumber(field(st[1], "camp")) == idxOf("good_1"), st[1])
-	local k = H.PullJob.Known(sp)
+	local k = H.CampRead.Known(sp)
 	check("weak: the record after the stack holds the pulled 3 and the spawned 3, seen", k.n == 6 and k.src == "seen", k.n .. " " .. k.src)
+end
+
+-- The row takes the camp's facts from the reads it is passed: a record at the bar in those reads is `strong` although the real
+-- record holds 3 (a row that imported the camp read would still want the stack).
+do
+	local H, bot, sp = rowWorld()
+	neutrals(sp.location, 3)
+	local strongReads = { camp = setmetatable({ Known = function(s) local k = H.CampRead.Known(s) return { n = 6, src = k.src, age = k.age, held = k.held } end }, { __index = H.CampRead }) }
+	local printed = capture(function()
+		while T < 4 * 60 do H.StackJob.ROW.wants(bot, strongReads) T = T + 0.1 end
+	end)
+	local c = choices(printed, "stack")
+	check("reads: the row's want follows the reads passed, not the module's record", #c == 1 and field(c[1], "why") == "strong" and field(c[1], "rn") == "6" and not H.StackJob.RowRunning(bot), c[1])
 end
 
 -- At the bar the row does not stack: one line, not wanted, `strong`, and no job.
@@ -1308,7 +1322,7 @@ end
 do
 	local printed, H, bot, sp = rowRun({ fogged = function() return true end })
 	local st = stackLines(printed)
-	local k = H.PullJob.Known(sp)
+	local k = H.CampRead.Known(sp)
 	check("unseen: stack read unseen, record 3 pulled + a set by the rules", field(st[1], "res") == "unseen" and k.n == 6 and k.src == "rules", tostring(st[1]) .. " " .. k.n)
 end
 

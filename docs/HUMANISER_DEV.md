@@ -126,10 +126,21 @@ A behaviour is a row (`Decider.Row` in `decider.ts`), and only the decider start
 task the hero has (the runner's `replaced`), so the order among rows is the decider's. A row is wired as:
 
 - `name`: logged as `held`, and the name of the row's task (the decider reads the runner's current task by it).
-- `wants(bot)`: asked every desire round in doctrine order until a row answers. Returns an `Offer` (`tgt`, the target;
+- `wants(bot, reads)`: asked every desire round in doctrine order until a row answers. Returns an `Offer` (`tgt`, the target;
   `by`, the game time it must go by; both optional) while its task runs or when it would start one now, else undefined.
   It checks its own `Ours.<Name>` switch, may keep its memo and write its own decision line (`ev=choice`), and keeps what
   it decided for `begin`; it starts, cancels and orders nothing.
+- Facts: a fact of the lane, the camp or the team that more than one row asks is a read, passed to `wants` as its second
+  argument (`Reads` and its one instance `READS` in `reads.ts`; the decider passes it in `turn`, `Offer` and `Ask`). Today
+  the one member is `reads.camp`, `camp_read.ts`: the lane camp's look (`CampStateOf`), the record of its strength
+  (`Known`, `NoteSighting`, `NoteStack`, `Hold`), `CampGate`, and who pulls it (`IsPuller`, `SpawnerFor`). A row takes
+  facts in `wants`, and in code `wants` calls, from `reads`, never by importing another row's file (ARCHITECTURE rule 3);
+  code outside `wants` (`begin`, the verb, shadows) may import the read module. A new shared read is a module like
+  `camp_read.ts` with one member added to `Reads`; the row that first needs it passes it down.
+- Frame memo: a read that scans the game (a `Get...` list) and is asked more than once in a frame keeps its answer for
+  that frame, keyed by `DotaTime()` and the camp (`CampStateOf`), and hands each asker its own copy, since askers write
+  their decision's fields onto it. Stored knowledge (the record, holds, stacks) is stored, not memoised, and nothing is
+  kept across frames. A read asked once a frame adds no memo.
 - `begin(bot)`: starts the task as `wants` decided it (the aid, the go line, the job line); false when the runner
   refused (it writes the `refused` line). Called only by the decider, which then passes the turn to the next row.
 - `step(bot)`: one frame of the verb from farm's Think while the row holds; true when finished. `soft` as before.

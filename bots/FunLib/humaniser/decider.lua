@@ -39,6 +39,8 @@ local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local ____reads = require(GetScriptDirectory().."/FunLib/humaniser/reads")
+local READS = ____reads.READS
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
@@ -113,7 +115,7 @@ local function begin(bot, s, row, offer)
 end
 --- One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused.
 local function turn(bot, s, row)
-    local offer = row.wants(bot)
+    local offer = row.wants(bot, READS)
     if offer == nil then
         return nil
     end
@@ -321,7 +323,7 @@ function ____exports.Offer(bot, row)
             i = i + 1
         end
     end
-    local offer = row.wants(bot)
+    local offer = row.wants(bot, READS)
     if offer == nil or cur == row.name or not begin(bot, s, row, offer) then
         return false
     end

@@ -790,7 +790,7 @@ local function rowBegin(bot)
 end
 --- The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
 -- row decides at the read (Consider), never at the decider's round.
-local function rowWants(bot)
+local function rowWants(bot, _reads)
     if not ____exports.On(bot) then
         return nil
     end

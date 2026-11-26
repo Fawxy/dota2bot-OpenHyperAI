@@ -19,6 +19,8 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import { READS } from "bots/FunLib/humaniser/reads";
+import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -34,9 +36,9 @@ export interface Row {
     /**
      * Cheap; asked every scoring round in doctrine order, until a row answers. An offer while the row's task runs (it holds) or
      * when it would start one now. It may keep the row's memo and write the row's own decision line; it starts, cancels and
-     * orders nothing. What it decided for a start is kept for `begin`.
+     * orders nothing. What it decided for a start is kept for `begin`. Facts of the lane, camp or team come from `reads` (reads.ts), not from another row's file.
      */
-    wants(this: void, bot: Unit): Offer | undefined;
+    wants(this: void, bot: Unit, reads: Reads): Offer | undefined;
     /** Starts the row's task as `wants` decided it; false when the runner refused. Called only by the decider. */
     begin(this: void, bot: Unit): boolean;
     /** One frame of the row's verb, from farm's Think while the row holds; true when the row is finished. */
@@ -163,7 +165,7 @@ function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
 
 /** One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused. */
 function turn(bot: Unit, s: HeroState, row: Row): Offer | undefined {
-    const offer = row.wants(bot);
+    const offer = row.wants(bot, READS);
     if (offer === undefined) return undefined;
     if (runningTask(bot) === row.name || begin(bot, s, row, offer)) return offer;
     return undefined;
@@ -301,7 +303,7 @@ export function Offer(bot: Unit, row: Row): boolean {
     const s = stateOf(bot);
     const cur = runningTask(bot);
     for (let i = 0; i < at; i++) if (cur === ROWS[i].name) return false;
-    const offer = row.wants(bot);
+    const offer = row.wants(bot, READS);
     if (offer === undefined || cur === row.name || !begin(bot, s, row, offer)) return false;
     pcall(() => note(bot, s, row, isSoft(row, bot)));
     return true;
