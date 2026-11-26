@@ -48,6 +48,9 @@
 -- Round 3d:
 --   reshow4 up the ramp at 300, 200 or 150; or a landed hit on a chaser halfway up, or on the nearest creep once unseen
 --   down    the draw from the high ground down to ours: the chase, and the hand-over to our ranged creep below
+-- Round 3e:
+--   clash   before 5:00, a real Dire wave stopped by a bait at a spot within 1,500 of their T1, ours, both or neither,
+--           and drawn there (kills the real Radiant lane creeps within 2,500 of the spot while it waits)
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
 -- Round 3 also kills real lane creeps within 1800 of the top T1 sites (-6336,600) and (-6300,5300), and moves real Dire
 -- wave creeps to the main site (release, restrict).
@@ -2205,6 +2208,86 @@ local function lanesTrial(k)
 	}
 end
 S.lanes = { lanesTrial(1), lanesTrial(2), lanesTrial(3) }
+
+-- clash (round 3e): before 5:00, a real Dire wave made to stop where we choose. A passive Radiant bait creep at the spot,
+-- the real Radiant lane creeps within 2,500 of it killed so the Dire wave walks on to it; once a real Dire creep attacks the
+-- bait, our hero is made 300 from it toward our fountain and draws (target 300 beyond, a hold). Spots by their distance to
+-- the two tier ones: within 1,500 of theirs only, of ours only, of both, of neither (top lane).
+local CLASH = {
+	dT1 = V(0, 0), -- 1187 from the Dire mid T1, 1742 from ours
+	rT1 = V(-300, -300), -- 1318 from our mid T1, 1611 from theirs
+	both = V(-200, -200), -- 1459 and 1469
+	none = V(-6300, 4600), -- 1765 from the Dire top T1, 2744 from ours
+}
+local function t1dists(p)
+	local ds = {}
+	for _, n in ipairs(T1S) do
+		for _, tw in ipairs(Entities:FindAllByClassname("npc_dota_tower")) do
+			if tw:GetUnitName() == n and tw:IsAlive() then table.insert(ds, n:gsub("npc_dota_", ""):gsub("guys_tower1", "") .. "=" .. f0((tw:GetAbsOrigin() - p):Length2D())) end
+		end
+	end
+	return table.concat(ds, " ")
+end
+local function clashTrial(name, rep)
+	local at = CLASH[name]
+	return {
+		tag = string.format("clash_%s_%d", name, rep),
+		timeout = 50,
+		setup = function(c)
+			c.keep = true
+			c.cx, c.cy = at.x, at.y
+			c.b = bait(at, "bait")
+			c.step = 0
+			c.lastKill = -9
+		end,
+		tick = function(c, t)
+			if t - c.lastKill > 0.5 then
+				c.lastKill = t
+				for _, u in ipairs(FindUnitsInRadius(R, at, nil, 2500, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
+					if label[u:entindex()] == nil and u:GetClassname() == "npc_dota_creep_lane" and u:IsAlive() then u:ForceKill(false) end
+				end
+			end
+			if c.step == 0 then
+				for _, u in ipairs(FindUnitsInRadius(D, at, nil, 800, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
+					if u:IsAlive() and u:GetClassname() == "npc_dota_creep_lane" and u:GetAttackTarget() == c.b then
+						c.step = 1
+						c.cr = u
+						c.k = u:entindex()
+						label[c.k] = "real"
+						c.crs = { u }
+						local p = u:GetAbsOrigin()
+						say(string.format("%s fighting %s at %s,%s rel=%.2f clock=%.0f %s", c.tag, u:GetUnitName(), f0(p.x), f0(p.y), t, now(), t1dists(p)))
+						local dir = (V(-7000, -6500) - p):Normalized()
+						c.h = hero("npc_dota_hero_axe", R, p + dir * 300, "hero", true)
+						c.tg = hero("npc_dota_hero_sniper", D, p + dir * 600, "dtgt")
+						c.t1 = t
+						break
+					end
+				end
+			elseif c.step == 1 and t - c.t1 > 0.3 then
+				c.step = 2
+				drawOrder(c, t)
+			elseif c.step == 2 then
+				if t - c.tord > 0.1 and not c.held then
+					c.held = true
+					holdOrder(c.h)
+				end
+				local gone = c.cr:IsNull() or not c.cr:IsAlive()
+				if not gone then drawCheck(c, t) end
+				if gone or t - c.tord > 1.5 then
+					say(string.format("%s result drawn=%d alive=%s on=%s clock=%.0f", c.tag, c.drawn[c.k] and 1 or 0, tostring(not gone),
+						gone and "-" or L(c.cr:GetAttackTarget()), now()))
+					if not gone then label[c.k] = nil end
+					return true
+				end
+			end
+		end,
+	}
+end
+S.clash = {}
+for rep = 1, 2 do
+	for _, name in ipairs({ "dT1", "rT1", "both", "none" }) do table.insert(S.clash, clashTrial(name, rep)) end
+end
 
 -- restrict: before 5:00 a new wave is said to be undrawable unless within 1500 of a tier-one tower (whose is open). A real
 -- (or made) Dire melee creep fighting the bait, drawn from 300: far from every tower, 1256 from the Radiant top T1, 1183
