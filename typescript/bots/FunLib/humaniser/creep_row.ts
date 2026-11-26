@@ -26,7 +26,7 @@
  * per attempt, with `k`.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, UnitType } from "bots/ts_libs/dota";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import type { Reads } from "bots/FunLib/humaniser/reads";
@@ -36,6 +36,7 @@ import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as GameRules from "bots/FunLib/humaniser/game_rules";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 
@@ -243,6 +244,28 @@ function acting(bot: Unit): boolean {
     return bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility();
 }
 
+/**
+ * Where the enemy heroes stand, read once per Consider call and only when a deny over a row below asks (`noxp`): any the API
+ * returns alive with a location (the project's rule: any state the API returns), illusions left out.
+ */
+function enemySpots(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
+        if (!e.IsAlive() || e.IsIllusion()) continue;
+        const at = e.GetLocation();
+        if (at !== undefined && at !== null) out.push({ x: at.x, y: at.y });
+    }
+    return out;
+}
+
+/** An enemy hero stands within the experience range (GameRules XP_RANGE) of the creep: its deny halves what that hero gets. */
+function xpAt(creep: Unit, spots: { x: number; y: number }[]): boolean {
+    const at = creep.GetLocation();
+    if (at === undefined || at === null) return false;
+    for (const e of spots) if ((e.x - at.x) * (e.x - at.x) + (e.y - at.y) * (e.y - at.y) <= GameRules.XP_RANGE * GameRules.XP_RANGE) return true;
+    return false;
+}
+
 /** A teammate's hit kills the creep first in the lane read (the attempt drops before its swing then). */
 function mateTakes(bot: Unit, creep: unknown): boolean {
     const row = LaneHits.Of(bot.GetTeam(), bot.GetAssignedLane(), creep as Unit);
@@ -378,7 +401,8 @@ export function OfferLead(this: void, bot: Unit): number {
 /**
  * The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
  * the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
- * yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
+ * yet about to come due), `acting`, `row` (another task runs for the hero: a row above this one, a pull or stack, or an older chooser job), `noxp` (a deny over a
+ * row below this one, the stay, with no enemy hero within the experience range of the creep: worth nothing, so the stay keeps the hero), `held` (stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
  * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
  * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
@@ -411,6 +435,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     // task is asked, not the decider's Held: Held names the row that held the hero at its last round, while the runner's task is what
     // Start would replace, whichever row or job started it.
     const other = Tasks.Running(bot) !== undefined && !Decider.Yields(bot, ROW);
+    // Over a row below (the stay) a deny takes the hero only when it is worth something: a deny gives no gold and only halves the
+    // experience of enemy heroes within the experience range of the creep, so with none there it must not stop a row that earns.
+    const below = Decider.Yields(bot, ROW);
+    let spots: { x: number; y: number }[] | undefined;
     // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
     // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
     const mode = bot.GetActiveMode();
@@ -425,6 +453,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
         else if (other) why = "row";
+        else if (below && KindOf(bot, c.t.kind, c.ck) === "dn" && !xpAt(c.creep, (spots = spots ?? enemySpots()))) why = "noxp";
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else why = Claim(factsOf(bot, c));

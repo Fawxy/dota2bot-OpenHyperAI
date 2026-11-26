@@ -205,9 +205,11 @@ do -- the backstop: 35 s from the fight's first stay, logged as `timeout`
 	check("timeout: ends why=timeout at the backstop", #e == 1 and field(e[1], "why") == "timeout" and tonumber(field(e[1], "ss")) >= 34, table.concat(e, " | "))
 end
 
-do -- the creep row takes the hero for a deny over a running stay (over=stay); once its attempt ends the stay is begun again
+do -- the creep row takes the hero for a deny worth experience over a running stay (over=stay); once its attempt ends the stay is begun again
 	local w = world({ deny = true })
 	local H = w.H
+	-- An enemy hero within the experience range of our creep: the deny is worth something, so it takes the hero (else `noxp`).
+	MakeUnit({ pid = 8, team = 3, loc = Vector(-1600, -4800), hp = 600, maxhp = 600 })
 	-- The creep offer's candidates: the engine's laneTargets offers our first creep as a deny, in reach and about to come due.
 	local V = H.Tasks.ForOurs.Verbs()
 	local offered = {}

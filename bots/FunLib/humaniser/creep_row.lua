@@ -185,6 +185,7 @@ local ____exports = {}
 local enterPhase, onPhase, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local UnitType = ____dota.UnitType
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
@@ -194,6 +195,7 @@ local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local GameRules = require(GetScriptDirectory().."/FunLib/humaniser/game_rules")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
 function enterPhase(a, p, t)
@@ -352,6 +354,44 @@ end
 --- OHA's own action holds the hero (the deny and pull rows' check: a queued order, a cast or channel).
 local function acting(bot)
     return bot:NumQueuedActions() > 0 or bot:IsChanneling() or bot:IsUsingAbility() or bot:IsCastingAbility()
+end
+--- Where the enemy heroes stand, read once per Consider call and only when a deny over a row below asks (`noxp`): any the API
+-- returns alive with a location (the project's rule: any state the API returns), illusions left out.
+local function enemySpots()
+    local out = {}
+    for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
+        do
+            local __continue38
+            repeat
+                if not e:IsAlive() or e:IsIllusion() then
+                    __continue38 = true
+                    break
+                end
+                local at = e:GetLocation()
+                if at ~= nil and at ~= nil then
+                    out[#out + 1] = {x = at.x, y = at.y}
+                end
+                __continue38 = true
+            until true
+            if not __continue38 then
+                break
+            end
+        end
+    end
+    return out
+end
+--- An enemy hero stands within the experience range (GameRules XP_RANGE) of the creep: its deny halves what that hero gets.
+local function xpAt(creep, spots)
+    local at = creep:GetLocation()
+    if at == nil or at == nil then
+        return false
+    end
+    for ____, e in ipairs(spots) do
+        if (e.x - at.x) * (e.x - at.x) + (e.y - at.y) * (e.y - at.y) <= GameRules.XP_RANGE * GameRules.XP_RANGE then
+            return true
+        end
+    end
+    return false
 end
 --- A teammate's hit kills the creep first in the lane read (the attempt drops before its swing then).
 local function mateTakes(bot, creep)
@@ -588,7 +628,8 @@ function ____exports.OfferLead(bot)
 end
 --- The read's hook (CreepOffer.SetRow), at each read of a hero: notes why each candidate is not taken and starts an attempt on
 -- the claimed creep closest to due. Reasons asked before the facts are read: `busy` (an attempt runs), `kind`, `early` (not
--- yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
+-- yet about to come due), `acting`, `row` (another task runs for the hero: a row above this one, a pull or stack, or an older chooser job), `noxp` (a deny over a
+-- row below this one, the stay, with no enemy hero within the experience range of the creep: worth nothing, so the stay keeps the hero), `held` (stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
 -- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
 -- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
@@ -628,6 +669,8 @@ function ____exports.Consider(bot, cands)
     end
     local busy = acting(bot)
     local other = Tasks.Running(bot) ~= nil and not Decider.Yields(bot, ____exports.ROW)
+    local below = Decider.Yields(bot, ____exports.ROW)
+    local spots
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best
@@ -654,12 +697,23 @@ function ____exports.Consider(bot, cands)
             why = "acting"
         elseif other then
             why = "row"
-        elseif held then
-            why = "held"
-        elseif lastCid[pid] == c.cid then
-            why = "tried"
         else
-            why = ____exports.Claim(factsOf(bot, c))
+            local ____temp_25 = below and ____exports.KindOf(bot, c.t.kind, c.ck) == "dn"
+            if ____temp_25 then
+                local ____xpAt_24 = xpAt
+                local ____c_creep_23 = c.creep
+                spots = spots or enemySpots()
+                ____temp_25 = not ____xpAt_24(____c_creep_23, spots)
+            end
+            if ____temp_25 then
+                why = "noxp"
+            elseif held then
+                why = "held"
+            elseif lastCid[pid] == c.cid then
+                why = "tried"
+            else
+                why = ____exports.Claim(factsOf(bot, c))
+            end
         end
         if why ~= nil and why ~= "kind" and why ~= "early" then
             r.why = why
@@ -679,18 +733,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue81
+            local __continue92
             repeat
                 if c == best or ____exports.KindOf(bot, c.t.kind, c.ck) == nil then
-                    __continue81 = true
+                    __continue92 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue81 = true
+                __continue92 = true
             until true
-            if not __continue81 then
+            if not __continue92 then
                 break
             end
         end

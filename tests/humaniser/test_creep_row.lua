@@ -714,14 +714,30 @@ do -- another task running for the hero (a pull or stack) is not replaced by an 
 	check("row: a stack running starts no deny (row)", w.starts == 0 and field(ch[1], "why") == "row", table.concat(ch, " | "))
 	w, ch = support({ name = "rune" })
 	check("row: a chooser job running starts no deny (row)", w.starts == 0 and field(ch[1], "why") == "row", table.concat(ch, " | "))
-	local out
-	w = world({ pos = 5, deny = true, on = false })
-	w.running = { name = "stay" }
-	local c = MakeCreep({ team = 2, x = 300, y = -5000, hp = 60, name = "npc_dota_creep_goodguys_melee" })
-	w.targets = { target(c, { kind = "deny", walk = 0.3, due = 0.5 }) }
-	out = readThenClose(w, { c })
-	local dl = lines(out, "beg=creep")
-	check("over the stay: the deny starts, the decider's line names the stay", w.starts == 1 and #dl == 1 and field(dl[1], "over") == "stay", table.concat(out, " | "))
+	-- Over the stay a deny is worth something only with an enemy hero within the experience range (1,500) of the creep (`noxp`);
+	-- with no task running the same deny goes whether or not one is there.
+	local function overStay(running, enemyAt)
+		local v = world({ pos = 5, deny = true, on = false })
+		v.running = running
+		if enemyAt ~= nil then MakeUnit({ pid = 7, team = 3, loc = enemyAt, hp = 600, maxhp = 600 }) end
+		local cr = MakeCreep({ team = 2, x = 300, y = -5000, hp = 60, name = "npc_dota_creep_goodguys_melee" })
+		v.targets = { target(cr, { kind = "deny", walk = 0.3, due = 0.5 }) }
+		return v, readThenClose(v, { cr })
+	end
+	local stay = { name = "stay" }
+	local o
+	w, o = overStay(stay, nil)
+	local cl = lines(o, "kind=creep")
+	check("over the stay, no enemy hero in range: refused noxp, the stay's task still runs", w.starts == 0 and field(cl[1], "why") == "noxp" and w.running == stay, table.concat(o, " | "))
+	w, o = overStay(stay, Vector(300, -3000))
+	check("over the stay, the nearest enemy hero 2,000 from the creep: refused noxp", w.starts == 0 and field(lines(o, "kind=creep")[1], "why") == "noxp", table.concat(o, " | "))
+	w, o = overStay(stay, Vector(300, -3800))
+	local dl = lines(o, "beg=creep")
+	check("over the stay, an enemy hero 1,200 from the creep: the deny starts, the decider's line names the stay", w.starts == 1 and #dl == 1 and field(dl[1], "over") == "stay", table.concat(o, " | "))
+	w, o = overStay(nil, nil)
+	local a = w.starts
+	w, o = overStay(nil, Vector(300, -3800))
+	check("no task running: the deny starts with or without an enemy hero in range", a == 1 and w.starts == 1, tostring(a) .. " " .. tostring(w.starts))
 end
 
 do -- the read's go is offered to the decider, which begins the row in the same call: its line at the read names the creep
