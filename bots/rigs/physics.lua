@@ -16,7 +16,7 @@ local function say(s) print("[RIG] phys " .. s) end
 local function now() return GameRules:GetDOTATime(false, false) end
 local R, D = DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS
 local Y = -2050
-local X0 = -5900
+local X0 = -5700
 
 local label, made = {}, {}
 local function L(u)
@@ -94,7 +94,7 @@ end
 local function intruders(pos)
 	local n = 0
 	for _, h in ipairs(HeroList:GetAllHeroes()) do
-		if h:IsAlive() and not h:IsIllusion() and (h:GetAbsOrigin() - pos):Length2D() < 1500 then n = n + 1 end
+		if label[h:entindex()] == nil and h:IsAlive() and not h:IsIllusion() and (h:GetAbsOrigin() - pos):Length2D() < 1500 then n = n + 1 end
 	end
 	return n
 end
@@ -189,7 +189,8 @@ local GETTERS = { "GetHullRadius", "GetPaddedCollisionRadius", "GetCollisionPadd
 local function stats(u)
 	local out = {}
 	for _, g in ipairs(GETTERS) do
-		local ok, v = pcall(function() return u[g](u, false) end)
+		local ok, v = pcall(function() return u[g](u) end)
+		if not ok or type(v) ~= "number" then ok, v = pcall(function() return u[g](u, false) end) end
 		if ok and type(v) == "number" then table.insert(out, g:gsub("^Get", ""):gsub("^Script_Get", "") .. "=" .. string.format("%.3f", v)) end
 	end
 	local ok, mx = pcall(function() return u:GetBoundingMaxs() end)
@@ -251,13 +252,20 @@ S.stats = {
 					local p = u:GetAbsOrigin()
 					local y0 = yaw(u)
 					moveOrder(u, V(p.x + 1000, p.y))
-					c.turn[u] = { y0 = y0, goal = y0 + 180, t0 = t, done = nil, p0 = nil }
+					c.turn[u] = { y0 = y0, goal = y0 + 180, t0 = t, done = nil, p0 = nil, pl = p }
 				end
 			elseif c.phase == "turn" then
 				local all = true
 				for u, s in pairs(c.turn) do
 					if not u:IsNull() then
 						if s.done == nil then
+							local pp = u:GetAbsOrigin()
+							if s.mv == nil and (pp - s.pl):Length2D() > 1 then
+								s.mv = t - s.t0
+								s.mvyaw = angDiff(yaw(u), s.goal)
+							end
+							s.pl = pp
+							if s.t10 == nil and math.abs(angDiff(yaw(u), s.goal)) < 10 then s.t10 = t - s.t0 end
 							if math.abs(angDiff(yaw(u), s.goal)) < 3 then
 								s.done = t - s.t0
 								s.p0 = u:GetAbsOrigin()
@@ -268,6 +276,7 @@ S.stats = {
 							all = false
 						elseif not s.reported then
 							s.reported = true
+							say(string.format("turn %s first_move=%s yaw_off_then=%s within10=%s", L(u), tostring(s.mv), tostring(s.mvyaw), tostring(s.t10)))
 							say(string.format("turn %s deg=180 sec=%.3f deg_per_s=%.0f walk=%.0f in=%.2f speed=%.1f", L(u), s.done, 180 / math.max(0.001, s.done),
 								(u:GetAbsOrigin() - s.p0):Length2D(), t - s.tw, (u:GetAbsOrigin() - s.p0):Length2D() / (t - s.tw)))
 						end
@@ -285,7 +294,7 @@ local function acqTrial(kind, dir, n)
 		tag = "acq_" .. kind .. "_" .. n,
 		timeout = 14,
 		setup = function(c)
-			c.cx, c.cy = X0 + 600, Y
+			c.cx, c.cy = X0 + 700, Y
 			c.cr = creep(kind, D, V(c.cx, c.cy), kind)
 			local a = math.rad(dir)
 			c.dir = Vector(math.cos(a), math.sin(a), 0)
@@ -313,7 +322,7 @@ local function acqTrial(kind, dir, n)
 end
 S.acq = {}
 for _, k in ipairs({ "melee", "ranged", "siege" }) do
-	for n, dir in ipairs({ 0, -90, 200 }) do table.insert(S.acq, acqTrial(k, dir, n)) end
+	for n, dir in ipairs({ 0, 180, 0, 180 }) do table.insert(S.acq, acqTrial(k, dir, n)) end
 end
 -- A walking hero, not placed: the same read with a move order (melee only).
 for n = 1, 2 do
@@ -719,4 +728,15 @@ Convars:RegisterCommand("rig_phys", function(_, ...)
 	if not ok then say("error " .. tostring(err)) end
 end, "rig: run one physics probe scenario", FCVAR_CHEAT)
 
+-- The hero models a plain game has not loaded (an unloaded model asserts and writes a minidump, probe 1).
+for _, n in ipairs({ "npc_dota_hero_axe", "npc_dota_hero_sniper" }) do
+	pcall(function() PrecacheUnitByNameAsync(n, function() say("precached " .. n) end) end)
+end
+-- The site's trees (east of the creep, probe 1: they hid the hero until 250): cleared now, regrow in about 5 min.
+local function clearTrees()
+	pcall(function() GridNav:DestroyTreesAroundPoint(V(-5100, Y), 1300, true) end)
+	say("trees cleared")
+end
+clearTrees()
+S.trees = { { tag = "trees", timeout = 1, setup = function() clearTrees() end, tick = function() return true end } }
 say("registered")
