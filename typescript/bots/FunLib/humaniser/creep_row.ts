@@ -2,7 +2,9 @@
  * The lane's creeps (no-creep-unpaid proposal s5; doctrine D11), a hard row of the decider with two kinds and one hold, both merged on.
  * `lh` (switch Ours.LaneCreeps): a core takes their ranged creep by a right-click, in range with a swing to spare, and with Ours.TowerCreeps
  * (slice oha-tower-creeps) their creep of any kind inside our tower's range too; trip table row `creep`
- * (pos 1 to 3). `dn` (switch Ours.CreepDeny, slice oha-creep-deny): a support denies our own lane creep of any kind; trip table row
+ * (pos 1 to 3; a support too with Ours.SupportCreeps, slice oha-support-creeps, their ranged creep only: its cell is above the cores', so the
+ * creep must be free for it, `FreeFor`, refusals `claimed`, `wait`, `human`, and its attempt yields, `yd=1` on the end line, to a
+ * lower-cell hero that holds a claim on the creep before the support's swing is ordered). `dn` (switch Ours.CreepDeny, slice oha-creep-deny): a support denies our own lane creep of any kind; trip table row
  * `deny` (pos 4 and 5). `KindOf` is the one predicate per kind; the cells, the go and the hold are shared, a deny skipping the `tower`
  * and `given` cells, and a last hit skipping `tower` with Ours.TowerCreeps.
  *
@@ -24,7 +26,7 @@
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
  * The claim (`creep_claim.ts`, `Reads.creep`): the attempt takes it in `begin` and the task's end releases it (`finish`), whatever the end;
- * the row's per-creep answers (`Seen`) live in that read. Nothing reads the claim to decide yet.
+ * the row's per-creep answers (`Seen`) live in that read. The free rule and the yield read it (a support's last hit only).
  *
  * The leftover rule (Ours.TowerCreeps; `Verdict`): a creep one of our towers is attacking dies to a tower shot, so the hero's hit counts only if the
  * creep has at most one hit of HP (the hero's lowest roll) just before the killing shot. When it has up to two (or three) hits, the row goes at once,
@@ -91,13 +93,15 @@ export interface Facts {
     otw: boolean;
     g2: number;
     kb: string;
+    /** The hero's `creep` cell is above the lowest (a support): Ours.TowerCreeps does not lift its `tower` refusal. Absent reads as false. */
+    out?: boolean;
 }
 
 /**
  * The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (neither kind this hero acts on: `KindOf`),
  * `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
  * with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
- * an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on), `etower`
+ * an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on and the hero is not `out`), `etower`
  * (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
  * `mate` (a teammate's hit kills it first). A deny skips `tower` (our tower is no hazard to our own creep) and `given` (a support's
  * other targets are the ranking, a later slice's).
@@ -110,7 +114,7 @@ export function Claim(this: void, f: Facts): string | undefined {
     // the hero is there first: 8 of 11 landed, none denied.
     if (f.walk > 0 && f.erc > 0) return "race";
     if (f.walk > SETTINGS.NearWalk && f.eh > 0) return "covered";
-    if (f.otw && f.k === "lh" && !Ours.On("TowerCreeps")) return "tower";
+    if (f.otw && f.k === "lh" && (f.out === true || !Ours.On("TowerCreeps"))) return "tower";
     if (f.ptw) return "etower";
     // In range there is no walk, so nothing is given up: which creep to swing at is the row's pick (Consider).
     if (f.walk > 0 && f.g2 > 0 && f.k === "lh") return "given";
@@ -247,22 +251,33 @@ function noTime(r: Seen, first: boolean): string {
 
 /**
  * The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, or with
- * Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on.
+ * Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on;
+ * a hero whose cell is above the lowest (a support, with Ours.SupportCreeps) takes their ranged creep only, the case its widening was audited on.
  * A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
  */
 export function KindOf(this: void, bot: Unit, kind: string, ck: string, otw: boolean): "lh" | "dn" | undefined {
     const pos = LaneConfig.PositionOf(bot);
-    if (kind === "lasthit" && (ck === "r" || (otw && Ours.On("TowerCreeps"))) && TripTable.Does("creep", pos) && Ours.On("LaneCreeps")) return "lh";
+    if (kind === "lasthit" && lastHits(pos) && (ck === "r" || (otw && underTower(pos)))) return "lh";
     if (kind === "deny" && TripTable.Does("deny", pos) && Ours.On("CreepDeny")) return "dn";
     return undefined;
 }
 
+/** The position's `creep` cell is one it acts on: with Ours.LaneCreeps, and a cell above the lowest also needs Ours.SupportCreeps. */
+function lastHits(pos: number | undefined): boolean {
+    return TripTable.Does("creep", pos) && Ours.On("LaneCreeps") && (!TripTable.Outranked("creep", pos) || Ours.On("SupportCreeps"));
+}
+
+/** The under-tower hit and its leftover rule (Ours.TowerCreeps) are a lowest-cell hero's (a core's): a support's widening was audited without them. */
+function underTower(pos: number | undefined): boolean {
+    return Ours.On("TowerCreeps") && !TripTable.Outranked("creep", pos);
+}
+
 /**
  * `KindOf` for a candidate. Its `otw` is read from the read's fresh facts (cached for the read), and only for a last hit of a non-ranged
- * creep with Ours.TowerCreeps on, the one case the answer depends on it: the facts' snapshot costs more than the rest of the check.
+ * creep by a hero the under-tower hit is for (`underTower`), the one case the answer depends on it: the facts' snapshot costs more than the rest of the check.
  */
 function kindOf(bot: Unit, c: CreepOffer.Candidate): "lh" | "dn" | undefined {
-    const needsOtw = c.t.kind === "lasthit" && c.ck !== "r" && Ours.On("TowerCreeps");
+    const needsOtw = c.t.kind === "lasthit" && c.ck !== "r" && underTower(LaneConfig.PositionOf(bot));
     return KindOf(bot, c.t.kind, c.ck, needsOtw && c.facts().otw);
 }
 
@@ -297,6 +312,8 @@ interface Attempt {
     tks: number;
     /** `lh` a last hit, `dn` a deny: the job lines' `k`. */
     k: "lh" | "dn";
+    /** The attempt's interrupt was a yield to a lower-cell hero's claim (`yieldsTo`), not a mate's hit: the end line's `yd`. */
+    yielded?: boolean;
     /** The tower that was attacking the creep at the go (the leftover rule applies to this attempt), and the pre-hits ordered so far (the end line's `ph`). */
     tower?: Unit;
     ph: number;
@@ -328,7 +345,7 @@ export function ResetCache(): void {
 
 export function On(bot: Unit): boolean {
     const pos = LaneConfig.PositionOf(bot);
-    const lh = TripTable.Does("creep", pos) && Ours.On("LaneCreeps");
+    const lh = lastHits(pos);
     const dn = TripTable.Does("deny", pos) && Ours.On("CreepDeny");
     return (lh || dn) && bot.IsBot() && !Drill.Held(bot);
 }
@@ -346,6 +363,46 @@ function mateTakes(bot: Unit, creep: unknown): boolean {
     if (k === undefined || (k.by !== "hero" && k.by !== "self")) return false;
     const a = k.attacker as unknown as Unit;
     return a !== bot && a.GetTeam() === bot.GetTeam();
+}
+
+export type Free = "claimed" | "wait" | "human";
+
+/**
+ * Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
+ * with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+ * then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
+ * creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
+ * `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
+ * gives `tried`, so a stale `why` from before a go is overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
+ */
+export function FreeFor(this: void, bot: Unit, cid: number, now: number): Free | undefined {
+    const pid = bot.GetPlayerID();
+    const pos = LaneConfig.PositionOf(bot);
+    const mine = TripTable.RankOf("creep", pos);
+    if (mine === undefined || !TripTable.Outranked("creep", pos)) return undefined;
+    for (const c of CreepClaim.ClaimsOn(cid)) if (c.pid !== pid && c.k === "lh" && c.rank < mine) return "claimed";
+    const lane = bot.GetAssignedLane();
+    let wait = false;
+    for (let i = 1; i <= 5; i++) {
+        const m = GetTeamMember(i);
+        if (m === null || m === undefined || m.GetPlayerID() === pid) continue;
+        const cell = TripTable.RankOf("creep", LaneConfig.PositionOf(m));
+        if (cell === undefined || cell >= mine) continue;
+        if (!m.IsBot()) {
+            if (m.GetAssignedLane() === lane) return "human";
+            continue;
+        }
+        const a = CreepClaim.AnswerOf(m.GetPlayerID(), cid);
+        if (a !== undefined && a.why === undefined && now - a.at <= CreepClaim.ANSWER_FRESH) wait = true;
+    }
+    return wait ? "wait" : undefined;
+}
+
+/** A lower-cell hero holds a claim on the creep this hero holds and this hero's swing is not yet ordered (a core's cell is never above a support's). */
+function yieldsTo(pid: number, cid: number): boolean {
+    const mine = CreepClaim.ClaimsOn(cid).find((c) => c.pid === pid);
+    if (mine === undefined || mine.k !== "lh" || mine.phase === "swing") return false;
+    return CreepClaim.ClaimsOn(cid).some((c) => c.pid !== pid && c.k === "lh" && c.rank < mine.rank);
 }
 
 function r2(x: number): number {
@@ -402,7 +459,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
  * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
  * mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
- * rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `ph` the pre-hits ordered (an attempt the leftover rule covers; absent otherwise), `hp0`/`hp1` the hero's HP at the
+ * rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `yd` 1 when the end was a yield (`why=interrupted`), `ph` the pre-hits ordered (an attempt the leftover rule covers; absent otherwise), `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
  */
 function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined, claimed: boolean): void {
@@ -420,6 +477,7 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["host", HOST],
         ["cut", cut],
         ["cl", claimed ? 1 : 0],
+        ["yd", a?.yielded === true ? 1 : undefined],
         ["cid", a?.cid],
         ["ph", a?.tower === undefined ? undefined : a.ph],
         ["tl", a?.tl],
@@ -464,7 +522,7 @@ function finish(bot: Unit, r: Lib.Result): void {
 
 function factsOf(bot: Unit, c: CreepOffer.Candidate): Facts {
     const s = c.facts();
-    return { k: kindOf(bot, c), walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
+    return { k: kindOf(bot, c), walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb, out: TripTable.Outranked("creep", LaneConfig.PositionOf(bot)) };
 }
 
 /**
@@ -520,7 +578,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const mode = bot.GetActiveMode();
     const held = Decider.LetGo(bot) || mode === BotMode.Retreat;
     let best: CreepOffer.Candidate | undefined;
-    const tower = Ours.On("TowerCreeps");
+    const tower = underTower(LaneConfig.PositionOf(bot));
     let towers: Unit[] | undefined;
     const reads: Record<number, TowerRead | undefined> = {};
     for (const c of cands) {
@@ -550,7 +608,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (other) why = "row";
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
-        else why = Claim(factsOf(bot, c));
+        else {
+            why = k === "lh" ? FreeFor(bot, c.cid, now) : undefined;
+            if (why === undefined) why = Claim(factsOf(bot, c));
+        }
         if (why !== undefined && why !== "kind" && why !== "early") {
             r.why = why;
             if (string.sub(why, 1, 6) !== "notime") r.ok = why;
@@ -642,7 +703,7 @@ function rowBegin(bot: Unit): boolean {
     const t = best.t;
     const creep = t.creep;
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
-        const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
+        const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || yieldNow(pid, best.cid) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
         if (tr === undefined) return ctx.lastHit(opts);
         return towerAttempt(ctx, bot, pid, creep as unknown as Unit, opts);
@@ -675,6 +736,14 @@ function rowBegin(bot: Unit): boolean {
     const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k, due: pd.now + t.due });
     const sa = bot.GetAttackTarget();
     startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length, tr });
+    return true;
+}
+
+/** The attempt's interrupt for a yield: flags the attempt so its end line says so. */
+function yieldNow(pid: number, cid: number): boolean {
+    if (!yieldsTo(pid, cid)) return false;
+    const a = running[pid];
+    if (a !== undefined) a.yielded = true;
     return true;
 }
 

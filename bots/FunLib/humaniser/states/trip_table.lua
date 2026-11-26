@@ -46,8 +46,8 @@ ____exports.TRIPS = {
             60,
             60,
             60,
-            nil,
-            nil
+            70,
+            70
         )
     },
     {
@@ -82,6 +82,27 @@ function ____exports.RankOf(kind, pos)
 end
 function ____exports.Does(kind, pos)
     return ____exports.RankOf(kind, pos) ~= nil
+end
+--- Some position's cell for the trip is lower than this position's: the hero yields that trip to it.
+function ____exports.Outranked(kind, pos)
+    local mine = ____exports.RankOf(kind, pos)
+    local row = rowOf(kind)
+    if mine == nil or row == nil then
+        return false
+    end
+    for ____, p in ipairs({
+        1,
+        2,
+        3,
+        4,
+        5
+    }) do
+        local r = row.rank[p]
+        if r ~= nil and r < mine then
+            return true
+        end
+    end
+    return false
 end
 --- The trips a position does, best first.
 function ____exports.Order(pos)
