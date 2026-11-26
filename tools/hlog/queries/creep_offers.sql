@@ -12,6 +12,8 @@
 -- Columns: file, game, label, lineup, arm, team, pid, hero, pos, t (the line's, the creep's leaving the lists), lane, slot, want, cid, ck, who,
 -- wo, wl, walk, due, dies, slk, hpp, mode, crhp, g2, g2r, pc, pd, ptw, eh, exs, en, kb, kt, md, ed, ein, atk, csrc (the line's own src), go, why,
 -- otw, gat, gw, erc, ert, hh, sh, ch, ra, enh (the line's fields, kind=creep; shadow and the creep row's own lines; the heights are `GetHeightLevel` of the hero, the stand spot and the creep, enh `pid:level;` in en's order, NULL on logs before the heights),
+-- sp, sx, sy, sk, sa, sw, sg, sl, sd, sf, sm, sr, sc, sz, sn (the spell read on their creeps: the best spell, its shape and class, whether it
+-- would kill, when and for how long, the gap, landing, damage, forecast HP, mana, reserve, cooldown, enemy heroes also hit, spells held; events.ts),
 -- matched (1 when a death is joined), src (cid or owner), dt (death t), how, paid, by_pid (creep_paid_rows's, read from the hero's team),
 -- mine (1 when this hero took it: a last hit on theirs, a deny on ours), inrange (walk = 0), outdmg (ein > 0 and ed > md), covered
 -- (eh > 0), up (1 when the stand spot is lower than the creep, 0 when level or above, NULL without heights), proj (NULL on logs from before `ra` was added; 1 when the hero's attack range ra is above 320, where the engine reads a projectile: engine/src/lasthit.ts RANGED_ABOVE), snap (the time of the answers: slot + wo for want 1, NULL for want 0).
@@ -23,7 +25,8 @@ WITH gm AS MATERIALIZED (SELECT game_id, file, game, label FROM games
 -- include: creep_offer_rows
 SELECT gm.file, gm.game, gm.label, r.lineup, r.arm, o.team, o.pid, o.hero, o.pos, o.t, o.lane, o.slot, o.want, o.cid, o.ck, o.who,
     o.wo, o.wl, o.walk, o.due, o.dies, o.slk, o.hpp, o.mode, o.crhp, o.g2, o.g2r, o.pc, o.pd, o.ptw, o.eh, o.exs, o.en,
-    o.kb, o.kt, o.md, o.ed, o.ein, o.atk, o.csrc, o.go, o.why, o.otw, o.gat, o.gw, o.erc, o.ert, o.hh, o.sh, o.ch, o.ra, o.enh, o.matched, o.src, o.dt, o.how, o.paid, o.by_pid, o.mine, o.inrange, o.outdmg, o.covered, o.up, o.proj, o.snap
+    o.kb, o.kt, o.md, o.ed, o.ein, o.atk, o.csrc, o.go, o.why, o.otw, o.gat, o.gw, o.erc, o.ert, o.hh, o.sh, o.ch, o.ra, o.enh,
+    o.sp, o.sx, o.sy, o.sk, o.sa, o.sw, o.sg, o.sl, o.sd, o.sf, o.sm, o.sr, o.sc, o.sz, o.sn, o.matched, o.src, o.dt, o.how, o.paid, o.by_pid, o.mine, o.inrange, o.outdmg, o.covered, o.up, o.proj, o.snap
 FROM creep_offer_rows o JOIN gm USING (game_id)
 LEFT JOIN run_label r USING (game_id)
 ORDER BY gm.file, gm.game, o.t, o.pid, o.cid
