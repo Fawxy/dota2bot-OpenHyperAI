@@ -382,7 +382,7 @@ export function OfferLead(this: void, bot: Unit): number {
  * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
  * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
  * The chosen creep is then offered to the decider (`Decider.Offer`), which begins the row at once unless a row above holds the
- * hero (`row` again); `refused` when the task runner said no. The last of these reasons given while the creep was about to come due is kept per hero
+ * hero; `refused` when the task runner said no or the decider did not begin it. The last of these reasons given while the creep was about to come due is kept per hero
  * and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
  */
 export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
@@ -444,13 +444,11 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     pending[pid] = { best, k: KindOf(bot, best.t.kind, best.ck)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid] };
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;
-    // The decider did not begin the row: a row above holds the hero.
+    // Not begun and not refused by the runner: Consider's own `other` check already turned away a row above holding the hero,
+    // so what is left is an error in the row's guarded `wants`. It reads as the runner's refusal, not as another row.
     pending[pid] = undefined;
-    best.note(false, "row");
-    const r = recs[best.cid];
-    r.why = "row";
-    r.ok = "row";
-    r.mode = undefined;
+    best.note(false, "refused");
+    recs[best.cid].why = "refused";
 }
 
 /** The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment. */

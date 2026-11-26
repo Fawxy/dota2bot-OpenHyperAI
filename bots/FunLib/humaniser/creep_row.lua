@@ -593,7 +593,7 @@ end
 -- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
 -- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
 -- The chosen creep is then offered to the decider (`Decider.Offer`), which begins the row at once unless a row above holds the
--- hero (`row` again); `refused` when the task runner said no. The last of these reasons given while the creep was about to come due is kept per hero
+-- hero; `refused` when the task runner said no or the decider did not begin it. The last of these reasons given while the creep was about to come due is kept per hero
 -- and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
 function ____exports.Consider(bot, cands)
     if not ____exports.On(bot) then
@@ -708,11 +708,8 @@ function ____exports.Consider(bot, cands)
         return
     end
     pending[pid] = nil
-    best.note(false, "row")
-    local r = recs[best.cid]
-    r.why = "row"
-    r.ok = "row"
-    r.mode = nil
+    best.note(false, "refused")
+    recs[best.cid].why = "refused"
 end
 --- The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment.
 local function rowBegin(bot)

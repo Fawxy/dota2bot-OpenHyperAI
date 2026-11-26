@@ -1,15 +1,5 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 -- Lua Library inline imports
-local function __TS__ArrayPush(self, ...)
-    local items = {...}
-    local len = #self
-    for i = 1, #items do
-        len = len + 1
-        self[len] = items[i]
-    end
-    return len
-end
-
 local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
     if fromIndex == nil then
         fromIndex = 0
@@ -33,6 +23,16 @@ local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
         end
     end
     return -1
+end
+
+local function __TS__ArrayPush(self, ...)
+    local items = {...}
+    local len = #self
+    for i = 1, #items do
+        len = len + 1
+        self[len] = items[i]
+    end
+    return len
 end
 -- End of Lua Library inline imports
 local ____exports = {}
@@ -60,8 +60,16 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that wants the hero holds it. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
+--- Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
 ____exports.ROWS = {}
+--- The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task.
+function ____exports.Add(row)
+    Tasks.GuardRowTask(row.name)
+    if __TS__ArrayIndexOf(____exports.ROWS, row) < 0 then
+        local ____exports_ROWS_0 = ____exports.ROWS
+        ____exports_ROWS_0[#____exports_ROWS_0 + 1] = row
+    end
+end
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
 -- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
 local HOST = "farm"
@@ -79,18 +87,18 @@ local function stateOf(bot)
     return s
 end
 local function isSoft(row, bot)
-    local ____temp_0
+    local ____temp_1
     if type(row.soft) == "function" then
-        ____temp_0 = row.soft(bot)
+        ____temp_1 = row.soft(bot)
     else
-        ____temp_0 = row.soft == true
+        ____temp_1 = row.soft == true
     end
-    return ____temp_0
+    return ____temp_1
 end
 --- The name of the hero's running task, however the runner was loaded.
 local function runningTask(bot)
-    local ____opt_1 = Tasks.ForOurs.Running(bot)
-    return ____opt_1 and ____opt_1.name
+    local ____opt_2 = Tasks.ForOurs.Running(bot)
+    return ____opt_2 and ____opt_2.name
 end
 local function begin(bot, s, row, offer)
     local over = runningTask(bot)
@@ -155,18 +163,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue22
+            local __continue24
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue22 = true
+                    __continue24 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue22 = true
+                __continue24 = true
             until true
-            if not __continue22 then
+            if not __continue24 then
                 break
             end
         end
@@ -232,20 +240,20 @@ function ____exports.Host(bot, inner)
     return function()
         local s = stateOf(bot)
         local row = pick(bot, s)
-        local ____temp_5
-        if row ~= nil then
-            ____temp_5 = retreatLeads(s)
-        else
-            ____temp_5 = nil
-        end
-        s.letAt = ____temp_5
         local ____temp_6
-        if s.letAt == nil then
-            ____temp_6 = row
+        if row ~= nil then
+            ____temp_6 = retreatLeads(s)
         else
             ____temp_6 = nil
         end
-        s.held = ____temp_6
+        s.letAt = ____temp_6
+        local ____temp_7
+        if s.letAt == nil then
+            ____temp_7 = row
+        else
+            ____temp_7 = nil
+        end
+        s.held = ____temp_7
         s.soft = s.held ~= nil and isSoft(s.held, bot)
         pcall(function() return note(bot, s) end)
         if s.held == nil then
@@ -338,13 +346,13 @@ function ____exports.LetGo(bot)
 end
 --- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
 function ____exports.Soft(bot)
-    local ____opt_7 = heroes[bot:GetPlayerID()]
-    return (____opt_7 and ____opt_7.soft) == true
+    local ____opt_8 = heroes[bot:GetPlayerID()]
+    return (____opt_8 and ____opt_8.soft) == true
 end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_9 = heroes[bot:GetPlayerID()]
-    return ____opt_9 and ____opt_9.held
+    local ____opt_10 = heroes[bot:GetPlayerID()]
+    return ____opt_10 and ____opt_10.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()

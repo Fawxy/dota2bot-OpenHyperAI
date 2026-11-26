@@ -145,10 +145,15 @@ export function IsActive(): boolean {
 }
 
 /**
- * The decider's rows' task names: only the decider starts one (`Begin`), since a start replaces whatever task the hero has
- * (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
+ * The decider's rows' task names (`Decider.Add` registers each): only the decider starts one (`Begin`), since a start replaces
+ * whatever task the hero has (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
  */
-const ROW_TASKS: Record<string, boolean> = { pull: true, stack: true, rune_detour: true, creep: true };
+const ROW_TASKS: Record<string, boolean> = {};
+
+/** Guards `name` as a row's task: from now on only the decider's begin may start it. */
+export function GuardRowTask(name: string): void {
+    ROW_TASKS[name] = true;
+}
 
 /**
  * The older chooser path, as built, starts a `stack` task of its own and names itself in `via`. RuneJob.Wants and

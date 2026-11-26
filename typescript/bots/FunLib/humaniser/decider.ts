@@ -83,8 +83,14 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that wants the hero holds it. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
+/** Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
 export const ROWS: Row[] = [];
+
+/** The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task. */
+export function Add(row: Row): void {
+    Tasks.GuardRowTask(row.name);
+    if (ROWS.indexOf(row) < 0) ROWS.push(row);
+}
 
 /**
  * The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,

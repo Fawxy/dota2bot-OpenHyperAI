@@ -141,9 +141,13 @@ end)
 function ____exports.IsActive()
     return lib ~= nil and ____exports.Enabled()
 end
---- The decider's rows' task names: only the decider starts one (`Begin`), since a start replaces whatever task the hero has
--- (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
-local ROW_TASKS = {pull = true, stack = true, rune_detour = true, creep = true}
+--- The decider's rows' task names (`Decider.Add` registers each): only the decider starts one (`Begin`), since a start replaces
+-- whatever task the hero has (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
+local ROW_TASKS = {}
+--- Guards `name` as a row's task: from now on only the decider's begin may start it.
+function ____exports.GuardRowTask(name)
+    ROW_TASKS[name] = true
+end
 --- The older chooser path, as built, starts a `stack` task of its own and names itself in `via`. RuneJob.Wants and
 -- RuneJob.MidWants start `rune`, which is no row's task, so they need no entry.
 local EXEMPT = {["StackJob.Wants"] = true}

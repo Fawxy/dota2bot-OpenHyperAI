@@ -200,7 +200,7 @@ if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
             row.begin = Telemetry.Guard(`${where}.begin`, row.begin, no);
             row.step = Telemetry.Guard(`${where}.step`, row.step, () => true);
         }
-        Decider.ROWS.push(row);
+        Decider.Add(row);
     }
     // The creep row decides at the creep offer read, on the candidates that read lists, and asks the decider to begin it there.
     // Its error is logged (ev=lua_error where=CreepRow.Consider) and that read begins nothing.

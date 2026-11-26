@@ -133,15 +133,16 @@ task the hero has (the runner's `replaced`), so the order among rows is the deci
 - `begin(bot)`: starts the task as `wants` decided it (the aid, the go line, the job line); false when the runner
   refused (it writes the `refused` line). Called only by the decider, which then passes the turn to the next row.
 - `step(bot)`: one frame of the verb from farm's Think while the row holds; true when finished. `soft` as before.
-- Registration: `index.ts` pushes the row into `Decider.ROWS` in doctrine order and wraps `wants`, `begin` and `step` in
-  guards (an error: no offer, not begun, finished).
+- Registration: `Decider.Add(row)` in `index.ts`, in doctrine order, and nothing else: it appends the row to
+  `Decider.ROWS` and guards its task name in `tasks.ts`. `index.ts` also wraps `wants`, `begin` and `step` in guards (an
+  error: no offer, not begun, finished).
 
 The decider begins the first row that wants the hero when its task is not running. A higher row begun while a lower row's
 task runs takes the hero from it; the decider's `ev=choice kind=decider` line then carries `beg`, the offer (`btgt`,
 `bby`) and `over` (the task replaced). A row that decides at a read of its own between rounds (the creep row, at the
 creep offer read) keeps its choice and calls `Decider.Offer(bot, row)`: the decider begins it in that call unless a row
-above holds the hero. `tasks.ts` refuses and logs (`ev=lua_error where=Tasks.Start`) a start of a row's task (`pull`,
-`stack`, `rune_detour`, `creep`) that does not come through the decider's begin; the job chooser's stack
+above holds the hero. `tasks.ts` refuses and logs (`ev=lua_error where=Tasks.Start`) a start of a row's task (any name
+`Decider.Add` registered) that does not come through the decider's begin; the job chooser's stack
 (`StackJob.Wants`) names itself and is exempt. Offline: `tests/humaniser/test_decider.lua`.
 
 ## Task runner

@@ -291,8 +291,7 @@ if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
                 function() return true end
             )
         end
-        local ____Decider_ROWS_0 = Decider.ROWS
-        ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = row
+        Decider.Add(row)
     end
     CreepOffer.SetRow(
         Telemetry.GuardsEnabled() and Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) or CreepRow.Consider,
