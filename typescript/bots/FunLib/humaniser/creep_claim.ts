@@ -5,8 +5,8 @@ import type * as Lib from "bots/FunLib/engine/tasks";
  * teammates share one Lua state). Per creep it holds the claim, which hero is going for it (its rank in the trip table, the game time
  * its swing is due to be ordered and the verb's phase), and each hero's latest answer on it, go or refusal with the reason, which the creep row writes
  * as the offer reads. Stored knowledge, like the camp's record: it lasts across frames and carries its writers (`Take`, `Release`,
- * `Phase`, `Touch`). It decides nothing. CANDIDATE(creep-claim): nothing reads it to decide yet (slice oha-creep-claim, proposal
- * no-creep-unpaid s6a); a second reader makes it a shared abstraction.
+ * `Phase`, `Touch`). It decides nothing and reads no position (ARCHITECTURE rule 18): the creep row's `FreeFor` and its yield read
+ * `ClaimsOn` and `AnswerOf` (slice oha-support-creeps, proposal no-creep-unpaid s6a).
  */
 
 /** What the reads saw of one creep for one hero; dropped once a read no longer lists the creep. */
@@ -116,3 +116,6 @@ export function ClaimsOn(this: void, cid: number): Claim[] {
 export function HeldBy(this: void, pid: number): number | undefined {
     return held[pid];
 }
+
+/** An answer older than this (s) is not a read of the hero's now: a dead hero's or a hero whose row is off stops touching its answers. */
+export const ANSWER_FRESH = 1;

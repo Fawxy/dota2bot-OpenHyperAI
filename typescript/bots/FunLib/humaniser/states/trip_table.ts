@@ -9,7 +9,8 @@
  *   chosen in pull_job). Ours.RuneRotation and the other job switches gate their jobs in code. None changes a cell.
  * - The creep offer (creep_offer) and its row (creep_row) are no chooser job (the chooser's JOBS list does not hold `creep` or
  *   `deny`): their rows say only which positions the read covers and the row lets act, `creep` (last hits, Ours.LaneCreeps)
- *   and `deny` (our own creeps, Ours.CreepDeny).
+ *   and `deny` (our own creeps, Ours.CreepDeny). The `creep` cell also orders heroes on one creep, lower first (creep_claim
+ *   `FreeFor`, creep_row's yield); a hero whose cell is above the lowest one (`Outranked`) needs Ours.SupportCreeps too.
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
@@ -31,7 +32,7 @@ export const TRIPS: TripRow[] = [
     { kind: "pull", rank: by(undefined, undefined, undefined, 30, 30) },
     { kind: "rune", rank: by(undefined, undefined, undefined, 15, 50) },
     { kind: "stack", rank: by(undefined, undefined, undefined, 20, 20) },
-    { kind: "creep", rank: by(60, 60, 60, undefined, undefined) },
+    { kind: "creep", rank: by(60, 60, 60, 70, 70) },
     { kind: "deny", rank: by(undefined, undefined, undefined, 60, 60) },
 ];
 
@@ -53,6 +54,18 @@ export function RankOf(this: void, kind: TripKind, pos: number | undefined): num
 
 export function Does(this: void, kind: TripKind, pos: number | undefined): boolean {
     return RankOf(kind, pos) !== undefined;
+}
+
+/** Some position's cell for the trip is lower than this position's: the hero yields that trip to it. */
+export function Outranked(this: void, kind: TripKind, pos: number | undefined): boolean {
+    const mine = RankOf(kind, pos);
+    const row = rowOf(kind);
+    if (mine === undefined || row === undefined) return false;
+    for (const p of [1, 2, 3, 4, 5] as Pos[]) {
+        const r = row.rank[p];
+        if (r !== undefined && r < mine) return true;
+    }
+    return false;
 }
 
 /** The trips a position does, best first. */

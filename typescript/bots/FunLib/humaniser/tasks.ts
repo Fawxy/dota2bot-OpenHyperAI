@@ -14,6 +14,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as Utils from "bots/FunLib/utils";
 
 type Bundle = typeof Lib;
@@ -58,12 +59,24 @@ interface FilterFrame {
     t: number;
     by: LuaTable<object, boolean>;
     allies?: Unit[];
+    /** Ours.SupportCreeps on this frame and the bot's `creep` cell above the lowest: creep_row's `FreeFor` decides, so the filter allows every creep. */
+    open: boolean;
 }
 /** One table per bot, cleared on a new frame (no allocation per frame). */
 const filterCache: Record<number, FilterFrame | undefined> = {};
 
+/** A core (the lowest `creep` cell) keeps the core-in-reach rule whatever the switch: `FreeFor` never holds it back. */
+function opens(bot: Unit): boolean {
+    return Ours.On("SupportCreeps") && TripTable.Outranked("creep", LaneConfig.PositionOf(bot));
+}
+
+/**
+ * Deleted with Ours.SupportCreeps' judgement (a flag between two versions of our own code): with the switch on `f.open` skips the core-in-reach
+ * rule below for a support, as creep_row's `FreeFor` replaces it there.
+ */
 function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
     if (creep === undefined || creep === null || creep.IsNull()) return false;
+    if (f.open) return true;
     // A bot outside positions 1 and 2 leaves the creep to a core that can take it.
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos <= 2) return true;
@@ -83,11 +96,12 @@ const adapter: Lib.Adapter = {
         const now = DotaTime();
         let f = filterCache[pid];
         if (f === undefined) {
-            f = { t: now, by: new LuaTable<object, boolean>() };
+            f = { t: now, by: new LuaTable<object, boolean>(), open: opens(bot as unknown as Unit) };
             filterCache[pid] = f;
         } else if (f.t !== now) {
             f.t = now;
             f.allies = undefined;
+            f.open = opens(bot as unknown as Unit);
             for (const [k] of f.by) f.by.delete(k);
         }
         const by = f.by;

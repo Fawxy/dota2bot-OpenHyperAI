@@ -31,6 +31,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
 	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = o.on ~= false
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepDeny = o.deny == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportCreeps = o.support == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
 	CURRENT_TEAM = 2
 	T = 100
@@ -982,6 +983,130 @@ do -- a support is covered by the read but does not act with the deny switch off
 	w.targets = { target(c, { walk = 0.3, due = 0.5, kind = "deny" }) }
 	local ch = lines(capture(function() w.CO.Shadow(w.core) T = T + 0.1 kill(c) w.targets = {} w.CO.Shadow(w.core) end), "kind=creep")
 	check("support: a shadow line with go=0 why=off, and no task started", #ch == 1 and field(ch[1], "src") == "shadow" and field(ch[1], "go") == "0" and field(ch[1], "why") == "off" and w.starts == 0, table.concat(ch, " | "))
+end
+
+-- Supports' last hit (Ours.SupportCreeps, slice oha-support-creeps). The task runner stub is one for all heroes, so a test frees it between heroes.
+local function addSupport(o)
+	o = o or {}
+	local u = MakeUnit({ pid = o.pid or 5, team = 2, bot = o.bot ~= false, loc = Vector(0, -5000), hp = 600, maxhp = 600 })
+	u.pos, u.lane = o.pos or 4, o.lane or Lane.Bot
+	return u
+end
+local function cidOf(c) return package.loaded["bots/FunLib/humaniser/telemetry"].CreepId(c) end
+local function readOf(w, unit, c)
+	local out = capture(function() w.CO.Shadow(unit) T = T + 0.1 kill(c) w.targets = {} w.CO.Shadow(unit) end)
+	return lines(out, "kind=creep")
+end
+
+do -- the free rule: claimed, human, wait, refused, and a core is never asked
+	local w = world({ support = true })
+	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local sup = addSupport()
+	check("free: a creep nobody lower has on offer is free", w.CR.FreeFor(sup, 77, T) == nil)
+	Claim.Take(1, { pid = 1, rank = 60, k = "lh", due = 1 })
+	check("free: a lower-cell hero's claim on another creep does not hold this one", w.CR.FreeFor(sup, 77, T) == nil)
+	Claim.Release(1)
+	Claim.Take(77, { pid = 1, rank = 60, k = "lh", due = 1 })
+	check("free: a lower-cell hero's claim on it is `claimed`", w.CR.FreeFor(sup, 77, T) == "claimed")
+	Claim.Release(1)
+	Claim.Touch(1, { 77 }, T)
+	check("free: on the core's offer with no refusal yet is `wait`", w.CR.FreeFor(sup, 77, T) == "wait")
+	check("free: an answer the core stopped touching is not an offer", w.CR.FreeFor(sup, 77, T + 2) == nil)
+	Claim.AnswerOf(1, 77).why = "race"
+	check("free: once the core refuses it, free", w.CR.FreeFor(sup, 77, T) == nil)
+	Claim.Take(77, { pid = 5, rank = 70, k = "lh", due = 1 })
+	Claim.Touch(5, { 77 }, T)
+	check("free: a core is never held by a support's claim or answer", w.CR.FreeFor(w.core, 77, T) == nil)
+	Claim.Release(5)
+	local human = addSupport({ pid = 3, pos = 3, bot = false })
+	check("free: a human in the lane with a lower cell is `human`, a refusal of its cannot be read", w.CR.FreeFor(sup, 77, T) == "human")
+	human.lane = Lane.Top
+	check("free: a human in another lane does not freeze this one", w.CR.FreeFor(sup, 77, T) == nil)
+	addSupport({ pid = 4, pos = 5 })
+	Claim.Touch(4, { 77 }, T)
+	Claim.Take(77, { pid = 4, rank = 70, k = "lh", due = 1 })
+	check("free: a hero of the same cell never waits for or holds this one", w.CR.FreeFor(sup, 77, T) == nil)
+end
+
+do -- the row: the control (the core has it on offer, not refused), the core refusing, the switch off
+	local w = world({ support = true })
+	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local sup = addSupport()
+	local c = ranged()
+	local cid = cidOf(c)
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	Claim.Touch(1, { cid }, T)
+	local ch = readOf(w, sup, c)
+	check("support: the core has it on offer and has not refused: no task, the line reads `wait`", w.starts == 0 and #ch >= 1 and field(ch[1], "why") == "wait", table.concat(ch, " | "))
+
+	w = world({ support = true })
+	Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	sup = addSupport()
+	c = ranged()
+	cid = cidOf(c)
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	Claim.Touch(1, { cid }, T)
+	Claim.AnswerOf(1, cid).why = "race"
+	local out = capture(function() w.CO.Shadow(sup) end)
+	local held = claimOf(5, cid)
+	check("support: the core refused it: the support goes, k=lh, and takes a claim at its own cell", w.starts == 1 and held ~= nil and held.rank == 70 and field(lines(out, "phase=start")[1], "k") == "lh", table.concat(out, " | "))
+end
+
+do -- the switch off: a support gets no last hit, a core keeps its own
+	local w = world({ support = false })
+	local sup = addSupport()
+	check("switch off: a support has no lh kind and the row is off for it", w.CR.KindOf(sup, "lasthit", "r") == nil and not w.CR.On(sup) and w.CR.KindOf(w.core, "lasthit", "r") == "lh")
+	w = world({ support = true })
+	sup = addSupport()
+	check("switch on: the support's kind is lh", w.CR.KindOf(sup, "lasthit", "r") == "lh" and w.CR.On(sup))
+end
+
+do -- Ours.TowerCreeps on: the under-tower hit stays a core's; a support takes their ranged creep outside our tower's range only (as audited)
+	local w = world({ support = true, tower = true })
+	local sup = addSupport()
+	check("tower creeps on: a melee creep inside our tower's range is the core's kind, not the support's", w.CR.KindOf(w.core, "lasthit", "m", true) == "lh" and w.CR.KindOf(sup, "lasthit", "m", true) == nil)
+	local c = ranged()
+	local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
+	tw.loc = c.loc
+	TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	local ch = readOf(w, sup, c)
+	check("tower creeps on: a support's ranged creep inside our tower's range is still refused tower", w.starts == 0 and field(ch[1], "why") == "tower", table.concat(ch, " | "))
+end
+
+do -- the yield: a lower-cell claim before the swing ends the attempt, with yd=1; after the swing order it does not
+	local function supportAttempt()
+		local w = world({ support = true })
+		local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+		local sup = addSupport()
+		local c = ranged()
+		local cid = cidOf(c)
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		capture(function() w.CO.Shadow(sup) end)
+		return w, Claim, cid, lastHitOpts(w)
+	end
+	local w, Claim, cid, opts = supportAttempt()
+	check("yield: no lower-cell claim, the attempt goes on", opts.interruptIf() == false)
+	Claim.Take(cid, { pid = 1, rank = 60, k = "lh", due = 1 })
+	check("yield: a core takes a claim on the creep before the swing: the attempt ends", opts.interruptIf() == true)
+	local out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
+	check("yield: the end line says so", field(lines(out, "phase=end")[1], "yd") == "1", table.concat(out, " | "))
+
+	w, Claim, cid, opts = supportAttempt()
+	Claim.Take(cid, { pid = 1, rank = 60, k = "lh", due = 1 })
+	opts.onPhase("swing", T)
+	check("yield: the swing already ordered, the support keeps it", opts.interruptIf() == false)
+
+	w = world({ support = true })
+	Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local c = ranged()
+	cid = cidOf(c)
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	local copts = lastHitOpts(w)
+	Claim.Take(cid, { pid = 5, rank = 70, k = "lh", due = 1 })
+	Claim.Take(cid, { pid = 4, rank = 60, k = "lh", due = 1 })
+	check("yield: a core never yields to a support, a hero of its own cell never yields to its mate", copts.interruptIf() == false)
 end
 
 finish()

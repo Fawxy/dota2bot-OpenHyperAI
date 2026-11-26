@@ -258,4 +258,6 @@ end
 function ____exports.HeldBy(pid)
     return held[pid]
 end
+--- An answer older than this (s) is not a read of the hero's now: a dead hero's or a hero whose row is off stops touching its answers.
+____exports.ANSWER_FRESH = 1
 return ____exports
