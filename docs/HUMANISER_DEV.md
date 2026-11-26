@@ -139,7 +139,7 @@ task the hero has (the runner's `replaced`), so the order among rows is the deci
   the verb's phase; read with `ClaimsOn`, `HeldBy`) and each hero's latest answer (`Touch`, `AnswerOf`: what the creep row
   noted, formerly its private `Seen`). The creep row takes the claim in `begin` and releases it in the task's `onEnd`; the
   job lines carry `oc` (others already on the creep) at the start and `cl` (claim released) at the end. With
-  Ours.SupportCreeps a support (trip table `creep` cell 70, the cores' 60: lower goes first) last-hits their ranged creep only when
+  Ours.SupportCreeps (on, provisional) a support (trip table `creep` cell 70, the cores' 60: lower goes first) last-hits their ranged creep, outside our tower's range, only when
   `FreeFor` says it is free: refusals `claimed` (a lower-cell hero holds a claim), `human` (a human of a lower cell in its assigned
   lane publishes no answers), `wait` (a lower-cell bot has it on offer and no refusal in its fresh answer yet); a core's answer is never
   asked. The support's attempt yields (`ev=job job=creep phase=end why=interrupted yd=1`) when a lower-cell hero takes a claim on its

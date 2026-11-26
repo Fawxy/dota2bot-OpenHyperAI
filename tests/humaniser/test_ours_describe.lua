@@ -8,9 +8,9 @@ local Ours = require("bots/FunLib/humaniser/ours")
 -- A game reads general.lua's block, which sets every key, so DEFAULTS alone do not say what ships (review).
 package.loaded["bots.Customize.general"] = nil
 local shipped = require("bots.Customize.general").Ours
--- Plan s5: a small row merges on as provisional until the checkpoint batch reads it; a row that beat the reference arm
--- in its own batch merges on.
-local PROVISIONAL = { RuneDetour = true }
+-- Plan s5: a small row or a widening merges on as provisional until the checkpoint batch reads it; a row that beat the
+-- reference arm in its own batch merges on.
+local PROVISIONAL = { RuneDetour = true, SupportCreeps = true }
 local ON = { SupportPull = true, LaneCreeps = true, CreepDeny = true, TowerCreeps = true }
 local stray = {}
 for name in pairs(Ours.DEFAULTS) do local on = PROVISIONAL[name] == true or ON[name] == true
@@ -19,9 +19,9 @@ for name in pairs(shipped) do if Ours.DEFAULTS[name] == nil then stray[#stray + 
 check("ours: general.lua's block has every DEFAULTS key and no other, all off but the provisional rows and those merged on", #stray == 0, table.concat(stray, ","))
 Customize.Ours = { Retreat = false, MidWater = true, SupportPull = true }
 -- One entry per DEFAULTS key in name order; a slice adding a switch adds it here.
-check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:1,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportCreeps:0,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:1,TowerRead:0,TripRead:0", Ours.Describe())
+check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:1,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportCreeps:1,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:1,TowerRead:0,TripRead:0", Ours.Describe())
 Customize.Ours = {}
-check("ours: a missing key takes its default, and every default is off but the provisional rows and those merged on", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:0,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportCreeps:0,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:1,TowerRead:0,TripRead:0", Ours.Describe())
+check("ours: a missing key takes its default, and every default is off but the provisional rows and those merged on", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:0,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportCreeps:1,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:1,TowerRead:0,TripRead:0", Ours.Describe())
 Customize.Enable = nil
 Customize.Ours = { Team = "radiant", Retreat = true, SupportPull = true }
 CURRENT_TEAM = 2

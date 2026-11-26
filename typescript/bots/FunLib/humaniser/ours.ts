@@ -4,7 +4,8 @@
  * Every default is off (plan s7, agreed 23/11/2026): none of these has beaten the reference arm, so the default build is
  * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
  * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
- * RuneDetour.
+ * RuneDetour. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
+ * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
@@ -46,8 +47,10 @@ export const DEFAULTS = {
     TowerCreeps: true,
     /** The lane's creeps, a support's last hit, on the creep row (creep_row.ts, slice oha-support-creeps; no-creep-unpaid proposal s6a): a
      *  support (pos 4 and 5) last-hits their ranged creep when no hero with a lower `creep` cell has it (creep_claim `FreeFor`), and yields
-     *  it to one that starts on it before its swing. Needs LaneCreeps. Off: a support takes no last hit and stock plays. */
-    SupportCreeps: false,
+     *  it to one that starts on it before its swing; their ranged creep only, outside our tower's range (the under-tower hit is a core's).
+     *  Needs LaneCreeps. Off: a support takes no last hit and stock plays. On: provisional (plan s5's widening, merged after its firing
+     *  audit scraudit1; deleted at the next checkpoint batch if the line or guards fall). */
+    SupportCreeps: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
