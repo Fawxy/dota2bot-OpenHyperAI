@@ -464,7 +464,8 @@ export const EVENTS = {
     },
     /** Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind`
      *  start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the
-     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`). */
+     *  height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`),
+     *  camp (`xy` "idx:team:type:x:y:minx:miny:maxx:maxy" joined by ";", the neutral camps). */
     vmap: {
         kind: "str",
         bx0: "num",

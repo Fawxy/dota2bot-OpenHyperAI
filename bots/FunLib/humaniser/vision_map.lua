@@ -4,6 +4,7 @@ local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Team = ____dota.Team
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local Camps = require(GetScriptDirectory().."/FunLib/humaniser/camps")
 --- The grid step: 64 is the gridnav cell.
 local STEP = 64
 --- The box when GetWorldBounds is missing: the 7.33+ map's playable area lies inside it. `judgement`.
@@ -18,6 +19,29 @@ local rows = 0
 local treeAt = 0
 local treeMiss = 0
 local trees = 0
+local campsLogged = false
+local function camps()
+    local list = Camps.Spawners()
+    if #list == 0 then
+        return
+    end
+    local parts = {}
+    local f = math.floor
+    for ____, s in ipairs(list) do
+        parts[#parts + 1] = (((((((((((((((tostring(s.idx) .. ":") .. tostring(s.team)) .. ":") .. s.type) .. ":") .. tostring(f(s.location.x))) .. ":") .. tostring(f(s.location.y))) .. ":") .. tostring(f(s.min.x))) .. ":") .. tostring(f(s.min.y))) .. ":") .. tostring(f(s.max.x))) .. ":") .. tostring(f(s.max.y))
+    end
+    Telemetry.Event(
+        "vmap",
+        {
+            {"kind", "camp"},
+            {
+                "xy",
+                table.concat(parts, ";")
+            }
+        }
+    )
+    campsLogged = true
+end
 local function bounds()
     if GetWorldBounds == nil then
         return {box, "fallback"}
@@ -75,20 +99,20 @@ local function treeBatch()
         local k = 0
         while k < TREE_BATCH and treeMiss < TREE_GAP do
             do
-                local __continue10
+                local __continue14
                 repeat
                     local ok, loc = pcall(GetTreeLocation, treeAt)
                     if not ok or loc == nil or loc == nil or loc.x == 0 and loc.y == 0 then
                         treeMiss = treeMiss + 1
-                        __continue10 = true
+                        __continue14 = true
                         break
                     end
                     treeMiss = 0
                     trees = trees + 1
                     parts[#parts + 1] = (((tostring(treeAt) .. ":") .. tostring(math.floor(loc.x))) .. ":") .. tostring(math.floor(loc.y))
-                    __continue10 = true
+                    __continue14 = true
                 until true
-                if not __continue10 then
+                if not __continue14 then
                     break
                 end
             end
@@ -112,7 +136,7 @@ local function treeBatch()
     end
 end
 function ____exports.Tick(bot)
-    if phase == "done" or bot:GetTeam() ~= Team.Radiant or Overrides.Get("VisionMap") ~= true then
+    if phase == "done" and campsLogged or bot:GetTeam() ~= Team.Radiant or Overrides.Get("VisionMap") ~= true then
         return
     end
     local now = GameTime()
@@ -120,6 +144,12 @@ function ____exports.Tick(bot)
         return
     end
     frameAt = now
+    if not campsLogged then
+        camps()
+    end
+    if phase == "done" then
+        return
+    end
     if phase == "start" then
         local b, src = unpack(bounds())
         box = b

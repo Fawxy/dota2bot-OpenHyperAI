@@ -6,13 +6,16 @@
  *   kind=h      one row of the grid: `y`, `x0`, `n`, `hex`, one digit a cell from x0 east: GetHeightLevel (0 to 7),
  *               plus 8 when IsLocationPassable;
  *   kind=t      the next TREE_BATCH tree indices: `xy`, "i:x:y" joined by ";" for each index GetTreeLocation answers;
- *   kind=end    `rows`, `trees` (the count of trees logged).
+ *   kind=end    `rows`, `trees` (the count of trees logged);
+ *   kind=camp   once the spawner list is in: `xy`, "idx:team:type:x:y:minx:miny:maxx:maxy" joined by ";" for each neutral camp
+ *               (GetNeutralSpawners: the place and the spawn box).
  * Tree indices are read until TREE_GAP indices in a row answer nothing (nil or (0, 0)). Reads and logs only; it changes no order. The
  * tick runs under pcall (index.ts), so a run is judged by its row counts.
  */
 import { Team, Unit } from "bots/ts_libs/dota";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+import * as Camps from "bots/FunLib/humaniser/camps";
 
 declare const GetWorldBounds: ((this: void) => number[]) | undefined;
 
@@ -33,6 +36,19 @@ let rows = 0;
 let treeAt = 0;
 let treeMiss = 0;
 let trees = 0;
+let campsLogged = false;
+
+function camps(): void {
+    const list = Camps.Spawners();
+    if (list.length === 0) return;
+    const parts: string[] = [];
+    const f = math.floor;
+    for (const s of list) {
+        parts.push(`${s.idx}:${s.team}:${s.type}:${f(s.location.x)}:${f(s.location.y)}:${f(s.min.x)}:${f(s.min.y)}:${f(s.max.x)}:${f(s.max.y)}`);
+    }
+    Telemetry.Event("vmap", [["kind", "camp"], ["xy", parts.join(";")]]);
+    campsLogged = true;
+}
 
 function bounds(): [typeof box, string] {
     if (GetWorldBounds === undefined) return [box, "fallback"];
@@ -79,10 +95,12 @@ function treeBatch(): void {
 }
 
 export function Tick(bot: Unit): void {
-    if (phase === "done" || bot.GetTeam() !== Team.Radiant || Overrides.Get("VisionMap") !== true) return;
+    if ((phase === "done" && campsLogged) || bot.GetTeam() !== Team.Radiant || Overrides.Get("VisionMap") !== true) return;
     const now = GameTime();
     if (now === frameAt) return;
     frameAt = now;
+    if (!campsLogged) camps();
+    if (phase === "done") return;
     if (phase === "start") {
         const [b, src] = bounds();
         box = b;
