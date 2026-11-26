@@ -136,6 +136,13 @@ do
 	core2.loc = Vector(2000, 0)
 	H2.Tasks.Step(bot2, ASSEMBLE)
 	check("lastHit proceeds with no core in reach", H2.Tasks.Describe(bot2) == "lh step=1", H2.Tasks.Describe(bot2))
+	-- Ours.SupportCreeps replaces the core-in-reach rule with the claim read's free rule (creep_claim FreeFor).
+	local H3, bot3 = setup()
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportCreeps = true
+	T = T + 1
+	H3.Tasks.Step(bot3, ASSEMBLE)
+	check("lastHit with the switch on: a core in reach no longer takes the creep from the filter", H3.Tasks.Describe(bot3) == "lh step=1", H3.Tasks.Describe(bot3))
+	package.loaded["bots/FunLib/custom_loader"].Ours.SupportCreeps = false
 	ALLIES = nil
 end
 

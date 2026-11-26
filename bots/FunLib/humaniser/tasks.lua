@@ -49,9 +49,14 @@ local function CoreCanTake(bot, creep, allies)
 end
 --- One table per bot, cleared on a new frame (no allocation per frame).
 local filterCache = {}
+--- Deleted with Ours.SupportCreeps' judgement (a flag between two versions of our own code): with the switch on `f.open` skips the core-in-reach
+-- rule below, as the claim read's `FreeFor` (creep_claim.ts) replaces it.
 local function mayTake(bot, creep, f)
     if creep == nil or creep == nil or creep:IsNull() then
         return false
+    end
+    if f.open then
+        return true
     end
     local pos = LaneConfig.PositionOf(bot)
     if pos == nil or pos <= 2 then
@@ -72,11 +77,16 @@ local adapter = {
         local now = DotaTime()
         local f = filterCache[pid]
         if f == nil then
-            f = {t = now, by = {}}
+            f = {
+                t = now,
+                by = {},
+                open = Ours.On("SupportCreeps")
+            }
             filterCache[pid] = f
         elseif f.t ~= now then
             f.t = now
             f.allies = nil
+            f.open = Ours.On("SupportCreeps")
             for k in pairs(f.by) do
                 f.by[k] = nil
             end

@@ -58,12 +58,19 @@ interface FilterFrame {
     t: number;
     by: LuaTable<object, boolean>;
     allies?: Unit[];
+    /** Ours.SupportCreeps on this frame: the claim read's free rule is the one definition, so the filter allows every creep. */
+    open: boolean;
 }
 /** One table per bot, cleared on a new frame (no allocation per frame). */
 const filterCache: Record<number, FilterFrame | undefined> = {};
 
+/**
+ * Deleted with Ours.SupportCreeps' judgement (a flag between two versions of our own code): with the switch on `f.open` skips the core-in-reach
+ * rule below, as the claim read's `FreeFor` (creep_claim.ts) replaces it.
+ */
 function mayTake(bot: Unit, creep: Unit, f: FilterFrame): boolean {
     if (creep === undefined || creep === null || creep.IsNull()) return false;
+    if (f.open) return true;
     // A bot outside positions 1 and 2 leaves the creep to a core that can take it.
     const pos = LaneConfig.PositionOf(bot);
     if (pos === undefined || pos <= 2) return true;
@@ -83,11 +90,12 @@ const adapter: Lib.Adapter = {
         const now = DotaTime();
         let f = filterCache[pid];
         if (f === undefined) {
-            f = { t: now, by: new LuaTable<object, boolean>() };
+            f = { t: now, by: new LuaTable<object, boolean>(), open: Ours.On("SupportCreeps") };
             filterCache[pid] = f;
         } else if (f.t !== now) {
             f.t = now;
             f.allies = undefined;
+            f.open = Ours.On("SupportCreeps");
             for (const [k] of f.by) f.by.delete(k);
         }
         const by = f.by;
