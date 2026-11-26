@@ -70,6 +70,7 @@ ____exports.DEFAULTS = {
     SupportPull = true,
     LaneCreeps = true,
     CreepDeny = true,
+    TowerCreeps = false,
     Threat = false,
     Retreat = false,
     MidWater = false,

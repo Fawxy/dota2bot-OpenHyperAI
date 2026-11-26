@@ -31,6 +31,7 @@ local function world(o)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
 	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = o.on ~= false
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepDeny = o.deny == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
 	CURRENT_TEAM = 2
 	T = 100
 	TOWERS_W = { [2] = {}, [3] = {} }
@@ -579,6 +580,31 @@ do -- the cells: a long free walk goes; a covered long walk, an out-damaging ene
 	case("a melee creep", function(_, c) c.name = "npc_dota_creep_badguys_melee" end, "kind")
 	case("their deny of our creep", function(_, c, t) t.kind = "deny" end, "kind")
 	case("a walk it cannot make before the creep dies", function(_, _, t) t.dies = 2.1 end, "late")
+end
+
+do -- the under-tower hit (Ours.TowerCreeps, slice oha-tower-creeps): a creep of any kind inside our tower's range is the core's
+	local MELEE = "npc_dota_creep_badguys_melee"
+	local function under(o, name, tower)
+		local w = world(o)
+		local c = ranged(900)
+		c.name = name
+		if tower then
+			local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
+			tw.loc = c.loc
+			TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
+		end
+		w.targets = { target(c, { walk = 2.0, due = 2.2, dies = 4 }) }
+		local ch = lines(readThenClose(w, { c }), "kind=creep")
+		return w, field(ch[1], "why"), table.concat(ch, " | ")
+	end
+	local w, why, ch = under({ tower = true }, MELEE, true)
+	check("tower creeps on: a melee creep inside our tower's range is a last hit and goes", w.starts == 1 and w.CR.KindOf(w.core, "lasthit", "m", true) == "lh", tostring(w.starts) .. " | " .. ch)
+	w, why, ch = under({ tower = true }, MELEE, false)
+	check("tower creeps on, control: the same melee creep outside the tower's range is refused kind", w.starts == 0 and why == "kind", ch)
+	w, why, ch = under({ tower = false }, RANGED, true)
+	check("tower creeps off: a ranged creep inside our tower's range is still refused tower", w.starts == 0 and why == "tower", ch)
+	w, why, ch = under({ tower = false }, MELEE, true)
+	check("tower creeps off: a melee creep inside our tower's range is refused kind", w.starts == 0 and why == "kind", ch)
 end
 
 do -- something else due where the hero stands: the walk-in gives it up, so the row stays

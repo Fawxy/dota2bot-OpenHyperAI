@@ -1,9 +1,10 @@
 /**
  * The lane's creeps (no-creep-unpaid proposal s5; doctrine D11), a hard row of the decider with two kinds and one hold, both merged on.
- * `lh` (switch Ours.LaneCreeps): a core takes their ranged creep by a right-click, in range with a swing to spare; trip table row `creep`
+ * `lh` (switch Ours.LaneCreeps): a core takes their ranged creep by a right-click, in range with a swing to spare, and with Ours.TowerCreeps
+ * (slice oha-tower-creeps) their creep of any kind inside our tower's range too; trip table row `creep`
  * (pos 1 to 3). `dn` (switch Ours.CreepDeny, slice oha-creep-deny): a support denies our own lane creep of any kind; trip table row
  * `deny` (pos 4 and 5). `KindOf` is the one predicate per kind; the cells, the go and the hold are shared, a deny skipping the `tower`
- * and `given` cells.
+ * and `given` cells, and a last hit skipping `tower` with Ours.TowerCreeps.
  *
  * The cells were named with the user from step 2's table (25/11/2026): near (in range or a walk up to NearWalk, not
  * out-damaged) and far and free (a longer walk with no enemy hero's range on the stand spot). The decision is taken at the
@@ -84,7 +85,7 @@ export interface Facts {
  * The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (neither kind this hero acts on: `KindOf`),
  * `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
  * with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
- * an enemy hero's range covers), `tower` (inside our tower's range: the under-tower hit is a later widening, s6), `etower`
+ * an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on), `etower`
  * (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
  * `mate` (a teammate's hit kills it first). A deny skips `tower` (our tower is no hazard to our own creep) and `given` (a support's
  * other targets are the ranking, a later slice's).
@@ -97,7 +98,7 @@ export function Claim(this: void, f: Facts): string | undefined {
     // the hero is there first: 8 of 11 landed, none denied.
     if (f.walk > 0 && f.erc > 0) return "race";
     if (f.walk > SETTINGS.NearWalk && f.eh > 0) return "covered";
-    if (f.otw && f.k === "lh") return "tower";
+    if (f.otw && f.k === "lh" && !Ours.On("TowerCreeps")) return "tower";
     if (f.ptw) return "etower";
     // In range there is no walk, so nothing is given up: which creep to swing at is the row's pick (Consider).
     if (f.walk > 0 && f.g2 > 0 && f.k === "lh") return "given";
@@ -149,19 +150,29 @@ function noTime(r: Seen, first: boolean): string {
 }
 
 /**
- * The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, for a hero whose
- * position does `creep` with Ours.LaneCreeps on. A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
+ * The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, or with
+ * Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on.
+ * A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
  */
-export function KindOf(this: void, bot: Unit, kind: string, ck: string): "lh" | "dn" | undefined {
+export function KindOf(this: void, bot: Unit, kind: string, ck: string, otw: boolean): "lh" | "dn" | undefined {
     const pos = LaneConfig.PositionOf(bot);
-    if (kind === "lasthit" && ck === "r" && TripTable.Does("creep", pos) && Ours.On("LaneCreeps")) return "lh";
+    if (kind === "lasthit" && (ck === "r" || (otw && Ours.On("TowerCreeps"))) && TripTable.Does("creep", pos) && Ours.On("LaneCreeps")) return "lh";
     if (kind === "deny" && TripTable.Does("deny", pos) && Ours.On("CreepDeny")) return "dn";
     return undefined;
 }
 
+/**
+ * `KindOf` for a candidate. Its `otw` is read from the read's fresh facts (cached for the read), and only for a last hit of a non-ranged
+ * creep with Ours.TowerCreeps on, the one case the answer depends on it: the facts' snapshot costs more than the rest of the check.
+ */
+function kindOf(bot: Unit, c: CreepOffer.Candidate): "lh" | "dn" | undefined {
+    const needsOtw = c.t.kind === "lasthit" && c.ck !== "r" && Ours.On("TowerCreeps");
+    return KindOf(bot, c.t.kind, c.ck, needsOtw && c.facts().otw);
+}
+
 /** The creep is of a kind this hero acts on and about to come due at this read (the first such read is kept). */
 function dueNow(bot: Unit, c: CreepOffer.Candidate, r: Seen, lead: number, now: number): boolean {
-    if (KindOf(bot, c.t.kind, c.ck) === undefined || !Due(c.t.walk, c.t.due, lead)) return false;
+    if (kindOf(bot, c) === undefined || !Due(c.t.walk, c.t.due, lead)) return false;
     if (r.due0 === undefined) r.due0 = now;
     return true;
 }
@@ -344,7 +355,7 @@ function finish(bot: Unit, r: Lib.Result): void {
 
 function factsOf(bot: Unit, c: CreepOffer.Candidate): Facts {
     const s = c.facts();
-    return { k: KindOf(bot, c.t.kind, c.ck), walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
+    return { k: kindOf(bot, c), walk: c.t.walk, slk: c.arrive.slack, eh: s.path.covering, md: s.md, ed: s.ed, ein: s.ein, erc: s.erc, ptw: s.path.tower, otw: s.otw, g2: s.given.due, kb: s.kb };
 }
 
 /**
@@ -404,7 +415,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         let why: string | undefined;
         const r = recs[c.cid];
         const first = r.due0 === undefined;
-        if (KindOf(bot, c.t.kind, c.ck) === undefined) why = "kind";
+        if (kindOf(bot, c) === undefined) why = "kind";
         else if (!dueNow(bot, c, r, lead, now)) why = "early";
         else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
@@ -422,12 +433,12 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     }
     if (best === undefined) return;
     for (const c of cands) {
-        if (c === best || KindOf(bot, c.t.kind, c.ck) === undefined) continue;
+        if (c === best || kindOf(bot, c) === undefined) continue;
         c.note(false, "other");
         recs[c.cid].why = "other";
         recs[c.cid].ok = "other";
     }
-    pending[pid] = { best, k: KindOf(bot, best.t.kind, best.ck)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid] };
+    pending[pid] = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid] };
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;
     // Not begun and not refused by the runner: Consider's own `other` check already turned away a row above holding the hero,

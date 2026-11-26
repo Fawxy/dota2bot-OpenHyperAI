@@ -19,9 +19,9 @@ for name in pairs(shipped) do if Ours.DEFAULTS[name] == nil then stray[#stray + 
 check("ours: general.lua's block has every DEFAULTS key and no other, all off but the provisional rows and those merged on", #stray == 0, table.concat(stray, ","))
 Customize.Ours = { Retreat = false, MidWater = true, SupportPull = true }
 -- One entry per DEFAULTS key in name order; a slice adding a switch adds it here.
-check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:1,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,Sustain:0,Threat:0,TowerRead:0,TripRead:0", Ours.Describe())
+check("ours: the switch as set", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:1,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:0,TowerRead:0,TripRead:0", Ours.Describe())
 Customize.Ours = {}
-check("ours: a missing key takes its default, and every default is off but the provisional rows and those merged on", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:0,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,Sustain:0,Threat:0,TowerRead:0,TripRead:0", Ours.Describe())
+check("ours: a missing key takes its default, and every default is off but the provisional rows and those merged on", Ours.Describe() == "BurstReady:0,ChoiceShadow:0,CreepDeny:1,DoubleStack:0,ExitWindow:0,IdleBar:0,JobChooser:0,LaneCreeps:1,MidWater:0,Retreat:0,RuneDetour:1,RuneRotation:0,RuneSpawn:0,StackExecute:0,SupportPull:1,Sustain:0,Threat:0,TowerCreeps:0,TowerRead:0,TripRead:0", Ours.Describe())
 Customize.Enable = nil
 Customize.Ours = { Team = "radiant", Retreat = true, SupportPull = true }
 CURRENT_TEAM = 2

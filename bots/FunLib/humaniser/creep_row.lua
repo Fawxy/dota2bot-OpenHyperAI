@@ -65,7 +65,7 @@ local HOST = BotMode.Farm
 --- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (neither kind this hero acts on: `KindOf`),
 -- `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
 -- with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
--- an enemy hero's range covers), `tower` (inside our tower's range: the under-tower hit is a later widening, s6), `etower`
+-- an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on), `etower`
 -- (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
 -- `mate` (a teammate's hit kills it first). A deny skips `tower` (our tower is no hazard to our own creep) and `given` (a support's
 -- other targets are the ranking, a later slice's).
@@ -85,7 +85,7 @@ function ____exports.Claim(f)
     if f.walk > ____exports.SETTINGS.NearWalk and f.eh > 0 then
         return "covered"
     end
-    if f.otw and f.k == "lh" then
+    if f.otw and f.k == "lh" and not Ours.On("TowerCreeps") then
         return "tower"
     end
     if f.ptw then
@@ -141,11 +141,12 @@ local function noTime(r, first)
     end
     return (r.ok == "held" or r.ok == "acting" or r.ok == "row") and "notime_" .. r.ok or "notime"
 end
---- The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, for a hero whose
--- position does `creep` with Ours.LaneCreeps on. A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
-function ____exports.KindOf(bot, kind, ck)
+--- The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, or with
+-- Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on.
+-- A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
+function ____exports.KindOf(bot, kind, ck, otw)
     local pos = LaneConfig.PositionOf(bot)
-    if kind == "lasthit" and ck == "r" and TripTable.Does("creep", pos) and Ours.On("LaneCreeps") then
+    if kind == "lasthit" and (ck == "r" or otw and Ours.On("TowerCreeps")) and TripTable.Does("creep", pos) and Ours.On("LaneCreeps") then
         return "lh"
     end
     if kind == "deny" and TripTable.Does("deny", pos) and Ours.On("CreepDeny") then
@@ -153,9 +154,20 @@ function ____exports.KindOf(bot, kind, ck)
     end
     return nil
 end
+--- `KindOf` for a candidate. Its `otw` is read from the read's fresh facts (cached for the read), and only for a last hit of a non-ranged
+-- creep with Ours.TowerCreeps on, the one case the answer depends on it: the facts' snapshot costs more than the rest of the check.
+local function kindOf(bot, c)
+    local needsOtw = c.t.kind == "lasthit" and c.ck ~= "r" and Ours.On("TowerCreeps")
+    return ____exports.KindOf(
+        bot,
+        c.t.kind,
+        c.ck,
+        needsOtw and c.facts().otw
+    )
+end
 --- The creep is of a kind this hero acts on and about to come due at this read (the first such read is kept).
 local function dueNow(bot, c, r, lead, now)
-    if ____exports.KindOf(bot, c.t.kind, c.ck) == nil or not ____exports.Due(c.t.walk, c.t.due, lead) then
+    if kindOf(bot, c) == nil or not ____exports.Due(c.t.walk, c.t.due, lead) then
         return false
     end
     if r.due0 == nil then
@@ -396,7 +408,7 @@ end
 local function factsOf(bot, c)
     local s = c.facts()
     return {
-        k = ____exports.KindOf(bot, c.t.kind, c.ck),
+        k = kindOf(bot, c),
         walk = c.t.walk,
         slk = c.arrive.slack,
         eh = s.path.covering,
@@ -471,7 +483,7 @@ function ____exports.Consider(bot, cands)
         local why
         local r = recs[c.cid]
         local first = r.due0 == nil
-        if ____exports.KindOf(bot, c.t.kind, c.ck) == nil then
+        if kindOf(bot, c) == nil then
             why = "kind"
         elseif not dueNow(
             bot,
@@ -515,25 +527,25 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue76
+            local __continue77
             repeat
-                if c == best or ____exports.KindOf(bot, c.t.kind, c.ck) == nil then
-                    __continue76 = true
+                if c == best or kindOf(bot, c) == nil then
+                    __continue77 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue76 = true
+                __continue77 = true
             until true
-            if not __continue76 then
+            if not __continue77 then
                 break
             end
         end
     end
     pending[pid] = {
         best = best,
-        k = ____exports.KindOf(bot, best.t.kind, best.ck),
+        k = kindOf(bot, best),
         need = ____exports.Need(bot, best.creep),
         lead = lead,
         now = now,

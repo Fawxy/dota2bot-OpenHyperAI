@@ -40,6 +40,10 @@ export const DEFAULTS = {
      *  our own lane creeps of every kind on the row's early go and hard hold, in the claimed cells bar `tower` and `given`. A core's
      *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */
     CreepDeny: true,
+    /** The lane's creeps, the under-tower hit, on the creep row (creep_row.ts, slice oha-tower-creeps; no-creep-unpaid proposal s6): a core
+     *  last-hits their lane creep of any kind whose stand spot is inside our tower's range, as well as their ranged creep anywhere, and the
+     *  `tower` refusal is lifted. Needs LaneCreeps. Off: the row takes their ranged creep outside our tower's range only. */
+    TowerCreeps: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
