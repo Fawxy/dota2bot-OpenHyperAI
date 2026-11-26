@@ -26,11 +26,17 @@
  * The claim (`creep_claim.ts`, `Reads.creep`): the attempt takes it in `begin` and the task's end releases it (`finish`), whatever the end;
  * the row's per-creep answers (`Seen`) live in that read. Nothing reads the claim to decide yet.
  *
+ * The leftover rule (Ours.TowerCreeps; `Verdict`): a creep one of our towers is attacking dies to a tower shot, so the hero's hit counts only if the
+ * creep has at most one hit of HP (the hero's lowest roll) just before the killing shot. When it has up to two (or three) hits, the row goes at once,
+ * orders one or two plain attacks (`towerAttempt`, the engine's `attackAndConfirm`, the order cancelled after each so the hero does not swing again),
+ * then goes on with `lastHit` under the same hold and claim. Verdict `none` refuses (`nowindow`, or `mates` when our own creeps are attacking it) and ends a
+ * running attempt whose swing is not yet ordered. A melee creep in our tower's range that the tower is not attacking is refused `notarget`.
+ *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
  * per attempt, with `k`.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, DamageType, Unit } from "bots/ts_libs/dota";
 import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
@@ -57,6 +63,12 @@ export const SETTINGS = {
     EarlyLead: 3,
     /** The decider's round (s) as the row meets it: a gap between the row's steps longer than it means another mode had the hero (`tk`). */
     Round: 0.4,
+    /** The most plain attacks (pre-hits) an attempt orders before its last hit; `Verdict` asks for at most two. */
+    MaxPreHits: 2,
+    /** Seconds past the estimated landing of a pre-hit before the verdict is asked again on the creep's HP. `judgement`. */
+    LandSlack: 0.1,
+    /** Seconds past the walk and own hit time for a pre-hit's attack to fire (laneFarm's `PREHIT_SLACK`, engine/src/lane.ts). */
+    PreHitSlack: 0.5,
 };
 
 /** The mode the decider hosts its rows in: the engine steps the attempt's task under it. */
@@ -134,6 +146,89 @@ export function OnTime(this: void, need: number, due: number): boolean {
     return due >= need;
 }
 
+export type Vd = "wait" | "prehit" | "none";
+
+export interface Verdicted {
+    vd: Vd;
+    /** Tower shots before the one that kills, and the HP the creep has just before that shot (in `(0, towerHit]`). */
+    shots: number;
+    leftover: number;
+    /** Pre-hits still needed (0 for `wait` and `none`). */
+    need: number;
+}
+
+/**
+ * The leftover rule, pure. `hp` the creep's HP, `towerHit` the tower's damage on it after armour, `lo` and `hi` the hero's lowest and highest hit on it
+ * after armour, `period` the tower's seconds per attack, `walk` the seconds before the hero's first attack can start, `cycle` the hero's attack cycle.
+ * `wait`: the creep is killable by the hero's hit just before the killing shot (leftover within `hi`: from `lo` up the verb swings only on a high roll
+ * and the row leaves that to it), so the row carries on as without the rule. `prehit`: one hit now (leftover over `hi`, within `2 * lo`) or two (over
+ * `2 * hi`, within `3 * lo`) leave it within one lowest hit, and the hero's attack is ready again before the last hit is needed
+ * (`shots >= 1`, `shots * period - walk >= cycle * hits`). `none` otherwise.
+ */
+export function Verdict(this: void, hp: number, towerHit: number, lo: number, hi: number, period: number, walk: number, cycle: number): Verdicted {
+    if (towerHit <= 0 || lo <= 0) return { vd: "wait", shots: 0, leftover: hp, need: 0 };
+    const shots = math.max(0, math.floor((hp - 1) / towerHit));
+    const leftover = hp - towerHit * shots;
+    if (leftover <= hi) return { vd: "wait", shots, leftover, need: 0 };
+    const need = leftover <= 2 * lo ? 1 : leftover > 2 * hi && leftover <= 3 * lo ? 2 : 0;
+    if (need === 0 || shots < 1 || shots * period - walk < cycle * need) return { vd: "none", shots, leftover, need: 0 };
+    return { vd: "prehit", shots, leftover, need };
+}
+
+/** What the row knows of a creep one of our towers is attacking: the facts of the verdict, the verdict, and why it is refused (`nowindow`, `mates`). */
+interface TowerRead {
+    tower: Unit;
+    hit: number;
+    v: Verdicted;
+    why?: "nowindow" | "mates";
+}
+
+type Timed = Unit & { GetSecondsPerAttack?(): number; GetBaseDamageVariance?(): number };
+
+/** Our towers near the hero, read once a read (`Consider`); the tower's target is asked per candidate. */
+function ownTowers(bot: Unit): Unit[] {
+    return bot.GetNearbyTowers(CreepOffer.SETTINGS.TowerRadius, false) ?? [];
+}
+
+/** A tower of ours that is attacking the creep now. */
+function attackerOf(towers: Unit[], creep: Unit): Unit | undefined {
+    for (const t of towers) if (t.IsAlive() && t.GetAttackTarget() === creep) return t;
+    return undefined;
+}
+
+/**
+ * One of our lane creeps attacks the creep: a creep's hit in the lane read (its wind-up was seen), or its attack target. Asked only for a creep
+ * whose verdict is `prehit`: a pre-hit then would race our creeps for the leftover.
+ */
+function creepsAttack(bot: Unit, creep: Unit): boolean {
+    const row = LaneHits.Of(bot.GetTeam(), bot.GetAssignedLane(), creep);
+    if (row !== undefined) {
+        for (const h of row.forecast.hits) if (h.by === "creep" && (h.attacker as unknown as Unit).GetTeam() === bot.GetTeam()) return true;
+    }
+    for (const c of bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false) ?? []) if (c.GetAttackTarget() === creep) return true;
+    return false;
+}
+
+/**
+ * The verdict on the creep's HP now. `done` the pre-hits already ordered: past `MaxPreHits` the verdict is `none`. A `prehit` becomes `none` with
+ * `why=mates` when our creeps attack the creep, else `nowindow` for any `none`.
+ */
+function towerRead(bot: Unit, creep: Unit, tower: Unit, done: number): TowerRead {
+    const hit = creep.GetActualIncomingDamage(tower.GetAttackDamage(), DamageType.Physical);
+    const dmg = bot.GetAttackDamage();
+    const spread = (bot as Timed).GetBaseDamageVariance?.() ?? 0;
+    const lo = creep.GetActualIncomingDamage(dmg - spread, DamageType.Physical);
+    const hi = creep.GetActualIncomingDamage(dmg + spread, DamageType.Physical);
+    const v = Verdict(creep.GetHealth(), hit, lo, hi, (tower as Timed).GetSecondsPerAttack?.() ?? 1, Need(bot, creep), CreepOffer.AttackCycle(bot));
+    const r: TowerRead = { tower, hit, v };
+    if (v.vd === "prehit" && done >= SETTINGS.MaxPreHits) r.v = { ...v, vd: "none", need: 0 };
+    if (r.v.vd === "prehit" && creepsAttack(bot, creep)) {
+        r.v = { ...v, vd: "none", need: 0 };
+        r.why = "mates";
+    } else if (r.v.vd === "none") r.why = "nowindow";
+    return r;
+}
+
 type Seen = CreepClaim.Answer;
 
 /** The record of each listed creep, new ones made now; records of creeps this read does not list are dropped (the claim read's). */
@@ -201,6 +296,9 @@ interface Attempt {
     tks: number;
     /** `lh` a last hit, `dn` a deny: the job lines' `k`. */
     k: "lh" | "dn";
+    /** The tower that was attacking the creep at the go (the leftover rule applies to this attempt), and the pre-hits ordered so far (the end line's `ph`). */
+    tower?: Unit;
+    ph: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -215,6 +313,7 @@ interface Pending {
     lead: number;
     now: number;
     seen: Seen;
+    tr?: TowerRead;
 }
 
 const pending: Record<number, Pending | undefined> = {};
@@ -263,9 +362,10 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
  * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
- * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take).
+ * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take); with Ours.TowerCreeps and a tower attacking the
+ * creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
  */
-function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn"; oc: number }): void {
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn"; oc: number; tr?: TowerRead }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["aid", aid],
@@ -288,6 +388,10 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
         ["nw", g.seen.first === g.now ? 1 : 0],
         ["ld", r2(g.lead)],
         ["oc", g.oc],
+        ["lf", g.tr === undefined ? undefined : r2(g.tr.v.leftover)],
+        ["tT", g.tr === undefined ? undefined : r2(g.tr.hit)],
+        ["ts", g.tr?.v.shots],
+        ["vd", g.tr?.v.vd],
     ]);
 }
 
@@ -295,7 +399,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
  * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
  * mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
- * rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `hp0`/`hp1` the hero's HP at the
+ * rose from a swing ordered before the verb's, message `hit=other`), `cl` 1 when the hero's claim on the creep was held and is released, `ph` the pre-hits ordered (an attempt the leftover rule covers; absent otherwise), `hp0`/`hp1` the hero's HP at the
  * start and end, `msg` the verb's message (what the swing was based on, or what held it).
  */
 function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string | undefined, claimed: boolean): void {
@@ -314,6 +418,7 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["cut", cut],
         ["cl", claimed ? 1 : 0],
         ["cid", a?.cid],
+        ["ph", a?.tower === undefined ? undefined : a.ph],
         ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
         ["tk", a?.tk],
         ["tks", a === undefined ? undefined : r2(a.tks)],
@@ -411,13 +516,32 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const mode = bot.GetActiveMode();
     const held = Decider.LetGo(bot) || mode === BotMode.Retreat;
     let best: CreepOffer.Candidate | undefined;
+    const tower = Ours.On("TowerCreeps");
+    let towers: Unit[] | undefined;
+    const reads: Record<number, TowerRead | undefined> = {};
     for (const c of cands) {
         let why: string | undefined;
         const r = recs[c.cid];
         const first = r.due0 === undefined;
-        if (kindOf(bot, c) === undefined) why = "kind";
-        else if (!dueNow(bot, c, r, lead, now)) why = "early";
-        else if (!OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
+        const k = kindOf(bot, c);
+        let tr: TowerRead | undefined;
+        let notarget = false;
+        if (k === "lh" && tower) {
+            towers ??= ownTowers(bot);
+            const tw = attackerOf(towers, c.creep);
+            tr = tw === undefined ? undefined : towerRead(bot, c.creep, tw, 0);
+            reads[c.cid] = tr;
+            // A last hit that is not ranged is inside our tower's range (`KindOf`), and the tower is not attacking it.
+            notarget = tr === undefined && c.ck !== "r";
+        }
+        // The verdict `prehit` goes before the creep comes due: the pre-hits are what make it killable then.
+        const pre = tr?.v.vd === "prehit";
+        if (pre && r.due0 === undefined) r.due0 = now;
+        if (k === undefined) why = "kind";
+        else if (notarget) why = "notarget";
+        else if (tr?.why !== undefined) why = tr.why;
+        else if (!pre && !dueNow(bot, c, r, lead, now)) why = "early";
+        else if (!pre && !OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
         else if (other) why = "row";
         else if (held) why = "held";
@@ -438,7 +562,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         recs[c.cid].why = "other";
         recs[c.cid].ok = "other";
     }
-    pending[pid] = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid] };
+    pending[pid] = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid], tr: reads[best.cid] };
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;
     // Not begun and not refused by the runner: Consider's own `other` check already turned away a row above holding the hero,
@@ -448,19 +572,59 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     recs[best.cid].why = "refused";
 }
 
+/** The leftover rule ends a running attempt: the verdict is `none` now and the swing is not yet ordered. */
+function towerLost(bot: Unit, pid: number): boolean {
+    const a = running[pid];
+    if (a === undefined || a.tower === undefined || a.so !== undefined) return false;
+    if (a.tower.GetAttackTarget() !== a.creep) return true;
+    return towerRead(bot, a.creep, a.tower, a.ph).v.vd === "none";
+}
+
+/**
+ * The attempt of a creep a tower is attacking: while the verdict is `prehit`, one plain attack (not a last hit: the engine's `attackAndConfirm`, which
+ * walks in itself), its order cancelled once it has fired or failed (an attack order outlives its one attack: engine/src/lane.ts, the pre-hit), and a
+ * wait until the hit has landed so the verdict is asked on the creep's HP; then `lastHit` on the same creep. The hold and the claim are the attempt's.
+ */
+function* towerAttempt(ctx: Lib.Ctx, bot: Unit, pid: number, creep: Unit, opts: Lib.Verbs.LastHitOpts): Lib.TaskBody {
+    while (true) {
+        const a = running[pid];
+        if (a === undefined || a.tower === undefined || !creep.IsAlive()) break;
+        if (a.tower.GetAttackTarget() !== creep) return ctx.fail("interrupted", "nowindow");
+        const tr = towerRead(bot, creep, a.tower, a.ph);
+        if (tr.v.vd === "none") return ctx.fail("interrupted", tr.why);
+        if (tr.v.vd === "wait") break;
+        const walk = Need(bot, creep);
+        const hitIn = Tasks.Verbs()!.ownHitTime(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep);
+        const landAt = ctx.now() + walk + hitIn + SETTINGS.LandSlack;
+        a.ph++;
+        const r = yield* ctx.attackAndConfirm(() => (creep.IsAlive() ? (creep as unknown as Lib.TaskCreep) : undefined), {
+            findFor: 0,
+            confirmFor: walk + hitIn + SETTINGS.PreHitSlack,
+            aggroConfirms: false,
+            hold: "creep_prehit",
+            interruptIf: () => mateTakes(bot, creep) || a.tower!.GetAttackTarget() !== creep,
+        });
+        bot.Action_MoveToLocation(bot.GetLocation());
+        if (!r.success) return r;
+        while (ctx.now() < landAt && creep.IsAlive()) yield;
+    }
+    return yield* ctx.lastHit(opts);
+}
+
 /** The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment. */
 function rowBegin(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
     const pd = pending[pid];
     pending[pid] = undefined;
     if (pd === undefined) return false;
-    const { best, k, need, lead, now } = pd;
+    const { best, k, need, lead, now, tr } = pd;
     const t = best.t;
     const creep = t.creep;
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
-        const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
+        const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
-        return ctx.lastHit(opts);
+        if (tr === undefined) return ctx.lastHit(opts);
+        return towerAttempt(ctx, bot, pid, creep as unknown as Unit, opts);
     });
     if (!ok) {
         best.note(false, "refused");
@@ -481,13 +645,15 @@ function rowBegin(bot: Unit): boolean {
         tk: 0,
         tks: 0,
         k,
+        tower: tr?.tower,
+        ph: 0,
     };
     running[pid] = a;
     lastCid[pid] = best.cid;
     const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
     const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k, due: pd.now + t.due });
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length, tr });
     return true;
 }
 

@@ -592,19 +592,149 @@ do -- the under-tower hit (Ours.TowerCreeps, slice oha-tower-creeps): a creep of
 			local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
 			tw.loc = c.loc
 			TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
+			if tower == "attacking" then
+				-- 40 HP under a tower hitting for 80: the creep is within the hero's own hit just before the killing shot.
+				c.hp, tw.dmg, tw.target = 40, 80, c
+			end
 		end
 		w.targets = { target(c, { walk = 2.0, due = 2.2, dies = 4 }) }
 		local ch = lines(readThenClose(w, { c }), "kind=creep")
 		return w, field(ch[1], "why"), table.concat(ch, " | ")
 	end
-	local w, why, ch = under({ tower = true }, MELEE, true)
-	check("tower creeps on: a melee creep inside our tower's range is a last hit and goes", w.starts == 1 and w.CR.KindOf(w.core, "lasthit", "m", true) == "lh", tostring(w.starts) .. " | " .. ch)
+	local w, why, ch = under({ tower = true }, MELEE, "attacking")
+	check("tower creeps on: a melee creep inside our tower's range that the tower attacks is a last hit and goes", w.starts == 1 and w.CR.KindOf(w.core, "lasthit", "m", true) == "lh", tostring(w.starts) .. " | " .. ch)
 	w, why, ch = under({ tower = true }, MELEE, false)
 	check("tower creeps on, control: the same melee creep outside the tower's range is refused kind", w.starts == 0 and why == "kind", ch)
 	w, why, ch = under({ tower = false }, RANGED, true)
 	check("tower creeps off: a ranged creep inside our tower's range is still refused tower", w.starts == 0 and why == "tower", ch)
 	w, why, ch = under({ tower = false }, MELEE, true)
 	check("tower creeps off: a melee creep inside our tower's range is refused kind", w.starts == 0 and why == "kind", ch)
+end
+
+do -- the leftover rule (Ours.TowerCreeps, creep_row Verdict): the pure verdict
+	local V = world({ tower = true }).CR.Verdict
+	local function vd(...) local r = V(...) return r.vd, r.shots, r.leftover, r.need end
+	local a, s, l = vd(550, 80, 72, 72, 1.5, 0, 1)
+	check("verdict: a leftover within one lowest hit waits (550 HP, tower 80, hit 72: 70 left before the killing shot)", a == "wait" and s == 6 and l == 70, a .. s .. l)
+	a, s, l = vd(550, 80, 43, 49, 1.5, 0, 1)
+	check("verdict: the same creep under hits of 43 to 49 needs a pre-hit", a == "prehit" and s == 6 and l == 70, a .. s .. l)
+	check("verdict: no tower shot left before the kill and one hit does not cover it is none", vd(62, 80, 43, 49, 1.5, 0, 1) == "none")
+	check("verdict: a leftover between the lowest and highest hit is left to the verb, not pre-hit", vd(530, 80, 43, 60, 1.5, 0, 1) == "wait" and vd(530, 80, 43, 49, 1.5, 0, 1) == "prehit")
+	a, s, l, n = vd(760, 130, 40, 45, 1.5, 0, 1)
+	check("verdict: a leftover of 110 needs two pre-hits when there is time for two", a == "prehit" and l == 110 and n == 2, a .. l .. n)
+	check("verdict: two pre-hits with the tower's shots too quick for two attack cycles is none", vd(760, 130, 40, 45, 0.3, 0, 1) == "none")
+	check("verdict: the walk to the first attack counts against the time", vd(550, 80, 43, 49, 1.0, 5.5, 1) == "none" and vd(550, 80, 43, 49, 1.0, 5, 1) == "prehit")
+	check("verdict: no shot before the killing one is none whatever the tower's period", vd(110, 130, 40, 45, 100, 0, 1) == "none")
+	check("verdict: a leftover past three lowest hits is none", vd(550, 200, 40, 45, 1.5, 0, 1) == "none")
+end
+
+do -- the leftover rule in the row: the pre-hit, the claim, the controls
+	local MELEE = "npc_dota_creep_badguys_melee"
+	local function gen(fn) return { ____coroutine = coroutine.create(fn) } end
+	-- o.hp the creep's HP, o.attack what the tower attacks (default the creep, false none), o.mate an own creep attacking it, o.on the switch.
+	local function towered(o)
+		local w = world({ tower = o.on ~= false })
+		local c = MakeCreep({ team = 3, x = 900, y = -5000, hp = o.hp or 550, name = MELEE })
+		local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
+		tw.loc, tw.dmg, tw.spa = c.loc, 80, 1.0
+		tw.target = o.attack == nil and c or o.attack or nil
+		tw.targetReads = 0
+		tw.GetAttackTarget = function(self) self.targetReads = self.targetReads + 1 return self.target end
+		TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
+		w.core.dmg, w.core.spa = 46, 1.0
+		w.core.GetBaseDamageVariance = function() return 3 end
+		if o.mate then MakeCreep({ team = 2, x = 850, y = -5000, hp = 300, target = c }) end
+		local V = w.CR.Verdict
+		local real = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs.Verbs
+		package.loaded["bots/FunLib/humaniser/tasks"].ForOurs.Verbs = function()
+			local v = real()
+			v.ownHitTime = function() return 0.3 end
+			return v
+		end
+		w.targets = { target(c, { walk = 1.0, due = o.due or 5, dies = 8 }) }
+		w.tower, w.creep = tw, c
+		w.order = {}
+		w.ctx = {
+			now = function() return T end,
+			fail = function(r, m) return { success = false, reason = r, message = m } end,
+			attackAndConfirm = function(pick, opts)
+				return gen(function()
+					table.insert(w.order, "attack")
+					w.attacked = pick()
+					w.prehitOpts = opts
+					c.hp = c.hp - 46
+					return { success = true, reason = "ok" }
+				end)
+			end,
+			lastHit = function(opts)
+				return gen(function()
+					table.insert(w.order, "lasthit")
+					w.lhOpts = opts
+					return { success = true, reason = "ok" }
+				end)
+			end,
+		}
+		-- Runs the attempt's body to its end, the clock moving a read's step (0.1 s) at each frame.
+		w.drive = function()
+			local co = w.body(w.ctx).____coroutine
+			for _ = 1, 60 do
+				local ok, v = coroutine.resume(co)
+				if not ok then error(v, 0) end
+				if coroutine.status(co) == "dead" then return v end
+				T = T + 0.1
+			end
+		end
+		return w, V
+	end
+
+	local w = towered({})
+	local out = capture(function()
+		w.CO.Shadow(w.core)
+		w.res = w.drive()
+		w.onEnd(w.res)
+	end)
+	local jobs = lines(out, "job=creep")
+	check("leftover: a fresh melee creep the tower attacks, killable by one pre-hit, is gone for at once", w.starts == 1 and field(jobs[1], "vd") == "prehit", w.starts .. " | " .. table.concat(out, " | "))
+	check("leftover: one plain attack on the creep, then the last hit on the same creep", table.concat(w.order, ",") == "attack,lasthit" and w.attacked == w.creep and w.lhOpts.target == w.creep and w.prehitOpts.aggroConfirms == false, table.concat(w.order, ","))
+	check("leftover: the attack order is cancelled after the pre-hit so the hero does not swing again", #ActionsOf(1, "MoveToLocation") == 1)
+	check("leftover: the start line has the leftover, the tower's damage, the shots and the verdict; the end line the pre-hits", field(jobs[1], "lf") == "70" and field(jobs[1], "tT") == "80" and field(jobs[1], "ts") == "6" and field(jobs[2], "ph") == "1", table.concat(jobs, " | "))
+
+	w = towered({ mate = true })
+	local ch = lines(capture(function() w.CO.Shadow(w.core) end), "kind=creep")
+	check("leftover: one of our creeps attacking it blocks the pre-hit, reason mates", w.starts == 0, w.starts .. " | " .. table.concat(ch, " | "))
+	w = towered({ mate = true })
+	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
+	check("leftover: the mates refusal is on the creep's line", field(ch[1], "why") == "mates", table.concat(ch, " | "))
+
+	w = towered({ attack = false })
+	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
+	check("leftover: a melee creep in our tower's range that the tower is not attacking is refused notarget", w.starts == 0 and field(ch[1], "why") == "notarget", w.starts .. " | " .. table.concat(ch, " | "))
+
+	w = towered({ hp = 62 })
+	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
+	check("leftover: a creep no pre-hit makes killable is refused nowindow", w.starts == 0 and field(ch[1], "why") == "nowindow", w.starts .. " | " .. table.concat(ch, " | "))
+
+	-- A running attempt: the verdict was `wait` at the go (leftover within the hero's hit), so the body goes straight to the last hit.
+	w = towered({ hp = 40, due = 1.2 })
+	out = capture(function() w.CO.Shadow(w.core) w.drive() end)
+	local o = w.lhOpts
+	local claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	check("leftover: a wait verdict starts the attempt and goes straight to the last hit", w.starts == 1 and table.concat(w.order, ",") == "lasthit" and claim.HeldBy(1) ~= nil, table.concat(w.order, ","))
+	check("leftover: while the verdict holds the attempt is not interrupted", o.interruptIf() == false)
+	w.tower.target = nil
+	check("leftover: the tower leaving the creep before a swing interrupts the attempt", o.interruptIf() == true)
+	out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
+	check("leftover: the claim is released at that end", claim.HeldBy(1) == nil and field(lines(out, "phase=end")[1], "cl") == "1", table.concat(out, " | "))
+	w = towered({ hp = 40, due = 1.2 })
+	capture(function() w.CO.Shadow(w.core) w.drive() end)
+	o = w.lhOpts
+	o.onPhase("swing", T)
+	w.tower.target = nil
+	check("leftover: an attempt whose swing is ordered is not interrupted", o.interruptIf() == false)
+
+	w = towered({ on = false })
+	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
+	check("leftover: switch off, a melee creep under our tower is refused kind and the tower's target is not read", w.starts == 0 and field(ch[1], "why") == "kind" and w.tower.targetReads == 0, w.tower.targetReads .. " | " .. table.concat(ch, " | "))
 end
 
 do -- something else due where the hero stands: the walk-in gives it up, so the row stays
