@@ -395,13 +395,13 @@ end
 **Parameters:**
 - `hA`, `hB` (hUnit): Two unit handles.
 
-**Returns:** `float` -- **Edge-to-edge** distance between the two units.
+**Returns:** `float` -- **Centre-to-centre** 2D distance between the two units.
 
-> **Gotcha:** This subtracts both units' bounding radii from the center-to-center distance. A return value of 0 means the units are touching. This matches how ability cast ranges work in Dota.
+> **Gotcha:** No radius is subtracted (measured 27/11/2026: it equals the distance between the two `GetLocation()`s to 0.001, for a tower and every lane creep type). Attack and acquisition ranges run edge to edge, so compare against range + both `GetBoundingRadius()` values (a tower reaches a hero's centre at 700 + 144 + 24 = 868).
 
 ### `GetUnitToUnitDistanceSqr(hA, hB)`
 
-**Returns:** `float` -- Squared edge-to-edge distance. **Use this for comparisons** -- it avoids the expensive square root operation.
+**Returns:** `float` -- Squared centre-to-centre distance. **Use this for comparisons** -- it avoids the expensive square root operation.
 
 ```lua
 -- GOOD: Compare squared distances (fast)
