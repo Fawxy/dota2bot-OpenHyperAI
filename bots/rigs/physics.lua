@@ -99,6 +99,20 @@ local function intruders(pos)
 	return n
 end
 
+-- Lane creeps of the real waves within 1800 of a point (probe 2: one walked onto the site and took the chasers): killed.
+local function strays(pos)
+	local n = 0
+	for _, team in ipairs({ R, D }) do
+		for _, u in ipairs(FindUnitsInRadius(team, pos, nil, 1800, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
+			if label[u:entindex()] == nil and u:GetClassname() == "npc_dota_creep_lane" and u:IsAlive() then
+				u:ForceKill(false)
+				n = n + 1
+			end
+		end
+	end
+	return n
+end
+
 -- The runner: a scenario is a list of trials; a trial is setup(ctx) then tick(ctx, dt) until it returns true or its
 -- timeout. One think on a hero (a plain dota game has no game-mode entity to host it).
 local function run(name, trials, onDone)
@@ -115,6 +129,8 @@ local function run(name, trials, onDone)
 		ctx = { t0 = now(), n = i, tag = trials[i].tag or tostring(i) }
 		started = now()
 		local ok, err = pcall(trials[i].setup, ctx)
+		local k = strays(V(ctx.cx or X0, ctx.cy or Y))
+		if k > 0 then say(string.format("%s strays_killed %s n=%d", name, ctx.tag, k)) end
 		if not ok then
 			say(name .. " setup_error " .. ctx.tag .. " " .. tostring(err))
 			return nextTrial()
@@ -128,6 +144,10 @@ local function run(name, trials, onDone)
 		last = t
 		if dt <= 0 then return 0.03 end
 		local tr = trials[i]
+		if math.floor(t * 2) ~= math.floor((t - dt) * 2) then
+			local k = strays(V(ctx.cx or X0, ctx.cy or Y))
+			if k > 0 then say(string.format("%s strays_killed_mid %s n=%d", name, ctx.tag, k)) end
+		end
 		local ok, fin = pcall(tr.tick, ctx, t - ctx.t0, dt)
 		if not ok then
 			say(name .. " tick_error " .. ctx.tag .. " " .. tostring(fin))
