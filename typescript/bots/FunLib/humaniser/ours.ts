@@ -31,10 +31,11 @@ export const DEFAULTS = {
      *  stack-then-pull group). Off: both are logged as shadows and stock plays. On: it beat the reference arm on its line
      *  (oha-pull-row's batch pullstack1). */
     SupportPull: true,
-    /** The lane's creeps, first group, a soft row of the decider (creep_row.ts, doctrine D11; no-creep-unpaid proposal s5): a core
+    /** The lane's creeps, first group, a hard row of the decider (creep_row.ts, doctrine D11; no-creep-unpaid proposal s5): a core
      *  (pos 1 to 3) last-hits their ranged creep in the claimed cells (near, or a longer walk no enemy hero covers) once it is
-     *  about to come due and stock is not attacking it. Off: the read logs every offer as a shadow and stock plays. */
-    LaneCreeps: false,
+     *  about to come due, whether or not stock is attacking it. Off: the read logs every offer as a shadow and stock plays.
+     *  On: it beat the reference arm on its line (oha-creep-earlyhard's batches ceh1 and ceh2). */
+    LaneCreeps: true,
     /** The lane's creeps, second kind, the deny, on the creep row (creep_row.ts, slice oha-creep-deny): a support (pos 4 and 5) denies
      *  our own lane creeps of every kind on the row's early go and hard hold, in the claimed cells bar `tower` and `given`. A core's
      *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */

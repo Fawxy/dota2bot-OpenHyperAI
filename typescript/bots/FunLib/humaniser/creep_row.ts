@@ -16,7 +16,7 @@
  *
  * The verb is the engine's `lastHit` on that creep (it walks into range, waits and swings when its hit kills); the attempt
  * latches the hold until the task ends (the creep dies, the hit lands, the wait runs out), then the hero is stock's again.
- * Hard from the go (test arm, oha-creep-ontime): the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
+ * Hard from the go: the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
@@ -41,22 +41,12 @@ export const SETTINGS = {
     /** The wait for the creep to come due, after its eta: laneFarm's own (`maxWait` eta + 1.5 s, engine/docs/API.md). `judgement`. */
     WaitSlack: 1.5,
     /**
-     * The slice's test arm (oha-creep-swing), deleted once judged: when the hold turns hard. `go`: hard from the go, through every phase
-     * (the base's answers). `swing`: the row goes early (`EarlyLead`) and holds soft until the swing is about to be due (`Round`), then hard.
-     * `early`: the early go of `swing` with the hard hold of `go` (oha-creep-earlyhard).
-     */
-    HardFrom: "early" as "go" | "swing" | "early",
-    /**
-     * judgement: with `HardFrom` swing or early, the row may go once the creep comes due within the walk plus this (s) instead of one attack cycle.
+     * judgement: the row may go once the creep comes due within the walk plus this (s), or one attack cycle when that is longer.
      * Earlier means more creeps seen in time (43 refusals in six games were creeps not yet offered, due in about 1.6 s with 2.5 s of walk), but
-     * a longer soft hold on a creep that may die to another hit or be taken by a mate before the hero is in reach.
+     * a longer hold on a creep that may die to another hit or be taken by a mate before the hero is in reach.
      */
     EarlyLead: 3,
-    /**
-     * The decider's round (s) as the row meets it: the wait from a go to the row's first step, which is also the wait for a change of hold
-     * to apply (`wt` of crr1b, crr1ts2 and csw0: median 0.27, max 0.57). The hold turns hard this long (plus the read interval, `Soft`) before the swing is due, and a gap
-     * between steps longer than it means another mode had the hero.
-     */
+    /** The decider's round (s) as the row meets it: a gap between the row's steps longer than it means another mode had the hero (`tk`). */
     Round: 0.4,
 };
 
@@ -108,7 +98,7 @@ export function Claim(this: void, f: Facts): string | undefined {
 }
 
 /**
- * About to come due: due within the walk plus `lead`, one own attack cycle (`GetSecondsPerAttack`), so the hero is in range and
+ * About to come due: due within the walk plus `lead` (`Lead`: the longer of one own attack cycle, `GetSecondsPerAttack`, and `EarlyLead`), so the hero is in range and
  * facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
  * 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
  * at least one cycle (`CreepOffer.Within`), so such a creep is offered by then.
@@ -207,23 +197,12 @@ interface Attempt {
     phaseAt: number;
     /** Seconds spent in each phase so far (the open phase is added at the end). */
     spent: Record<string, number>;
-    /** Seconds from the go to the hold turning hard (`Soft` first answering false), and the creep's due then. Once set, the hold stays hard. */
-    hc?: number;
-    hd?: number;
-    /** The creep's latest due and the hero's walk to it (`Need`), as the last read that listed it had them, and when. Aged by the time since. */
-    due: number;
-    need: number;
-    seenAt: number;
     /** Seconds from the go to the verb's swing order (the `swing` phase); undefined until then. */
     so?: number;
     /** The time of the last step; a gap over `Round` is another mode having the hero. `tk` times and `tks` seconds so far. */
     lastStep?: number;
     tk: number;
     tks: number;
-    /** A step came after such a gap: the next read asks the go rule again (`lateBack`). */
-    back: boolean;
-    /** The row ended the attempt itself because the hero came back too late. */
-    late: boolean;
     /** `lh` a last hit, `dn` a deny: the job lines' `k`. */
     k: "lh" | "dn";
 }
@@ -262,34 +241,11 @@ function r2(x: number): number {
     return math.floor(x * 100 + 0.5) / 100;
 }
 
-/**
- * The one place that says whether the attempt is held soft, from `SETTINGS.HardFrom`, and where the hold turns hard (`hc`, `hd`): a commit,
- * so once hard it stays hard. `go` and `early`: hard from the go. `swing`: soft until the creep's latest due (aged by the time since the read that had
- * it, as is the walk) is at most the walk left plus `Round` plus the offer read's interval (`CreepOffer.SETTINGS.Every`): a change of hold
- * takes up to a round to apply, the due is up to one read old, and the verb's `swing` phase is reported only after its order. With `Round`
- * alone csw1b ordered 6 of 40 swings before the first `hs=hard` decider line, by up to 0.3 s. The verb's own `swing` also makes it hard. The aging assumes the hero is walking in, so while
- * another mode has the hero, or after it came back and before a read asked the go rule again (`back`), it stays soft: the hold must not
- * harden on a due the hero may no longer meet.
- */
-function Soft(this: void, a: Attempt | undefined, now: number): boolean {
-    if (a === undefined || a.hc !== undefined) return false;
-    const dt = now - a.seenAt;
-    const due = a.due - dt;
-    if (SETTINGS.HardFrom === "swing" && a.phase !== "swing") {
-        const away = a.back || (a.lastStep !== undefined && now - a.lastStep > SETTINGS.Round);
-        if (away || due > math.max(0, a.need - dt) + SETTINGS.Round + CreepOffer.SETTINGS.Every) return true;
-    }
-    a.hc = now - a.t0;
-    a.hd = due;
-    return false;
-}
-
 function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
     if (a.phase !== undefined) a.spent[a.phase] += t - a.phaseAt;
     a.phase = p;
     a.phaseAt = t;
     if (p === "swing" && a.so === undefined) a.so = t - a.t0;
-    Soft(a, t);
 }
 
 /**
@@ -326,8 +282,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
 }
 
 /**
- * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `hc` the seconds from the go to the hold turning hard (-1 never)
- * and `hd` the creep's due then (absent when never), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
+ * The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
  * mode had the hero (a gap between steps over `Round`) and `tks` the seconds it did, `wt` the seconds from the go to the row's first step (-1 never), `tin` the seconds to first in the verb's range (-1 never), `sw` 1 when the verb ordered its swing (its message
  * is the post-swing one, which carries `end=`; absent on a cut, whose message is the runner's; 0 with `why=ok` when the hero's count
  * rose from a swing ordered before the verb's, message `hit=other`), `hp0`/`hp1` the hero's HP at the
@@ -348,8 +303,6 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["host", HOST],
         ["cut", cut],
         ["cid", a?.cid],
-        ["hc", a === undefined ? undefined : a.hc !== undefined ? r2(a.hc) : -1],
-        ["hd", a?.hd !== undefined ? r2(a.hd) : undefined],
         ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
         ["tk", a?.tk],
         ["tks", a === undefined ? undefined : r2(a.tks)],
@@ -384,10 +337,8 @@ function finish(bot: Unit, r: Lib.Result): void {
             a.tk++;
             a.tks += now - a.lastStep;
         }
-        // An attempt that ended while held soft with no swing ordered did not use the creep's one try.
-        if (a.hc === undefined && a.so === undefined && lastCid[pid] === a.cid) lastCid[pid] = undefined;
     }
-    endLine(bot, a, r, a !== undefined && a.late ? "late_back" : cutBy(bot, r));
+    endLine(bot, a, r, cutBy(bot, r));
 }
 
 function factsOf(bot: Unit, c: CreepOffer.Candidate): Facts {
@@ -397,37 +348,15 @@ function factsOf(bot: Unit, c: CreepOffer.Candidate): Facts {
 
 /**
  * The lead (s) the row goes on: a creep due within the walk plus this is about to come due (`Due`). One own attack cycle, or `EarlyLead` when
- * that is longer and `HardFrom` is swing or early (not go).
+ * that is longer.
  */
 export function Lead(this: void, bot: Unit): number {
-    const cycle = CreepOffer.AttackCycle(bot);
-    return SETTINGS.HardFrom !== "go" ? math.max(cycle, SETTINGS.EarlyLead) : cycle;
+    return math.max(CreepOffer.AttackCycle(bot), SETTINGS.EarlyLead);
 }
 
 /** What the read asks laneTargets to offer (`within`) for a hero the row acts on: the lead, so a creep is listed by the time the row may go. 0: the read's own. */
 export function OfferLead(this: void, bot: Unit): number {
-    return On(bot) && SETTINGS.HardFrom !== "go" ? SETTINGS.EarlyLead : 0;
-}
-
-/**
- * A read that lists the running attempt's creep: its latest due and the walk to it (the commit point's inputs, `Soft`), and after a step
- * that came after another mode had the hero, the go rule asked again: if the hero can no longer be in reach before the creep is due, an attempt
- * still held soft ends at once (`cut=late_back`, reason `cancelled`) and the creep's one try is not spent (`finish`). A hard attempt is
- * never ended this way: its hold was the decider's, so the hero cannot have been taken.
- */
-function follow(bot: Unit, a: Attempt, c: CreepOffer.Candidate, now: number): void {
-    a.due = c.t.due;
-    a.need = Need(bot, c.creep);
-    a.seenAt = now;
-    if (a.back && a.hc === undefined) {
-        if (!OnTime(a.need, a.due)) {
-            a.late = true;
-            Tasks.Cancel(bot, "cancelled", "late_back");
-            return;
-        }
-        a.back = false;
-    }
-    Soft(a, now);
+    return On(bot) ? SETTINGS.EarlyLead : 0;
 }
 
 /**
@@ -447,8 +376,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const lead = Lead(bot);
     const recs = touch(pid, cands, now);
     if (cands.length === 0) return;
-    const run = running[pid];
-    if (run !== undefined) {
+    if (running[pid] !== undefined) {
         for (const c of cands) {
             const r = recs[c.cid];
             if (dueNow(bot, c, r, lead, now)) {
@@ -456,7 +384,6 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
                 r.mode = undefined;
             }
             c.note(false, "busy");
-            if (c.cid === run.cid) follow(bot, run, c, now);
         }
         return;
     }
@@ -518,23 +445,17 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         aid,
         phaseAt: t0,
         spent: { walk: 0, wait: 0, swing: 0 },
-        due: t.due,
-        need,
-        seenAt: t0,
         tk: 0,
         tks: 0,
-        back: false,
-        late: false,
         k,
     };
-    Soft(a, t0);
     running[pid] = a;
     lastCid[pid] = best.cid;
     const sa = bot.GetAttackTarget();
     startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep, lead, k });
 }
 
-/** The verb's phase change, from the engine's onPhase. */
+/** The verb's phase change, from the engine's onPhase (the phase times of the end line). */
 function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
     const a = running[pid];
     if (a !== undefined) enterPhase(a, p, t);
@@ -554,11 +475,10 @@ function rowStep(bot: Unit): boolean {
     if (first === undefined) return true;
     const now = DotaTime();
     if (first.wt === undefined) first.wt = now - first.t0;
-    // The host mode steps the verb every frame it has the hero: a longer gap is another mode having it (a soft hold's cost).
+    // The host mode steps the verb every frame it has the hero: a longer gap is another mode having it.
     if (first.lastStep !== undefined && now - first.lastStep > SETTINGS.Round) {
         first.tk++;
         first.tks += now - first.lastStep;
-        first.back = true;
     }
     first.lastStep = now;
     Tasks.Step(bot, HOST);
@@ -578,4 +498,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3). */
-export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep, soft: (bot) => Soft(running[bot.GetPlayerID()], DotaTime()) };
+export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep };

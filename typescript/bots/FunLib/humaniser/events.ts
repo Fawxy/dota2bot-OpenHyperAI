@@ -1324,7 +1324,7 @@ export const EVENTS = {
         host: "num",
         /** 1 when hero damage landed during the job. */
         hit: "num",
-        /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name; `late_back` (`job=creep` only, `why=cancelled`): the row ended its own soft attempt because the hero came back from another mode too late to be in reach before the creep was due. */
+        /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name; `late_back` (`job=creep`, `why=cancelled`; only in logs banked before the creep row held hard from the go: the row ended its own soft attempt because the hero came back too late). */
         cut: "str",
         /** With `cut=retreat`: the hero's HP share then. */
         hp: "num",
@@ -1356,17 +1356,17 @@ export const EVENTS = {
         /** `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep. */
         sa: "num",
         nw: "num",
-        /** `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer (`HardFrom` swing or early). */
+        /** `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer. */
         ld: "num",
         /** `job=creep` end: seconds the attempt spent in each phase of the engine's lastHit (`onPhase`): `pw` walk (outside reach), `pq` wait (in reach, no swing ordered), `ps` swing (ordered, up to the end); 0 for a phase never entered. */
         pw: "num",
         pq: "num",
         ps: "num",
-        /** `job=creep` end: seconds from the go to the hold turning hard (the phase rule `CreepRow.SETTINGS.HardFrom`: 0 with `go` and `early`); -1 when it never did. */
+        /** `job=creep` end: only in logs banked before the row held hard from the go in every attempt: seconds from the go to the hold turning hard (0 once it did; -1 never). Not emitted now. */
         hc: "num",
-        /** `job=creep` end: the creep's due (s, aged by the time since the read that had it) when the hold turned hard; absent when it never did. With `HardFrom` swing the hold turns hard when due is at most the walk left plus `Round` (0.4 s). */
+        /** `job=creep` end: only in banked logs: the creep's due (s) when the hold turned hard. Not emitted now. */
         hd: "num",
-        /** `job=creep` end: seconds from the go to the verb's swing order; -1 when none. With `hc` it says whether the swing was ordered while the hold was still soft (`hc` -1 or above `so`). */
+        /** `job=creep` end: seconds from the go to the verb's swing order; -1 when none. */
         so: "num",
         /** `job=creep` end: how many times another mode had the hero (a gap between the row's steps over `Round`, the end's own included) and for how many seconds in all. */
         tk: "num",
@@ -2898,7 +2898,7 @@ export const EVENTS = {
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
-        /** kind=decider, while a row holds: its strength as asked this round, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it); a row may turn from one to the other while it holds (the creep row, by phase). */
+        /** kind=decider, while a row holds: its strength as asked this round, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it); a row's strength may change while it holds (no row does today: all are hard). */
         hs: "str",
         /** kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
         let: "str",
@@ -2906,7 +2906,7 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `acting`, `held` (Valve's attack or stock's retreat holds the hero; from oha-creep-early round 2), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
         why: "str",
         /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting` and `notime`, which `why` overwrites with an earlier one, can be counted. */
         lw: "str",

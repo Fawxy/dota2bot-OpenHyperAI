@@ -11,12 +11,13 @@
 --              melee is rng under 300
 --   wt         the end line's seconds from the go to the row's first step (-1 never stepped; NULL on logs before oha-creep-swing)
 --   pw, pq, ps seconds the attempt spent in the verb's phases, walk (outside reach), wait (in reach, no swing ordered) and swing (ordered, to
---              the end); hc seconds from the go to the hold turning hard (0 with the phase rule `go`, -1 never); all NULL on logs
---              before oha-creep-swing's commit C
---   hd, so     the creep's due when the hold turned hard (NULL never) and the seconds from the go to the verb's swing order (-1 none);
---              swsoft 1 when the swing was ordered while the hold was still soft (so >= 0 and hc -1 or after so), 0 when not, NULL without so
+--              the end); all NULL on logs
+--              before oha-creep-swing's commit C; hc seconds from the go to the hold turning hard (0 once it did, -1 never) is NULL on
+--              logs from oha-creep-earlyhard on, which no longer carry it
+--   hd, so     the creep's due when the hold turned hard (NULL never, and on logs from oha-creep-earlyhard on) and the seconds from the go to the verb's swing order (-1 none);
+--              swsoft 1 when the swing was ordered while the hold was still soft (so >= 0 and hc -1 or after so), 0 when not, NULL without so or hc
 --   tk, tks    how many times another mode had the hero (a gap between the row's steps over 0.4 s) and for how many seconds in all
---   ld         the start line's lead (s): the creep was about to come due within the walk plus this; cut = 'late_back' is the row ending its own
+--   ld         the start line's lead (s): the creep was about to come due within the walk plus this; cut = 'late_back' (banked logs only) is the row ending its own
 --              soft attempt on the hero's return too late (why cancelled); all NULL on logs before oha-creep-swing's commit E
 --   arr        on a cut: `after` when the hero had been in the verb's range (tin >= 0 and at or before the end), `before` when
 --              not, NULL on logs without tin

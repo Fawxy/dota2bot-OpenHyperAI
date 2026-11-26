@@ -25,6 +25,7 @@ export interface Row {
     /**
      * True: the row holds at SOFT, so the Valve-only modes take the hero when they want it (plan s3). Absent: HARD. A function is asked once
      * each round (in `Host`), so a row can hold soft in one phase of its verb and hard in another.
+     * CANDIDATE(soft-per-phase): no row uses the function form today; ARCHITECTURE rule 10 wants a hold per phase.
      */
     soft?: boolean | ((this: void, bot: Unit) => boolean);
 }
@@ -63,7 +64,7 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack and rune detour rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
+/** Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
 export const ROWS: Row[] = [];
 
 /**
@@ -231,6 +232,11 @@ export function HostThink(bot: Unit, inner: () => any, cannotAct: (this: void, b
 /** The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason). */
 export function LetGo(bot: Unit): boolean {
     return stateOf(bot).letAt !== undefined;
+}
+
+/** Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts). */
+export function Soft(bot: Unit): boolean {
+    return heroes[bot.GetPlayerID()]?.soft === true;
 }
 
 /** The row that held this hero at its last farm desire round, if any (the overlay). */

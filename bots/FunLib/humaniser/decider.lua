@@ -34,7 +34,7 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack and rune detour rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
+--- Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
 ____exports.ROWS = {}
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
 -- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
@@ -221,10 +221,15 @@ end
 function ____exports.LetGo(bot)
     return stateOf(bot).letAt ~= nil
 end
+--- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
+function ____exports.Soft(bot)
+    local ____opt_5 = heroes[bot:GetPlayerID()]
+    return (____opt_5 and ____opt_5.soft) == true
+end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_5 = heroes[bot:GetPlayerID()]
-    return ____opt_5 and ____opt_5.held
+    local ____opt_7 = heroes[bot:GetPlayerID()]
+    return ____opt_7 and ____opt_7.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()
