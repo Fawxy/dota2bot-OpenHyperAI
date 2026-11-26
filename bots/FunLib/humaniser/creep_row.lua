@@ -250,7 +250,7 @@ function ____exports.Claim(f)
     end
     return nil
 end
---- About to come due: due within the walk plus `lead`, one own attack cycle (`GetSecondsPerAttack`), so the hero is in range and
+--- About to come due: due within the walk plus `lead` (`Lead`: the longer of one own attack cycle, `GetSecondsPerAttack`, and `EarlyLead`), so the hero is in range and
 -- facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
 -- 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
 -- at least one cycle (`CreepOffer.Within`), so such a creep is offered by then.

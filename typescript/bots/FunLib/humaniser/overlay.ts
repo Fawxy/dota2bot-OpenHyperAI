@@ -76,7 +76,7 @@ function doing(bot: Unit): Doing {
     const mode = bot.GetActiveMode();
     const task = Tasks.Running(bot);
     const held = Decider.Held(bot);
-    const hold = held === undefined ? "" : held.soft === true ? " soft" : " hard";
+    const hold = held === undefined ? "" : Decider.Soft(bot) ? " soft" : " hard";
     if (task !== undefined && task.host === mode) {
         const text = task.name + (task.label !== undefined ? `:${task.label}` : "") + hold;
         return { text, colour: OURS_COLOUR, ring: task.name };

@@ -171,8 +171,8 @@ Customize.Humaniser = {
 -- is under it (families proposal s5); two rows of the decider (needs no other switch). Off: no pull or stack, both logged as shadows. On by default (it beat the reference arm,
 -- oha-pull-row's batch pullstack1).
 -- LaneCreeps (decider row, doctrine D11; no-creep-unpaid proposal s5): a core (pos 1 to 3) last-hits their ranged creep in the
--- claimed cells (in range or a walk up to 1 s, not out-damaged; a longer walk no enemy hero covers) once it is about to come due
--- and stock is not attacking it (creep_row). Off: the creep offer read logs a shadow (ev=choice kind=creep src=shadow) and stock plays.
+-- claimed cells (in range or a walk up to 1 s, not out-damaged; a longer walk no enemy hero covers) once it is about to come due,
+-- whether or not stock is attacking it (creep_row). Off: the creep offer read logs a shadow (ev=choice kind=creep src=shadow) and stock plays.
 -- MidWater (slice rune-verb): the mid's 2:00 and 4:00 water runes are its own trips, one per spawn, and OHA's power and water
 -- rune logic stands aside for it until the 6:00 plan. Off: OHA's rune mode decides.
 -- Sustain (D6, sustain design steps 3-5): a held laner's heal and mana items, its walk home, its regen purchases and their
