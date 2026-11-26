@@ -175,6 +175,31 @@ local function __TS__ObjectKeys(obj)
     end
     return result
 end
+
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local counted, fallback, valid, towers, fell, fellValue, live
@@ -553,16 +578,130 @@ function ____exports.Probe(bot, constants)
             constant = constants.neutral
         }
     end
+    local function flat(a, b)
+        local p = a:GetLocation()
+        local q = b:GetLocation()
+        return math.sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y))
+    end
+    local function api(u, m)
+        local f = u[m]
+        return f ~= nil and f(u) or nil
+    end
+    local function phys(fact, v)
+        local ____temp_0 = #rows + 1
+        rows[____temp_0] = {
+            fact = "phys_" .. fact,
+            live = v == nil and -1 or math.floor(v * 1000) / 1000,
+            constant = 0
+        }
+        return ____temp_0
+    end
+    if tower ~= nil then
+        phys(
+            "u2u_tower_minus_centre",
+            GetUnitToUnitDistance(bot, tower) - flat(bot, tower)
+        )
+        phys(
+            "tower_acq",
+            tower:GetAcquisitionRange()
+        )
+        phys(
+            "tower_attack_point",
+            api(tower, "GetAttackPoint")
+        )
+        phys(
+            "tower_spa",
+            api(tower, "GetSecondsPerAttack")
+        )
+        phys(
+            "tower_proj",
+            api(tower, "GetAttackProjectileSpeed")
+        )
+    end
+    phys(
+        "hero_acq",
+        bot:GetAcquisitionRange()
+    )
+    phys(
+        "hero_range",
+        bot:GetAttackRange()
+    )
+    local ____array_1 = __TS__SparseArrayNew(unpack(creeps))
+    __TS__SparseArrayPush(
+        ____array_1,
+        unpack(mine)
+    )
+    for ____, c in ipairs({__TS__SparseArraySpread(____array_1)}) do
+        do
+            local __continue94
+            repeat
+                if not valid(c) then
+                    __continue94 = true
+                    break
+                end
+                local name = c:GetUnitName()
+                local k = (string.find(name, "siege")) ~= nil and "siege" or ((string.find(name, "ranged")) ~= nil and "ranged" or ((string.find(name, "flag")) ~= nil and "flag" or "melee"))
+                phys(
+                    k .. "_radius",
+                    c:GetBoundingRadius()
+                )
+                phys(
+                    k .. "_acq",
+                    c:GetAcquisitionRange()
+                )
+                phys(
+                    k .. "_range",
+                    c:GetAttackRange()
+                )
+                phys(
+                    k .. "_attack_point",
+                    api(c, "GetAttackPoint")
+                )
+                phys(
+                    k .. "_spa",
+                    api(c, "GetSecondsPerAttack")
+                )
+                phys(
+                    k .. "_proj",
+                    api(c, "GetAttackProjectileSpeed")
+                )
+                phys(
+                    k .. "_speed",
+                    c:GetBaseMovementSpeed()
+                )
+                phys(
+                    k .. "_u2u_minus_centre",
+                    GetUnitToUnitDistance(bot, c) - flat(bot, c)
+                )
+                phys(
+                    k .. "_height_level",
+                    GetHeightLevel(c:GetLocation())
+                )
+                __continue94 = true
+            until true
+            if not __continue94 then
+                break
+            end
+        end
+    end
+    phys(
+        "hero_height_level",
+        GetHeightLevel(bot:GetLocation())
+    )
+    phys(
+        "hero_ground",
+        api(bot, "GetGroundHeight")
+    )
     for ____, ____value in ipairs(__TS__ObjectEntries(noted)) do
         local fact = ____value[1]
         local n = ____value[2]
         rows[#rows + 1] = {fact = fact, live = n.live, constant = n.constant}
     end
     for ____, ____type in ipairs(__TS__ObjectKeys(neutralByType)) do
-        local ____temp_2 = "neutral_speed_" .. ____type
-        local ____neutralByType_____type_3 = neutralByType[____type]
-        local ____opt_0 = constants.neutralSeeds
-        rows[#rows + 1] = {fact = ____temp_2, live = ____neutralByType_____type_3, constant = ____opt_0 and ____opt_0[____type] or constants.neutral}
+        local ____temp_4 = "neutral_speed_" .. ____type
+        local ____neutralByType_____type_5 = neutralByType[____type]
+        local ____opt_2 = constants.neutralSeeds
+        rows[#rows + 1] = {fact = ____temp_4, live = ____neutralByType_____type_5, constant = ____opt_2 and ____opt_2[____type] or constants.neutral}
     end
     return rows
 end

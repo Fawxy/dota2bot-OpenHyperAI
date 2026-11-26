@@ -318,13 +318,17 @@ export function Probe(
         const q = b.GetLocation();
         return math.sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y));
     };
+    const api = (u: Unit, m: string): number | undefined => {
+        const f = (u as unknown as Record<string, unknown>)[m] as ((this: void, self: Unit) => number) | undefined;
+        return f !== undefined ? f(u) : undefined;
+    };
     const phys = (fact: string, v: number | undefined) => rows.push({ fact: "phys_" + fact, live: v === undefined ? -1 : math.floor(v * 1000) / 1000, constant: 0 });
     if (tower !== undefined) {
         phys("u2u_tower_minus_centre", GetUnitToUnitDistance(bot, tower) - flat(bot, tower));
         phys("tower_acq", tower.GetAcquisitionRange());
-        phys("tower_attack_point", tower.GetAttackPoint());
-        phys("tower_spa", tower.GetSecondsPerAttack());
-        phys("tower_proj", tower.GetAttackProjectileSpeed());
+        phys("tower_attack_point", api(tower, "GetAttackPoint"));
+        phys("tower_spa", api(tower, "GetSecondsPerAttack"));
+        phys("tower_proj", api(tower, "GetAttackProjectileSpeed"));
     }
     phys("hero_acq", bot.GetAcquisitionRange());
     phys("hero_range", bot.GetAttackRange());
@@ -335,15 +339,15 @@ export function Probe(
         phys(k + "_radius", c.GetBoundingRadius());
         phys(k + "_acq", c.GetAcquisitionRange());
         phys(k + "_range", c.GetAttackRange());
-        phys(k + "_attack_point", c.GetAttackPoint());
-        phys(k + "_spa", c.GetSecondsPerAttack());
-        phys(k + "_proj", c.GetAttackProjectileSpeed());
+        phys(k + "_attack_point", api(c, "GetAttackPoint"));
+        phys(k + "_spa", api(c, "GetSecondsPerAttack"));
+        phys(k + "_proj", api(c, "GetAttackProjectileSpeed"));
         phys(k + "_speed", c.GetBaseMovementSpeed());
         phys(k + "_u2u_minus_centre", GetUnitToUnitDistance(bot, c) - flat(bot, c));
         phys(k + "_height_level", GetHeightLevel(c.GetLocation()));
     }
     phys("hero_height_level", GetHeightLevel(bot.GetLocation()));
-    phys("hero_ground", bot.GetGroundHeight());
+    phys("hero_ground", api(bot, "GetGroundHeight"));
     for (const [fact, n] of Object.entries(noted)) rows.push({ fact, live: n.live, constant: n.constant });
     for (const type of Object.keys(neutralByType)) {
         rows.push({ fact: "neutral_speed_" + type, live: neutralByType[type], constant: constants.neutralSeeds?.[type] ?? constants.neutral });
