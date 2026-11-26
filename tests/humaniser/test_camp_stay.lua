@@ -134,6 +134,21 @@ do -- the hold: soft while standing, hard from a last-hit attempt's go to its en
 	check("the decider's line shows hs=hard in the attempt", #lines(soft, "hs=hard") >= 1, table.concat(o1, " | "))
 end
 
+do -- walking in from afar: no attempt until the hero is at the stand spot, then one on the due neutral
+	local w = world()
+	w.bot.loc = Vector(-1600, -4400)
+	w.n1.hp = 40
+	local o1 = capture(function()
+		w.desire = w.H.Decider.Host(w.bot, function() return 0 end)()
+		w.bot.mode = FARM
+		w.H.Decider.HostThink(w.bot, function() end, function() return false end)()
+	end)
+	T = T + 0.1
+	local far = w.H.Decider.Host(w.bot, function() return 0 end)() < w.H.Decider.HARD
+	local o2 = run(w, 10)
+	check("far from the spot: no attempt on a due neutral; at the spot: the attempt holds hard", far and w.desire == w.H.Decider.HARD, table.concat(o1, " | ") .. " || " .. table.concat(o2, " | "))
+end
+
 do -- standing gives no hit: only moves to the spot behind our creeps
 	local w = world()
 	run(w, 10)

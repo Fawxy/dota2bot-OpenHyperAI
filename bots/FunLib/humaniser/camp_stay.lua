@@ -202,6 +202,7 @@ ____exports.SETTINGS = {
     BehindMin = 150,
     BehindMax = 400,
     Arrive = 60,
+    AtSpot = 200,
     Reorder = 0.5,
     Max = 35,
     OutMargin = 150,
@@ -357,6 +358,9 @@ end
 local function block(bot, p, r)
     if p.barred ~= nil then
         return p.barred
+    end
+    if p.first ~= nil and DotaTime() >= p.first + ____exports.SETTINGS.Max then
+        return "timeout"
     end
     local mode = bot:GetActiveMode()
     if mode == BotMode.Attack or mode == BotMode.Retreat then
@@ -535,10 +539,10 @@ local function dueNeutral(bot, st, f)
     local best
     for ____, n in ipairs(f.worked) do
         do
-            local __continue57
+            local __continue58
             repeat
                 if __TS__ArrayIncludes(st.skip, n) then
-                    __continue57 = true
+                    __continue58 = true
                     break
                 end
                 local c = n
@@ -561,9 +565,9 @@ local function dueNeutral(bot, st, f)
                 if ahead <= hit and (best == nil or ahead < best.ahead) then
                     best = {n = n, h = h, ahead = ahead, hit = hit}
                 end
-                __continue57 = true
+                __continue58 = true
             until true
-            if not __continue57 then
+            if not __continue58 then
                 break
             end
         end
@@ -675,7 +679,7 @@ local body = __TS__Generator(function(bot, st, ctx)
     local stop = true
     while true do
         do
-            local __continue84
+            local __continue85
             repeat
                 if not bot:IsAlive() then
                     return ctx.fail("dead")
@@ -699,11 +703,20 @@ local body = __TS__Generator(function(bot, st, ctx)
                 if ____end ~= nil then
                     return {success = true, reason = "ok", message = ____end}
                 end
-                local d = dueNeutral(bot, st, f)
+                local ____temp_8
+                if stand ~= nil and dist(
+                    bot:GetLocation(),
+                    stand
+                ) <= ____exports.SETTINGS.AtSpot then
+                    ____temp_8 = dueNeutral(bot, st, f)
+                else
+                    ____temp_8 = nil
+                end
+                local d = ____temp_8
                 if d ~= nil then
                     __TS__DelegatedYield(attempt(bot, st, d, ctx))
                     stop = true
-                    __continue84 = true
+                    __continue85 = true
                     break
                 end
                 ctx.label("stand")
@@ -722,9 +735,9 @@ local body = __TS__Generator(function(bot, st, ctx)
                     stop = false
                 end
                 coroutine.yield()
-                __continue84 = true
+                __continue85 = true
             until true
-            if not __continue84 then
+            if not __continue85 then
                 break
             end
         end
@@ -801,19 +814,19 @@ local function rowBegin(bot)
     )
     local aid = ok and Telemetry.NextAid(pid) or nil
     if p.logged ~= true then
-        local ____choiceLine_10 = choiceLine
-        local ____bot_9 = bot
-        local ____ok_8
+        local ____choiceLine_11 = choiceLine
+        local ____bot_10 = bot
+        local ____ok_9
         if ok then
-            ____ok_8 = nil
+            ____ok_9 = nil
         else
-            ____ok_8 = "refused"
+            ____ok_9 = "refused"
         end
-        ____choiceLine_10(
-            ____bot_9,
+        ____choiceLine_11(
+            ____bot_10,
             p,
             ok,
-            ____ok_8,
+            ____ok_9,
             "own",
             aid
         )

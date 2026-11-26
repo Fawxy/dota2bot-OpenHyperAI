@@ -58,6 +58,13 @@ export const SETTINGS = {
     BehindMax: 400,
     /** judgement (the old stay's STAY_ARRIVE): within this of the stand spot the hero gives no move. */
     Arrive: 60,
+    /**
+     * judgement: a last-hit attempt starts only while the hero is within this of the stand spot, so the stay stands first and a
+     * neutral's walk-in is from behind our creeps. Rig drill oha-camp-stay 1: begun 11 s away, the walk term made a neutral due at
+     * once and the hero walked hard at it through the camp (an attempt ended 2,126 short). Larger starts more attempts on the way
+     * in; smaller waits on the spot's drift as our creeps move.
+     */
+    AtSpot: 200,
     /** judgement (the old stay's STAY_REORDER): a move to the spot is repeated at most this often while walking. */
     Reorder: 0.5,
     /** The backstop from a fight's first stay (s): the old stay's StayMax (the old pull farm's MaxFarm; a camp's clear was 7 to 26 s). */
@@ -227,6 +234,8 @@ function worth(bot: Unit, r: Read): string | undefined {
 /** What holds a wanted stay back now, else undefined. */
 function block(bot: Unit, p: Opp, r: Read): string | undefined {
     if (p.barred !== undefined) return p.barred;
+    // The fight's backstop has run out: a stay begun now ends at its first step.
+    if (p.first !== undefined && DotaTime() >= p.first + SETTINGS.Max) return "timeout";
     const mode = bot.GetActiveMode();
     if (mode === BotMode.Attack || mode === BotMode.Retreat) return "busy";
     // Starting a task replaces the hero's running one (the runner's `replaced`); this row is last, so any running task is another's.
@@ -459,7 +468,7 @@ function* body(bot: Unit, st: Stay, ctx: Lib.Ctx): Lib.TaskBody {
         if (end === "hit") return yield* walkOut(bot, st, ctx);
         if (end === "timeout") return ctx.fail("timeout", "late");
         if (end !== undefined) return { success: true, reason: "ok", message: end } as Lib.Result;
-        const d = dueNeutral(bot, st, f);
+        const d = stand !== undefined && dist(bot.GetLocation(), stand) <= SETTINGS.AtSpot ? dueNeutral(bot, st, f) : undefined;
         if (d !== undefined) {
             yield* attempt(bot, st, d, ctx);
             stop = true;
