@@ -16,6 +16,9 @@
 --   height  a Dire ranged creep on the 128 shelf at a target on the 256 plateau against the same on the flat: hits in 40 s,
 --           first without Dire vision of the target, then with a viewer
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
+-- What it changes in a game: loading clears the trees within 1300 of (-5100,-2050) and precaches axe and sniper; a running
+-- scenario kills the real lane creeps (melee, ranged, siege) within 1800 of its trial site, including near the Radiant top
+-- T2 (tower, tower2) and at the height sites.
 -- Results and the API calls that read each value: master docs/reference/specifics/engine-physics.md.
 local function say(s) print("[RIG] phys " .. s) end
 local function now() return GameRules:GetDOTATime(false, false) end
@@ -89,6 +92,7 @@ local function moveOrder(u, pos) order(u, DOTA_UNIT_ORDER_MOVE_TO_POSITION, nil,
 local function clear()
 	for _, u in ipairs(made) do
 		if not u:IsNull() then
+			label[u:entindex()] = nil
 			pcall(function() u:ForceKill(false) end)
 			pcall(function() UTIL_Remove(u) end)
 		end
@@ -109,7 +113,7 @@ local function strays(pos)
 	local n = 0
 	for _, team in ipairs({ R, D }) do
 		for _, u in ipairs(FindUnitsInRadius(team, pos, nil, 1800, DOTA_UNIT_TARGET_TEAM_FRIENDLY, DOTA_UNIT_TARGET_BASIC, 0, 0, false)) do
-			if label[u:entindex()] == nil and u:GetClassname() == "npc_dota_creep_lane" and u:IsAlive() then
+			if label[u:entindex()] == nil and (u:GetClassname() == "npc_dota_creep_lane" or u:GetClassname() == "npc_dota_creep_siege") and u:IsAlive() then
 				u:ForceKill(false)
 				n = n + 1
 			end
@@ -143,7 +147,16 @@ local function run(name, trials, onDone)
 		return true
 	end
 	if not nextTrial() then return end
-	HeroList:GetAllHeroes()[1]:SetContextThink("rig_phys_" .. name, function()
+	local host = HeroList:GetAllHeroes()[1]
+	if host == nil then return say(name .. " no_host_hero") end
+	local body
+	host:SetContextThink("rig_phys_" .. name, function()
+		local ok, v = pcall(body)
+		if ok then return v end
+		say(name .. " runner_error " .. tostring(v))
+		return nil
+	end, 0)
+	body = function()
 		local t = now()
 		local dt = t - last
 		last = t
@@ -164,7 +177,7 @@ local function run(name, trials, onDone)
 			if not nextTrial() then return nil end
 		end
 		return 0.03
-	end, 0)
+	end
 	say(name .. " armed trials=" .. #trials)
 end
 
