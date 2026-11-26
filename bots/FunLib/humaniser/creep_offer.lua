@@ -26,7 +26,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local dist, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, partsOf, candidate, parts, rowLead, LANES
+local r1, r2, dist, spellFields, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, spellRead, partsOf, candidate, parts, rowLead, LANES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local UnitType = ____dota.UnitType
@@ -37,6 +37,8 @@ local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local Offer = require(GetScriptDirectory().."/FunLib/humaniser/offer")
+local SpellReady = require(GetScriptDirectory().."/FunLib/humaniser/spell_ready")
+local SpellSecure = require(GetScriptDirectory().."/FunLib/humaniser/spell_secure")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -62,8 +64,65 @@ function ____exports.Within(bot)
         rowLead == nil and 0 or rowLead(bot)
     )
 end
+function r1(x)
+    return math.floor(x * 10 + 0.5) / 10
+end
+function r2(x)
+    return math.floor(x * 100 + 0.5) / 100
+end
 function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
+end
+function spellFields(o)
+    local p = o.sp
+    if p == nil then
+        return {}
+    end
+    local kill = o.spFrom ~= nil
+    return {
+        {"sp", p.name},
+        {"sx", p.shape},
+        {"sy", p.key and "k" or "d"},
+        {"sk", kill and 1 or 0},
+        {
+            "sa",
+            kill and r1(o.spFrom - o.first) or nil
+        },
+        {
+            "sw",
+            kill and o.spTo ~= nil and r1(o.spTo - o.spFrom) or nil
+        },
+        {
+            "sg",
+            math.floor(p.gap + 0.5)
+        },
+        {
+            "sl",
+            r2(p.land)
+        },
+        {
+            "sd",
+            math.floor(p.taken + 0.5)
+        },
+        {
+            "sf",
+            math.floor(p.hp + 0.5)
+        },
+        {
+            "sm",
+            math.floor(p.mana + 0.5)
+        },
+        {
+            "sr",
+            math.floor(p.over + 0.5)
+        },
+        {
+            "sc",
+            r1(p.cd)
+        },
+        {"sz", p.also},
+        {"sn", p.n}
+    }
 end
 function rowOf(bot, creep)
     local team = bot:GetTeam()
@@ -74,19 +133,19 @@ function rowOf(bot, creep)
     end
     for ____, lane in ipairs(LANES) do
         do
-            local __continue28
+            local __continue30
             repeat
                 if lane == own then
-                    __continue28 = true
+                    __continue30 = true
                     break
                 end
                 local r = LaneHits.Of(team, lane, creep)
                 if r ~= nil then
                     return r
                 end
-                __continue28 = true
+                __continue30 = true
             until true
-            if not __continue28 then
+            if not __continue30 then
                 break
             end
         end
@@ -107,11 +166,11 @@ function towersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
         do
-            local __continue35
+            local __continue37
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue35 = true
+                    __continue37 = true
                     break
                 end
                 out[#out + 1] = {
@@ -119,9 +178,9 @@ function towersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius() + f.hull
                 }
-                __continue35 = true
+                __continue37 = true
             until true
-            if not __continue35 then
+            if not __continue37 then
                 break
             end
         end
@@ -136,11 +195,11 @@ function ownTowersOf(bot, f)
     local out = {}
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, false)) do
         do
-            local __continue40
+            local __continue42
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue40 = true
+                    __continue42 = true
                     break
                 end
                 out[#out + 1] = {
@@ -148,9 +207,9 @@ function ownTowersOf(bot, f)
                     y = at.y,
                     reach = t:GetAttackRange() + t:GetBoundingRadius()
                 }
-                __continue40 = true
+                __continue42 = true
             until true
-            if not __continue40 then
+            if not __continue42 then
                 break
             end
         end
@@ -165,11 +224,11 @@ function creepsOf(f)
     local out = {}
     for ____, c in ipairs(f.enemyCreeps) do
         do
-            local __continue45
+            local __continue47
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil then
-                    __continue45 = true
+                    __continue47 = true
                     break
                 end
                 local ____this_8
@@ -182,9 +241,9 @@ function creepsOf(f)
                     reach = c:GetAcquisitionRange() + c:GetBoundingRadius() + f.hull,
                     dps = c:GetAttackDamage() / math.max(spa, 0.1)
                 }
-                __continue45 = true
+                __continue47 = true
             until true
-            if not __continue45 then
+            if not __continue47 then
                 break
             end
         end
@@ -200,15 +259,15 @@ function enemiesOf(f)
     local hs = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue50
+            local __continue52
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue50 = true
+                    __continue52 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue50 = true
+                    __continue52 = true
                     break
                 end
                 local ____at_x_11 = at.x
@@ -231,9 +290,9 @@ function enemiesOf(f)
                     speed = e:GetCurrentMovementSpeed()
                 }
                 hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
-                __continue50 = true
+                __continue52 = true
             until true
-            if not __continue50 then
+            if not __continue52 then
                 break
             end
         end
@@ -291,7 +350,7 @@ function snapshot(bot, f, t, slack, others)
     local hull = creep:GetBoundingRadius()
     for ____, e in ipairs(enemiesOf(f)) do
         do
-            local __continue61
+            local __continue63
             repeat
                 local gap = dist(e, at) - (e.range + e.hull + hull)
                 local reach = math.max(0, gap) / math.max(100, e.speed or 300)
@@ -302,16 +361,16 @@ function snapshot(bot, f, t, slack, others)
                     end
                 end
                 if gap > 0 then
-                    __continue61 = true
+                    __continue63 = true
                     break
                 end
                 ein = ein + 1
                 if e.dmg > ed then
                     ed = e.dmg
                 end
-                __continue61 = true
+                __continue63 = true
             until true
-            if not __continue61 then
+            if not __continue63 then
                 break
             end
         end
@@ -353,6 +412,89 @@ function snapshot(bot, f, t, slack, others)
         enh = #hs > 0 and table.concat(hs, ";") or nil
     }
 end
+function spellRead(bot, f, creep, o, now)
+    local cs = f.spells
+    local verbs = Tasks.Verbs()
+    local at = creep:GetLocation()
+    local d = dist(f.hero, at)
+    local turn = verbs.turnTime(bot, creep)
+    local hpNow = creep:GetHealth()
+    local mana = bot:GetMana()
+    if f.foes == nil then
+        local foes = {}
+        for ____, e in ipairs(enemiesOf(f)) do
+            foes[#foes + 1] = {x = e.x, y = e.y, hull = e.hull}
+        end
+        f.foes = foes
+    end
+    local timings = {}
+    local takens = {}
+    local band = false
+    local horizon = 0
+    for ____, s in ipairs(cs.spells) do
+        local timing = SpellSecure.TimingOf(s, d, f.speed, turn)
+        local taken = creep:GetActualIncomingDamage(s.dmg, s.dtype)
+        timings[#timings + 1] = timing
+        takens[#takens + 1] = taken
+        if hpNow <= taken * ____exports.SETTINGS.SpellBand then
+            band = true
+            horizon = math.max(horizon, timing.land)
+        end
+    end
+    local forecast = band and verbs.hpForecast(bot, creep, horizon) or nil
+    local answers = {}
+    do
+        local i = 0
+        while i < #cs.spells do
+            local s = cs.spells[i + 1]
+            local timing = timings[i + 1]
+            local taken = takens[i + 1]
+            local hp = forecast ~= nil and hpNow <= taken * ____exports.SETTINGS.SpellBand and verbs.forecastHp(forecast, timing.land) or hpNow
+            answers[#answers + 1] = {
+                spell = s,
+                timing = timing,
+                taken = taken,
+                hp = hp,
+                kill = SpellSecure.Kills(hp, taken),
+                over = SpellSecure.OverReserve(mana, s, cs.keys),
+                also = SpellSecure.AlsoHit(s, f.hero, at, f.foes)
+            }
+            i = i + 1
+        end
+    end
+    local best = SpellSecure.Best(answers)
+    if best == nil then
+        return
+    end
+    if o.spFrom ~= nil then
+        if best.kill then
+            o.spTo = now
+        end
+        return
+    end
+    local closer = o.sp == nil or best.hp > 0 and (o.sp.hp <= 0 or best.hp - best.taken < o.sp.hp - o.sp.taken)
+    if not best.kill and not closer then
+        return
+    end
+    o.sp = {
+        name = best.spell.name,
+        shape = best.spell.shape,
+        key = best.spell.key,
+        gap = best.timing.gap,
+        land = best.timing.land,
+        taken = best.taken,
+        hp = best.hp,
+        over = best.over,
+        also = best.also,
+        mana = best.spell.mana,
+        cd = best.spell.cd,
+        n = #cs.spells
+    }
+    if best.kill then
+        o.spFrom = now
+        o.spTo = now
+    end
+end
 function partsOf()
     if parts ~= nil then
         return parts
@@ -384,7 +526,8 @@ function partsOf()
             end
         ),
         snapshot = Telemetry.PerfStep("CO:snapshot", snapshot),
-        race = Telemetry.PerfStep("CO:race", race)
+        race = Telemetry.PerfStep("CO:race", race),
+        spell = Telemetry.PerfStep("CO:spell", spellRead)
     }
     return parts
 end
@@ -433,7 +576,13 @@ function candidate(bot, f, targets, t, creep, cid, o, a, now)
         end
     }
 end
-____exports.SETTINGS = {Every = 0.2, SlackStep = 0.1, SlackCap = 99, TowerRadius = 2500}
+____exports.SETTINGS = {
+    Every = 0.2,
+    SlackStep = 0.1,
+    SlackCap = 99,
+    TowerRadius = 2500,
+    SpellBand = 2
+}
 local rowHook
 --- Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on).
 local rowWants
@@ -464,12 +613,6 @@ local function due(pid, now)
     end
     readAt[pid] = n
     return true
-end
-local function r1(x)
-    return math.floor(x * 10 + 0.5) / 10
-end
-local function r2(x)
-    return math.floor(x * 100 + 0.5) / 100
 end
 --- A bot the read covers: any of the five positions. Whether the row lets the hero act is the trip table's and the row's own (`CreepRow.On`), not this.
 function ____exports.MayOffer(bot)
@@ -615,7 +758,8 @@ local function line(bot, o)
             "ra",
             math.floor(s.ra)
         },
-        {"enh", s.enh}
+        {"enh", s.enh},
+        unpack(spellFields(o))
     )
     ____Telemetry_Event_6(
         "choice",
@@ -679,17 +823,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue86
+                local __continue101
                 repeat
                     if listed[o.creep] == true then
-                        __continue86 = true
+                        __continue101 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue86 = true
+                    __continue101 = true
                 until true
-                if not __continue86 then
+                if not __continue101 then
                     break
                 end
             end
@@ -718,14 +862,15 @@ function ____exports.Shadow(bot)
     local atkTarget = bot:GetAttackTarget()
     local slot = math.floor(now * 10) / 10
     local cands = {}
+    local spellTargets = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue91
+            local __continue106
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue91 = true
+                    __continue106 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -774,6 +919,9 @@ function ____exports.Shadow(bot)
                 if atkTarget ~= nil and atkTarget ~= nil and atkTarget == creep then
                     o.atk = true
                 end
+                if t.kind == "lasthit" then
+                    spellTargets[#spellTargets + 1] = {creep, o}
+                end
                 if rowHook ~= nil then
                     cands[#cands + 1] = candidate(
                         bot,
@@ -787,15 +935,33 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue91 = true
+                __continue106 = true
             until true
-            if not __continue91 then
+            if not __continue106 then
                 break
             end
         end
     end
     if rowHook ~= nil then
         rowHook(bot, cands)
+    end
+    if #spellTargets == 0 then
+        return
+    end
+    f.spells = SpellReady.CreepSpellsOf(bot)
+    if #f.spells.spells == 0 then
+        return
+    end
+    for ____, ____value in ipairs(spellTargets) do
+        local creep = ____value[1]
+        local o = ____value[2]
+        P.spell(
+            bot,
+            f,
+            creep,
+            o,
+            now
+        )
     end
 end
 return ____exports

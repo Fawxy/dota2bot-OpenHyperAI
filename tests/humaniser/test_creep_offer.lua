@@ -38,6 +38,7 @@ local function world(every)
 				for i, x in ipairs(w.hits[creep] or {}) do copy[i] = x end
 				return { hp = creep.hp, regen = 0, horizon = horizon, hits = copy, unphased = 0, unphasedTower = false, unphasedHits = {} }
 			end,
+			turnTime = function() return 0 end,
 			forecastHp = function(f, t)
 				local hp = f.hp
 				for _, h in ipairs(f.hits) do if h.t <= t then hp = hp - h.damage end end
@@ -434,6 +435,84 @@ do -- the height API absent, or answering nil: the line is written without the f
 			and field(l[1], "hh") == nil and field(l[1], "sh") == nil and field(l[1], "ch") == nil, table.concat(out, "\n"))
 		check("the enemy's height is '-' where the API gave none (" .. how .. ")", field(l[1], "enh") == "7:-", l[1])
 	end
+end
+
+-- Slice oha-creep-spell-shadow: the spell read on their creep. A unit-target nuke of 75, cast point 0.3, landing at once.
+local function nuke(o)
+	o = o or {}
+	return {
+		IsNull = function() return false end, GetName = function() return o.name or "test_nuke" end, GetLevel = function() return 1 end,
+		IsHidden = function() return false end, IsPassive = function() return false end, IsUltimate = function() return false end,
+		IsFullyCastable = function() return true end, GetAbilityDamage = function() return o.dmg or 75 end,
+		GetSpecialValueFloat = function() return 0 end, GetBehavior = function() return 8 end, GetCastRange = function() return o.range or 800 end,
+		GetCastPoint = function() return 0.3 end, GetManaCost = function() return o.mana or 100 end, GetCooldown = function() return 8 end,
+	}
+end
+
+local function oneLine(w, core, c, reads)
+	local out = capture(function()
+		for i, r in ipairs(reads) do
+			T = 100 + (i - 1) * 0.1
+			c.hp = r.hp
+			w.hits[c] = r.hits
+			w.targets = { target(c, { walk = r.walk or 0, dies = 3 }) }
+			w.CO.Shadow(core)
+		end
+		T = 100 + #reads * 0.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	return lines(out), out
+end
+
+do -- the forecast decides the kill, and the first read that kills is the one kept
+	local w = world()
+	local core = hero(1, 1)
+	core.mana = 300
+	core.abilities = { [0] = nuke() }
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 120 })
+	local l, out = oneLine(w, core, c, {
+		{ hp = 120 }, -- 120 at landing: no kill
+		{ hp = 90, hits = { { t = 0.2, damage = 20, by = "creep" } } }, -- 70 at landing: the first kill
+		{ hp = 40 }, -- still a kill, a later read: not kept
+	})
+	check("one line with the spell's name and shape", #l == 1 and field(l[1], "sp") == "test_nuke" and field(l[1], "sx") == "u" and field(l[1], "sy") == "d", table.concat(out, "\n"))
+	check("a kill from the read whose forecast put the creep under the damage", num(l[1], "sk") == 1 and near(num(l[1], "sa"), 0.1) and num(l[1], "sf") == 70, l[1])
+	check("the kill held to the last read", near(num(l[1], "sw"), 0.1), l[1])
+	check("its price: mana 100, 200 over a reserve of none, damage 75, landing at the cast point", num(l[1], "sm") == 100 and num(l[1], "sr") == 200
+		and num(l[1], "sd") == 75 and near(num(l[1], "sl"), 0.3) and num(l[1], "sg") == -500, l[1])
+end
+
+do -- dead before the damage lands is no kill; the line keeps the closest read
+	local w = world()
+	local core = hero(1, 1)
+	core.abilities = { [0] = nuke() }
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 15 })
+	local l = oneLine(w, core, c, { { hp = 15, hits = { { t = 0.1, damage = 20, by = "creep" } } } })
+	check("a creep another hit kills first: sk=0 and its forecast HP under 0", #l == 1 and num(l[1], "sk") == 0 and num(l[1], "sf") == -5 and field(l[1], "sa") == nil, l[1])
+end
+
+do -- no spell, or our own creep: no spell fields
+	local w = world()
+	local core = hero(1, 1)
+	local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 60 })
+	local l = oneLine(w, core, c, { { hp = 60 } })
+	check("a hero with no creep spell writes none", #l == 1 and field(l[1], "sp") == nil and field(l[1], "sk") == nil, l[1])
+	w = world()
+	core = hero(1, 1)
+	core.abilities = { [0] = nuke() }
+	local ours = MakeCreep({ team = 2, x = 300, y = -5000, hp = 30 })
+	local out = capture(function()
+		w.targets = { target(ours, { kind = "deny" }) }
+		w.CO.Shadow(core)
+		T = 100.1
+		kill(ours)
+		w.targets = {}
+		w.CO.Shadow(core)
+	end)
+	l = lines(out)
+	check("a deny of our creep writes none", #l == 1 and field(l[1], "who") == "o" and field(l[1], "sp") == nil, l[1])
 end
 
 finish()

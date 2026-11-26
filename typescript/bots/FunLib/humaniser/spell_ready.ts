@@ -19,7 +19,7 @@
  * A never-measured spell may be one Valve's estimate already counts (of the nukes measured so far it counts about two in
  * three), so it can be counted twice until coverage.js measures it.
  */
-import { DamageType, Unit } from "bots/ts_libs/dota";
+import { BotScriptEnums, DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
 import { SPELL_ADDED, SPELL_DAMAGE } from "bots/FunLib/humaniser/spell_damage_data";
@@ -173,19 +173,159 @@ export function ReadySpells(bot: Unit): ReadySpell[] {
     for (let slot = 0; slot < SLOTS; slot++) {
         const a = bot.GetAbilityInSlot(slot) as unknown as CastHandle | null | undefined;
         if (a === undefined || a === null || a.IsNull()) continue;
-        if (a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) continue;
-        const name = a.GetName();
-        const row = SPELL_DAMAGE[name];
-        const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
-        if (type(dmg) !== "number" || !(dmg > 0)) continue;
-        let range = a.GetCastRange();
-        if (!(range > 0)) {
-            const r = a.GetSpecialValueFloat("radius");
-            range = type(r) === "number" && r > 0 ? r : 0;
-        }
-        const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
-        out.push({ name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical });
+        const r = readyOf(a, false);
+        if (r !== undefined) out.push(r);
     }
+    return out;
+}
+
+/**
+ * One ability as a ReadySpell when it is learned, shown, castable now and does damage: the value at its SPELL_DAMAGE key, or with
+ * `added` at its SPELL_ADDED key (the spells Valve's estimate leaves out, whose GetAbilityDamage reads 0: Earth Spike, Meat Hook),
+ * else GetAbilityDamage. ReadySpells passes `added` false, as the chase's catch read was built on.
+ */
+function readyOf(a: CastHandle, added: boolean): ReadySpell | undefined {
+    if (a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) return undefined;
+    const name = a.GetName();
+    const row = SPELL_DAMAGE[name] ?? (added ? SPELL_ADDED[name] : undefined);
+    const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
+    if (type(dmg) !== "number" || !(dmg > 0)) return undefined;
+    let range = a.GetCastRange();
+    if (!(range > 0)) {
+        const r = a.GetSpecialValueFloat("radius");
+        range = type(r) === "number" && r > 0 ? r : 0;
+    }
+    const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
+    return { name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical };
+}
+
+/**
+ * Special-value keys an ability's numbers are found under, tried in order; GetSpecialValueFloat reads 0 for a key the ability lacks.
+ * Key names, not heroes: the commonest in OHA's hero files (bots/BotLib) for a radius, a line's width and a projectile's speed.
+ * `judgement`: a spell whose number sits under another key reads 0 (a radius of 0 hits only its target; a speed of 0 lands at once).
+ */
+const RADIUS_KEYS = ["radius", "aoe", "area_of_effect", "impact_radius", "damage_radius", "bolt_aoe", "jump_radius"];
+const WIDTH_KEYS = ["width", "wave_width", "arrow_width", "burrow_width", "end_width"];
+const SPEED_KEYS = ["speed", "projectile_speed", "bolt_speed", "blast_speed", "arrow_speed", "burrow_speed", "travel_speed", "missile_speed"];
+
+/** Valve's ability behaviour and target-type flags; the numbers after `??` are their values, for a test run with no game globals. */
+const B_NO_TARGET = BotScriptEnums.ABILITY_BEHAVIOR_NO_TARGET ?? 4;
+const B_UNIT = BotScriptEnums.ABILITY_BEHAVIOR_UNIT_TARGET ?? 8;
+const B_POINT = BotScriptEnums.ABILITY_BEHAVIOR_POINT ?? 16;
+const B_CHANNELLED = BotScriptEnums.ABILITY_BEHAVIOR_CHANNELLED ?? 128;
+const B_TOGGLE = BotScriptEnums.ABILITY_BEHAVIOR_TOGGLE ?? 512;
+const T_CREEP = BotScriptEnums.ABILITY_TARGET_TYPE_CREEP ?? 2;
+
+/** Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators). */
+function has(bits: number, flag: number): boolean {
+    return flag > 0 && math.floor(bits / flag) % 2 === 1;
+}
+
+function firstKey(a: { GetSpecialValueFloat(key: string): number }, keys: string[]): number {
+    for (const k of keys) {
+        const v = a.GetSpecialValueFloat(k);
+        if (type(v) === "number" && v > 0) return v;
+    }
+    return 0;
+}
+
+interface CreepCastHandle extends CastHandle {
+    IsPassive(): boolean;
+    IsUltimate(): boolean;
+    GetManaCost(): number;
+    GetCooldown(): number;
+    GetTargetType?(): number;
+}
+
+/** A spell `bot` can cast now that can kill a lane creep in one cast (CreepSpells); the facts spell_secure.ts answers on. */
+export interface CreepSpell {
+    name: string;
+    /** `u` cast on the creep, `p` on its place, `n` no target (hits around the hero). */
+    shape: "u" | "p" | "n";
+    /** Cast range; for `n`, the radius it hits within (ReadySpell's `range`). */
+    range: number;
+    cp: number;
+    /** Damage before the target's resistances, and its type (ReadySpell's). */
+    dmg: number;
+    dtype: number;
+    mana: number;
+    cd: number;
+    /** A hard disable or spell immunity by AbilityClasses (the `k` class). */
+    key: boolean;
+    /** The area it hits around its target (0: the target only). */
+    radius: number;
+    /** Half a line's width, for a spell that travels as a line from the hero (0: not a line). */
+    half: number;
+    /** Projectile or line speed (0: lands at the end of the cast point). */
+    speed: number;
+}
+
+/** CreepSpells' answer: the spells, and the mana cost of each learned key spell (castable now or not), by name. */
+export interface CreepSpells {
+    spells: CreepSpell[];
+    keys: Record<string, number>;
+}
+
+let creepAt = -1;
+let creepBy: Record<number, CreepSpells> = {};
+
+/**
+ * The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list with
+ * the SPELL_ADDED spells too, less ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
+ * radius; with each one's mana, cooldown, class, radius, line width and speed. Read once a frame per hero.
+ */
+export function CreepSpellsOf(bot: Unit): CreepSpells {
+    const now = DotaTime();
+    if (now !== creepAt) {
+        creepAt = now;
+        creepBy = {};
+    }
+    const pid = bot.GetPlayerID();
+    const cached = creepBy[pid];
+    if (cached !== undefined) return cached;
+    const keys: Record<string, number> = {};
+    const learned: CreepCastHandle[] = [];
+    for (let slot = 0; slot < SLOTS; slot++) {
+        const a = bot.GetAbilityInSlot(slot) as unknown as CreepCastHandle | null | undefined;
+        if (a === undefined || a === null || a.IsNull() || a.GetLevel() <= 0 || a.IsHidden() || a.IsPassive() || a.IsUltimate()) continue;
+        if (AbilityClasses.Classify(a.GetName(), false) === "key") keys[a.GetName()] = a.GetManaCost();
+        learned.push(a);
+    }
+    const spells: CreepSpell[] = [];
+    for (const a of learned) {
+        const r = readyOf(a, true);
+        if (r === undefined) continue;
+        const row = SPELL_DAMAGE[r.name] ?? SPELL_ADDED[r.name];
+        if (row !== undefined && row[1]) continue;
+        if (has(r.behavior, B_CHANNELLED) || has(r.behavior, B_TOGGLE)) continue;
+        let shape: "u" | "p" | "n";
+        if (has(r.behavior, B_UNIT)) {
+            const tt = a.GetTargetType?.();
+            if (tt !== undefined && tt > 0 && !has(tt, T_CREEP)) continue;
+            shape = "u";
+        } else if (has(r.behavior, B_POINT)) shape = "p";
+        else if (has(r.behavior, B_NO_TARGET) && r.range > 0) shape = "n";
+        else continue;
+        // A cone (a start and an end radius) is read as a line as wide as its far end: generous to the also-hit count.
+        const width = firstKey(a, WIDTH_KEYS);
+        const half = width > 0 ? width / 2 : firstKey(a, ["start_radius"]) > 0 ? firstKey(a, ["end_radius"]) : 0;
+        spells.push({
+            name: r.name,
+            shape,
+            range: r.range,
+            cp: r.cp,
+            dmg: r.dmg,
+            dtype: r.dtype,
+            mana: a.GetManaCost(),
+            cd: a.GetCooldown(),
+            key: keys[r.name] !== undefined,
+            radius: shape === "n" ? r.range : firstKey(a, RADIUS_KEYS),
+            half: shape === "n" ? 0 : half,
+            speed: shape === "n" ? 0 : firstKey(a, SPEED_KEYS),
+        });
+    }
+    const out = { spells, keys };
+    creepBy[pid] = out;
     return out;
 }
 

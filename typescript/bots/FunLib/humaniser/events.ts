@@ -3017,6 +3017,40 @@ export const EVENTS = {
         ra: "num",
         /** `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order. */
         enh: "str",
+        /**
+         * `kind=creep`, their creep (slice oha-creep-spell-shadow; spell_secure.ts): the spell read's best answer while the hero held a
+         * creep spell (SpellReady.CreepSpellsOf), taken at the first read where a spell would kill the creep, else where one came closest.
+         * Absent when it held none at any read. The spell's name.
+         */
+        sp: "str",
+        /** `kind=creep`, with `sp`: `u` cast on the creep, `p` on its place, `n` no target (hits around the hero). */
+        sx: "str",
+        /** `kind=creep`, with `sp`: `k` a key spell (a hard disable or spell immunity, AbilityClasses), else `d`. */
+        sy: "str",
+        /** `kind=creep`, with `sp`: 1 when at some read the spell, cast then, would land with the creep alive and its damage after resistance at least the creep's forecast HP. */
+        sk: "num",
+        /** `kind=creep`, `sk=1`: seconds from `slot` to the first such read. */
+        sa: "num",
+        /** `kind=creep`, `sk=1`: seconds from the first such read to the last. */
+        sw: "num",
+        /** `kind=creep`, with `sp`: the creep's centre distance less the cast range (for `sx=n` its radius) at that read; above 0 the hero walks first. */
+        sg: "num",
+        /** `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight). */
+        sl: "num",
+        /** `kind=creep`, with `sp`: the spell's damage after the creep's resistance. */
+        sd: "num",
+        /** `kind=creep`, with `sp`: the creep's forecast HP when the damage lands (its HP then, when over twice `sd`: no forecast); 0 or less, dead by then. */
+        sf: "num",
+        /** `kind=creep`, with `sp`: the spell's mana cost. */
+        sm: "num",
+        /** `kind=creep`, with `sp`: the hero's mana after the cast less the dearest of its other learned key spells (0 or more: the reserve is met). */
+        sr: "num",
+        /** `kind=creep`, with `sp`: the spell's cooldown (s). */
+        sc: "num",
+        /** `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`). */
+        sz: "num",
+        /** `kind=creep`, with `sp`: how many creep spells the hero held at that read. */
+        sn: "num",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */

@@ -1,12 +1,39 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local readyOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local BotScriptEnums = ____dota.BotScriptEnums
 local DamageType = ____dota.DamageType
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_classes")
 local ____spell_damage_data = require(GetScriptDirectory().."/FunLib/humaniser/spell_damage_data")
 local SPELL_ADDED = ____spell_damage_data.SPELL_ADDED
 local SPELL_DAMAGE = ____spell_damage_data.SPELL_DAMAGE
+function readyOf(a, added)
+    if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
+        return nil
+    end
+    local name = a:GetName()
+    local row = SPELL_DAMAGE[name] or (added and SPELL_ADDED[name] or nil)
+    local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
+    if type(dmg) ~= "number" or not (dmg > 0) then
+        return nil
+    end
+    local range = a:GetCastRange()
+    if not (range > 0) then
+        local r = a:GetSpecialValueFloat("radius")
+        range = type(r) == "number" and r > 0 and r or 0
+    end
+    local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
+    return {
+        name = name,
+        range = range,
+        cp = a:GetCastPoint(),
+        behavior = a:GetBehavior(),
+        dmg = dmg,
+        dtype = dt > 0 and dt or DamageType.Magical
+    }
+end
 local SLOTS = 6
 local spentAt = -1
 local spentBy = {}
@@ -184,31 +211,10 @@ function ____exports.ReadySpells(bot)
                         __continue32 = true
                         break
                     end
-                    if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
-                        __continue32 = true
-                        break
+                    local r = readyOf(a, false)
+                    if r ~= nil then
+                        out[#out + 1] = r
                     end
-                    local name = a:GetName()
-                    local row = SPELL_DAMAGE[name]
-                    local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
-                    if type(dmg) ~= "number" or not (dmg > 0) then
-                        __continue32 = true
-                        break
-                    end
-                    local range = a:GetCastRange()
-                    if not (range > 0) then
-                        local r = a:GetSpecialValueFloat("radius")
-                        range = type(r) == "number" and r > 0 and r or 0
-                    end
-                    local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
-                    out[#out + 1] = {
-                        name = name,
-                        range = range,
-                        cp = a:GetCastPoint(),
-                        behavior = a:GetBehavior(),
-                        dmg = dmg,
-                        dtype = dt > 0 and dt or DamageType.Magical
-                    }
                     __continue32 = true
                 until true
                 if not __continue32 then
@@ -218,6 +224,163 @@ function ____exports.ReadySpells(bot)
             slot = slot + 1
         end
     end
+    return out
+end
+--- Special-value keys an ability's numbers are found under, tried in order; GetSpecialValueFloat reads 0 for a key the ability lacks.
+-- Key names, not heroes: the commonest in OHA's hero files (bots/BotLib) for a radius, a line's width and a projectile's speed.
+-- `judgement`: a spell whose number sits under another key reads 0 (a radius of 0 hits only its target; a speed of 0 lands at once).
+local RADIUS_KEYS = {
+    "radius",
+    "aoe",
+    "area_of_effect",
+    "impact_radius",
+    "damage_radius",
+    "bolt_aoe",
+    "jump_radius"
+}
+local WIDTH_KEYS = {
+    "width",
+    "wave_width",
+    "arrow_width",
+    "burrow_width",
+    "end_width"
+}
+local SPEED_KEYS = {
+    "speed",
+    "projectile_speed",
+    "bolt_speed",
+    "blast_speed",
+    "arrow_speed",
+    "burrow_speed",
+    "travel_speed",
+    "missile_speed"
+}
+--- Valve's ability behaviour and target-type flags; the numbers after `??` are their values, for a test run with no game globals.
+local B_NO_TARGET = ABILITY_BEHAVIOR_NO_TARGET or 4
+local B_UNIT = ABILITY_BEHAVIOR_UNIT_TARGET or 8
+local B_POINT = ABILITY_BEHAVIOR_POINT or 16
+local B_CHANNELLED = ABILITY_BEHAVIOR_CHANNELLED or 128
+local B_TOGGLE = ABILITY_BEHAVIOR_TOGGLE or 512
+local T_CREEP = ABILITY_TARGET_TYPE_CREEP or 2
+--- Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators).
+local function has(bits, flag)
+    return flag > 0 and math.floor(bits / flag) % 2 == 1
+end
+local function firstKey(a, keys)
+    for ____, k in ipairs(keys) do
+        local v = a:GetSpecialValueFloat(k)
+        if type(v) == "number" and v > 0 then
+            return v
+        end
+    end
+    return 0
+end
+local creepAt = -1
+local creepBy = {}
+--- The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list with
+-- the SPELL_ADDED spells too, less ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
+-- radius; with each one's mana, cooldown, class, radius, line width and speed. Read once a frame per hero.
+function ____exports.CreepSpellsOf(bot)
+    local now = DotaTime()
+    if now ~= creepAt then
+        creepAt = now
+        creepBy = {}
+    end
+    local pid = bot:GetPlayerID()
+    local cached = creepBy[pid]
+    if cached ~= nil then
+        return cached
+    end
+    local keys = {}
+    local learned = {}
+    do
+        local slot = 0
+        while slot < SLOTS do
+            do
+                local __continue47
+                repeat
+                    local a = bot:GetAbilityInSlot(slot)
+                    if a == nil or a == nil or a:IsNull() or a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or a:IsUltimate() then
+                        __continue47 = true
+                        break
+                    end
+                    if AbilityClasses.Classify(
+                        a:GetName(),
+                        false
+                    ) == "key" then
+                        keys[a:GetName()] = a:GetManaCost()
+                    end
+                    learned[#learned + 1] = a
+                    __continue47 = true
+                until true
+                if not __continue47 then
+                    break
+                end
+            end
+            slot = slot + 1
+        end
+    end
+    local spells = {}
+    for ____, a in ipairs(learned) do
+        do
+            local __continue50
+            repeat
+                local r = readyOf(a, true)
+                if r == nil then
+                    __continue50 = true
+                    break
+                end
+                local row = SPELL_DAMAGE[r.name] or SPELL_ADDED[r.name]
+                if row ~= nil and row[2] then
+                    __continue50 = true
+                    break
+                end
+                if has(r.behavior, B_CHANNELLED) or has(r.behavior, B_TOGGLE) then
+                    __continue50 = true
+                    break
+                end
+                local shape
+                if has(r.behavior, B_UNIT) then
+                    local ____opt_4 = a.GetTargetType
+                    local tt = ____opt_4 and ____opt_4(a)
+                    if tt ~= nil and tt > 0 and not has(tt, T_CREEP) then
+                        __continue50 = true
+                        break
+                    end
+                    shape = "u"
+                elseif has(r.behavior, B_POINT) then
+                    shape = "p"
+                elseif has(r.behavior, B_NO_TARGET) and r.range > 0 then
+                    shape = "n"
+                else
+                    __continue50 = true
+                    break
+                end
+                local width = firstKey(a, WIDTH_KEYS)
+                local half = width > 0 and width / 2 or (firstKey(a, {"start_radius"}) > 0 and firstKey(a, {"end_radius"}) or 0)
+                spells[#spells + 1] = {
+                    name = r.name,
+                    shape = shape,
+                    range = r.range,
+                    cp = r.cp,
+                    dmg = r.dmg,
+                    dtype = r.dtype,
+                    mana = a:GetManaCost(),
+                    cd = a:GetCooldown(),
+                    key = keys[r.name] ~= nil,
+                    radius = shape == "n" and r.range or firstKey(a, RADIUS_KEYS),
+                    half = shape == "n" and 0 or half,
+                    speed = shape == "n" and 0 or firstKey(a, SPEED_KEYS)
+                }
+                __continue50 = true
+            until true
+            if not __continue50 then
+                break
+            end
+        end
+    end
+    local out = {spells = spells, keys = keys}
+    creepBy[pid] = out
     return out
 end
 --- Slice chase-log: the damage spells `bot` can cast now (ReadySpells), as `;`-joined records of name,cast range,cast point
@@ -298,21 +461,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue52
+                local __continue75
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue52 = true
+                        __continue75 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue52 = true
+                        __continue75 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue52 = true
+                    __continue75 = true
                 until true
-                if not __continue52 then
+                if not __continue75 then
                     break
                 end
             end

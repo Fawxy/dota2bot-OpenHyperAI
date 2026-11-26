@@ -126,4 +126,67 @@ do
 	Telemetry.SetSink(nil)
 end
 
+-- Slice oha-creep-spell-shadow: CreepSpellsOf, the spells that could take a lane creep in one cast, with the facts of each.
+do
+	local function cast(name, o)
+		local a = spell(name, o)
+		local sv = o.special or {}
+		a.GetBehavior = function() return o.bits or 8 end
+		a.GetCastRange = function() return o.range or 700 end
+		a.GetCastPoint = function() return o.cp or 0.3 end
+		a.GetManaCost = function() return o.mana or 100 end
+		a.GetCooldown = function() return o.cd or 8 end
+		a.GetTargetType = o.ttype and function() return o.ttype end or nil
+		a.GetSpecialValueFloat = function(_, k) return sv[k] or 0 end
+		return a
+	end
+	T = (T or 0) + 1
+	local caster = MakeUnit({ pid = 3, team = 2, loc = Vector(0, 0) })
+	caster.abilities = {
+		[0] = cast("bolt", { dmg = 90, bits = 24, special = { speed = 1600, width = 120 } }), -- unit and point bits: cast on the unit
+		[1] = cast("lion_voodoo", { castable = false, mana = 125 }), -- a key spell on cooldown: no cast, but the reserve
+		[2] = cast("wave", { dmg = 80, bits = 16, special = { start_radius = 150, end_radius = 250, speed = 1050 } }),
+		[3] = cast("big", { dmg = 300, ult = true }),
+		[4] = cast("drain", { dmg = 50, bits = 8 + 128 }),
+		[5] = cast("heroes_only", { dmg = 100, ttype = 1 }),
+	}
+	local got = SpellReady.CreepSpellsOf(caster)
+	local by = {}
+	for _, s in ipairs(got.spells) do by[s.name] = s end
+	check("creep spells: the ultimate, the channelled one and a hero-only unit target are left out",
+		#got.spells == 2 and by.bolt and by.wave and not by.big and not by.drain and not by.heroes_only, #got.spells)
+	check("unit-target and point bits read as cast on the unit; a point-only spell as `p`", by.bolt.shape == "u" and by.wave.shape == "p")
+	check("a line's half width and speed from its keys", by.bolt.half == 60 and by.bolt.speed == 1600 and by.bolt.radius == 0)
+	check("a cone reads as a line as wide as its far end", by.wave.half == 250 and by.wave.speed == 1050)
+	check("a key spell on cooldown still sets the reserve", got.keys.lion_voodoo == 125 and by.bolt.key == false)
+
+	T = T + 1
+	caster.abilities = {
+		-- A no-target spell has cast range 0 (ReadySpells then reads its radius as its reach).
+		[0] = cast("pulse", { dmg = 100, bits = 4, range = 0, special = { radius = 475 } }),
+		[1] = cast("stomp_no_radius", { dmg = 100, bits = 4, range = 0 }),
+	}
+	local n = SpellReady.CreepSpellsOf(caster)
+	check("a no-target spell hits within its radius; one with no radius is left out",
+		#n.spells == 1 and n.spells[1].name == "pulse" and n.spells[1].shape == "n" and n.spells[1].range == 475, #n.spells)
+	-- A per-second row (SPELL_DAMAGE) is damage over time: no one-cast kill.
+	local Data = require("bots/FunLib/humaniser/spell_damage_data")
+	local perSec
+	for name, r in pairs(Data.SPELL_DAMAGE) do if r[2] then perSec = name break end end
+	T = T + 1
+	caster.abilities = { [0] = cast(perSec, { bits = 8, special = { [Data.SPELL_DAMAGE[perSec][1]] = 40 } }) }
+	check("a per-second spell is left out", #SpellReady.CreepSpellsOf(caster).spells == 0, perSec)
+
+	-- A spell Valve's estimate leaves out reads 0 from GetAbilityDamage: its damage is the SPELL_ADDED key's (the smoke game saw no Meat Hook).
+	local leftName
+	for name, r in pairs(Data.SPELL_ADDED) do
+		if r[4] == "left_out" and not r[2] and Data.SPELL_DAMAGE[name] == nil then leftName = name break end
+	end
+	T = T + 1
+	caster.abilities = { [0] = cast(leftName, { dmg = 0, bits = 16, special = { [Data.SPELL_ADDED[leftName][1]] = 80 } }) }
+	local left = SpellReady.CreepSpellsOf(caster)
+	check("a left-out spell takes its SPELL_ADDED damage in the creep read", #left.spells == 1 and left.spells[1].dmg == 80, leftName)
+	check("the chase's list stays as built: no damage, no entry", #SpellReady.ReadySpells(caster) == 0)
+end
+
 finish()
