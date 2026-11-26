@@ -33,8 +33,9 @@ export const DEFAULTS = {
     SupportPull: true,
     /** The lane's creeps, first group, a hard row of the decider (creep_row.ts, doctrine D11; no-creep-unpaid proposal s5): a core
      *  (pos 1 to 3) last-hits their ranged creep in the claimed cells (near, or a longer walk no enemy hero covers) once it is
-     *  about to come due, whether or not stock is attacking it. Off: the read logs every offer as a shadow and stock plays. */
-    LaneCreeps: false,
+     *  about to come due, whether or not stock is attacking it. Off: the read logs every offer as a shadow and stock plays.
+     *  On: it beat the reference arm on its line (oha-creep-earlyhard's batches ceh1 and ceh2). */
+    LaneCreeps: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
