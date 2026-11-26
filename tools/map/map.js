@@ -85,6 +85,36 @@ const row = (y) => Math.round((M.y1 - y) / M.step);
 function walk(x, y) { const r = load().walk[row(y)]; return (r && r[col(x)]) || '#'; }
 function height(x, y) { const r = load().height[row(y)]; return r && r[col(x)] ? parseInt(r[col(x)], 36) * 32 : undefined; }
 const open = (c) => c !== '#' && c !== 'T';
+// The flat levels are every 128 units (river, lane shelf, high ground, above). A ramp is a walkable run of cells between
+// them that touches two different ones; a run that touches only one is raised or sunken ground.
+let R;
+function ramps() {
+    if (R) return R;
+    const g = load().walk;
+    const level = (r, c) => { const d = g[r] && g[r][c]; return d && /[0-9a-z]/.test(d) ? parseInt(d, 36) : undefined; };
+    const between = (z) => z !== undefined && z % 4 !== 0;
+    const done = new Set(); R = new Set();
+    for (let r = 0; r < g.length; r++) {
+        for (let c = 0; c < g[r].length; c++) {
+            if (!between(level(r, c)) || done.has(`${r},${c}`)) continue;
+            const run = [`${r},${c}`], ends = new Set(), todo = [[r, c]]; done.add(run[0]);
+            while (todo.length) {
+                const [a, b] = todo.pop();
+                for (let i = a - 1; i <= a + 1; i++) {
+                    for (let j = b - 1; j <= b + 1; j++) {
+                        const z = level(i, j), k = `${i},${j}`;
+                        if (z === undefined) continue;
+                        if (!between(z)) ends.add(z);
+                        else if (!done.has(k)) { done.add(k); run.push(k); todo.push([i, j]); }
+                    }
+                }
+            }
+            if (ends.size > 1) for (const k of run) R.add(k);
+        }
+    }
+    return R;
+}
+const ramp = (x, y) => ramps().has(`${row(y)},${col(x)}`);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function things(p, r) {
@@ -115,7 +145,7 @@ function crop(p, o, mark) {
         for (let i = -n; i <= n; i++) {
             const x = cx + i * S, q = { x, y }; let c = walk(x, y);
             const m = mark && open(c) ? mark(q) : undefined;
-            if (c === '4') c = '.'; else if (c === '0') c = ' ';
+            if (ramp(x, y)) c = '/'; else if (c === '4') c = '.'; else if (c === '0') c = ' ';
             if (m) c = m;
             for (const t of near) {
                 if (t.kind === 'tower') { if (dist(q, t) < S * 0.6) c = 'O'; else if (Math.abs(dist(q, t) - (t.reach + radius)) < S / 2 && open(walk(x, y))) c = 'o'; }
@@ -135,7 +165,7 @@ function crop(p, o, mark) {
         lines.push(String(y).padStart(6) + ' ' + s);
     }
     console.log(`x ${cx - n * S} to ${cx + n * S}, one character ${S} units, north up. '.' shelf (height 128), blank river, digit height/32,`);
-    console.log(`# cliff, T tree, O tower, o its reach plus radius ${radius}, S M L A camp by level, R Roshan pit, X tormentor` + (route.length ? ', * waypoint, + route' : ''));
+    console.log(`/ ramp between two levels, # cliff, T tree, O tower, o its reach plus radius ${radius}, S M L A camp by level, R Roshan pit, X tormentor` + (route.length ? ', * waypoint, + route' : ''));
     console.log(lines.join('\n'));
     for (const t of near.filter((t) => dist(p, t) <= half * 1.2)) console.log(line(t));
 }
