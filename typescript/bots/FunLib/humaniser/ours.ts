@@ -41,7 +41,7 @@ export const DEFAULTS = {
      *  denies stay Valve's. Off: the read logs the offers as shadows and stock plays. On: it beat the reference arm on its line (oha-creep-deny's batch cden1, cden1r). */
     CreepDeny: true,
     /** The lane's creeps, the under-tower hit, on the creep row (creep_row.ts, slice oha-tower-creeps; no-creep-unpaid proposal s6): a core
-     *  last-hits their lane creep of any kind whose stand spot is inside our tower's range, as well as their ranged creep anywhere, and the
+     *  last-hits their lane creep of any kind whose creep is inside our tower's attack range, as well as their ranged creep anywhere, and the
      *  `tower` refusal is lifted. Needs LaneCreeps. Off: the row takes their ranged creep outside our tower's range only. On: it beat the reference arm on its line (oha-tower-creeps' batch twc1). */
     TowerCreeps: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat

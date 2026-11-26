@@ -130,7 +130,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local enterPhase, onPhase, running
+local enterPhase, towerGone, onPhase, running
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -156,6 +156,9 @@ function enterPhase(a, p, t)
     if p == "swing" and a.so == nil then
         a.so = t - a.t0
     end
+end
+function towerGone(tower)
+    return tower:IsNull() or not tower:IsAlive()
 end
 function onPhase(pid, p, t)
     local a = running[pid]
@@ -524,8 +527,8 @@ local function endLine(bot, a, r, cut, claimed)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_37 = Telemetry.Event
-    local ____array_36 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_39 = Telemetry.Event
+    local ____array_38 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -546,58 +549,58 @@ local function endLine(bot, a, r, cut, claimed)
     else
         ____temp_24 = a.ph
     end
-    __TS__SparseArrayPush(____array_36, {"ph", ____temp_24})
-    local ____temp_25
+    __TS__SparseArrayPush(____array_38, {"ph", ____temp_24}, {"tl", a and a.tl})
+    local ____temp_27
     if a == nil then
-        ____temp_25 = nil
+        ____temp_27 = nil
     else
-        ____temp_25 = a.so ~= nil and r2(a.so) or -1
+        ____temp_27 = a.so ~= nil and r2(a.so) or -1
     end
-    __TS__SparseArrayPush(____array_36, {"so", ____temp_25}, {"tk", a and a.tk})
-    local ____temp_28
-    if a == nil then
-        ____temp_28 = nil
-    else
-        ____temp_28 = r2(a.tks)
-    end
-    __TS__SparseArrayPush(____array_36, {"tks", ____temp_28})
-    local ____temp_29
-    if a == nil then
-        ____temp_29 = nil
-    else
-        ____temp_29 = r2(a.spent.walk)
-    end
-    __TS__SparseArrayPush(____array_36, {"pw", ____temp_29})
+    __TS__SparseArrayPush(____array_38, {"so", ____temp_27}, {"tk", a and a.tk})
     local ____temp_30
     if a == nil then
         ____temp_30 = nil
     else
-        ____temp_30 = r2(a.spent.wait)
+        ____temp_30 = r2(a.tks)
     end
-    __TS__SparseArrayPush(____array_36, {"pq", ____temp_30})
+    __TS__SparseArrayPush(____array_38, {"tks", ____temp_30})
     local ____temp_31
     if a == nil then
         ____temp_31 = nil
     else
-        ____temp_31 = r2(a.spent.swing)
+        ____temp_31 = r2(a.spent.walk)
     end
-    __TS__SparseArrayPush(____array_36, {"ps", ____temp_31})
+    __TS__SparseArrayPush(____array_38, {"pw", ____temp_31})
     local ____temp_32
     if a == nil then
         ____temp_32 = nil
     else
-        ____temp_32 = a.wt ~= nil and r2(a.wt) or -1
+        ____temp_32 = r2(a.spent.wait)
     end
-    __TS__SparseArrayPush(____array_36, {"wt", ____temp_32})
+    __TS__SparseArrayPush(____array_38, {"pq", ____temp_32})
     local ____temp_33
     if a == nil then
         ____temp_33 = nil
     else
-        ____temp_33 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_33 = r2(a.spent.swing)
+    end
+    __TS__SparseArrayPush(____array_38, {"ps", ____temp_33})
+    local ____temp_34
+    if a == nil then
+        ____temp_34 = nil
+    else
+        ____temp_34 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_38, {"wt", ____temp_34})
+    local ____temp_35
+    if a == nil then
+        ____temp_35 = nil
+    else
+        ____temp_35 = a.tin ~= nil and r2(a.tin) or -1
     end
     __TS__SparseArrayPush(
-        ____array_36,
-        {"tin", ____temp_33},
+        ____array_38,
+        {"tin", ____temp_35},
         {"sw", sw},
         {"hp0", a and a.hp0},
         {
@@ -606,9 +609,9 @@ local function endLine(bot, a, r, cut, claimed)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_37(
+    ____Telemetry_Event_39(
         "job",
-        {__TS__SparseArraySpread(____array_36)}
+        {__TS__SparseArraySpread(____array_38)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -629,8 +632,8 @@ local function finish(bot, r)
     local now = DotaTime()
     if a ~= nil then
         if a.phase ~= nil then
-            local ____a_spent_38, ____a_phase_39 = a.spent, a.phase
-            ____a_spent_38[____a_phase_39] = ____a_spent_38[____a_phase_39] + (now - a.phaseAt)
+            local ____a_spent_40, ____a_phase_41 = a.spent, a.phase
+            ____a_spent_40[____a_phase_41] = ____a_spent_40[____a_phase_41] + (now - a.phaseAt)
         end
         if a.lastStep ~= nil and now - a.lastStep > ____exports.SETTINGS.Round then
             a.tk = a.tk + 1
@@ -734,13 +737,13 @@ function ____exports.Consider(bot, cands)
                 towers = ownTowers(bot)
             end
             local tw = attackerOf(towers, c.creep)
-            local ____temp_40
+            local ____temp_42
             if tw == nil then
-                ____temp_40 = nil
+                ____temp_42 = nil
             else
-                ____temp_40 = towerRead(bot, c.creep, tw, 0)
+                ____temp_42 = towerRead(bot, c.creep, tw, 0)
             end
-            tr = ____temp_40
+            tr = ____temp_42
             reads[c.cid] = tr
             notarget = tr == nil and c.ck ~= "r"
         end
@@ -835,10 +838,24 @@ local function towerLost(bot, pid)
     if a == nil or a.tower == nil or a.so ~= nil then
         return false
     end
-    if a.tower:GetAttackTarget() ~= a.creep then
+    if towerGone(a.tower) or a.tower:GetAttackTarget() ~= a.creep then
+        a.tl = "tgt"
         return true
     end
-    return towerRead(bot, a.creep, a.tower, a.ph).v.vd == "none"
+    local tr = towerRead(bot, a.creep, a.tower, a.ph)
+    if tr.v.vd ~= "none" then
+        return false
+    end
+    a.tl = tr.why or "none"
+    return true
+end
+--- The pre-hit's interrupt: the tower left the creep (or fell); flags the attempt so its end line says so.
+local function towerLeft(a, creep)
+    if a.tower == nil or not towerGone(a.tower) and a.tower:GetAttackTarget() == creep then
+        return false
+    end
+    a.tl = "tgt"
+    return true
 end
 --- The attempt of a creep a tower is attacking: while the verdict is `prehit`, one plain attack (not a last hit: the engine's `attackAndConfirm`, which
 -- walks in itself), its order cancelled once it has fired or failed (an attack order outlives its one attack: engine/src/lane.ts, the pre-hit), and a
@@ -870,7 +887,7 @@ local towerAttempt = __TS__Generator(function(ctx, bot, pid, creep, opts)
                 confirmFor = walk + hitIn + ____exports.SETTINGS.PreHitSlack,
                 aggroConfirms = false,
                 hold = "creep_prehit",
-                interruptIf = function() return mateTakes(bot, creep) or a.tower:GetAttackTarget() ~= creep end
+                interruptIf = function() return mateTakes(bot, creep) or towerLeft(a, creep) end
             }
         ))
         bot:Action_MoveToLocation(bot:GetLocation())

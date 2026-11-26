@@ -951,6 +951,7 @@
    "ts": "num",
    "vd": "str",
    "ph": "num",
+   "tl": "str",
    "cid": "num",
    "gw": "num",
    "gd": "num",
@@ -2592,6 +2593,7 @@
    "cut": "text",
    "k": "text",
    "vd": "text",
+   "tl": "text",
    "hw": "text",
    "hm": "text",
    "msg": "text"

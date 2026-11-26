@@ -67,7 +67,7 @@ export const SETTINGS = {
     MaxPreHits: 2,
     /** Seconds past the estimated landing of a pre-hit before the verdict is asked again on the creep's HP. `judgement`. */
     LandSlack: 0.1,
-    /** Seconds past the walk and own hit time for a pre-hit's attack to fire (laneFarm's `PREHIT_SLACK`, engine/src/lane.ts). */
+    /** Seconds past the walk and own hit time for a pre-hit's attack to fire. CANDIDATE(preHitSlack): copies `PREHIT_SLACK` (engine/src/lane.ts, laneFarm's). */
     PreHitSlack: 0.5,
 };
 
@@ -215,6 +215,7 @@ function creepsAttack(bot: Unit, creep: Unit): boolean {
  */
 function towerRead(bot: Unit, creep: Unit, tower: Unit, done: number): TowerRead {
     const hit = creep.GetActualIncomingDamage(tower.GetAttackDamage(), DamageType.Physical);
+    // CANDIDATE(heroHitBounds): the hero's low and high hit copy the engine's `lowestHit` (engine/src/lasthit.ts).
     const dmg = bot.GetAttackDamage();
     const spread = (bot as Timed).GetBaseDamageVariance?.() ?? 0;
     const lo = creep.GetActualIncomingDamage(dmg - spread, DamageType.Physical);
@@ -299,6 +300,8 @@ interface Attempt {
     /** The tower that was attacking the creep at the go (the leftover rule applies to this attempt), and the pre-hits ordered so far (the end line's `ph`). */
     tower?: Unit;
     ph: number;
+    /** Why the leftover rule gave the attempt up (the end line's `tl`): `tgt` the tower's target is no longer the creep (or the tower is gone), else the verdict's refusal. */
+    tl?: string;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -419,6 +422,7 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["cl", claimed ? 1 : 0],
         ["cid", a?.cid],
         ["ph", a?.tower === undefined ? undefined : a.ph],
+        ["tl", a?.tl],
         ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
         ["tk", a?.tk],
         ["tks", a === undefined ? undefined : r2(a.tks)],
@@ -576,8 +580,25 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
 function towerLost(bot: Unit, pid: number): boolean {
     const a = running[pid];
     if (a === undefined || a.tower === undefined || a.so !== undefined) return false;
-    if (a.tower.GetAttackTarget() !== a.creep) return true;
-    return towerRead(bot, a.creep, a.tower, a.ph).v.vd === "none";
+    if (towerGone(a.tower) || a.tower.GetAttackTarget() !== a.creep) {
+        a.tl = "tgt";
+        return true;
+    }
+    const tr = towerRead(bot, a.creep, a.tower, a.ph);
+    if (tr.v.vd !== "none") return false;
+    a.tl = tr.why ?? "none";
+    return true;
+}
+
+function towerGone(tower: Unit): boolean {
+    return tower.IsNull() || !tower.IsAlive();
+}
+
+/** The pre-hit's interrupt: the tower left the creep (or fell); flags the attempt so its end line says so. */
+function towerLeft(a: Attempt, creep: Unit): boolean {
+    if (a.tower === undefined || (!towerGone(a.tower) && a.tower.GetAttackTarget() === creep)) return false;
+    a.tl = "tgt";
+    return true;
 }
 
 /**
@@ -602,7 +623,7 @@ function* towerAttempt(ctx: Lib.Ctx, bot: Unit, pid: number, creep: Unit, opts: 
             confirmFor: walk + hitIn + SETTINGS.PreHitSlack,
             aggroConfirms: false,
             hold: "creep_prehit",
-            interruptIf: () => mateTakes(bot, creep) || a.tower!.GetAttackTarget() !== creep,
+            interruptIf: () => mateTakes(bot, creep) || towerLeft(a, creep),
         });
         bot.Action_MoveToLocation(bot.GetLocation());
         if (!r.success) return r;

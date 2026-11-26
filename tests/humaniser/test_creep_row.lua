@@ -732,6 +732,43 @@ do -- the leftover rule in the row: the pre-hit, the claim, the controls
 	w.tower.target = nil
 	check("leftover: an attempt whose swing is ordered is not interrupted", o.interruptIf() == false)
 
+	-- The tower is still on the creep but the verdict turns none (more HP than any pre-hit can bring into a hit's reach): the attempt gives up.
+	w = towered({ hp = 40, due = 1.2 })
+	capture(function() w.CO.Shadow(w.core) w.drive() end)
+	o = w.lhOpts
+	check("leftover: a wait verdict that holds does not give the attempt up", o.interruptIf() == false and w.tower.target == w.creep)
+	w.creep.hp = 62
+	check("leftover: the verdict turning none with the tower still on the creep interrupts the attempt", o.interruptIf() == true and w.tower.target == w.creep)
+	out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
+	check("leftover: that end line says why it was given up, tl=nowindow", field(lines(out, "phase=end")[1], "tl") == "nowindow", table.concat(out, " | "))
+
+	-- The third pre-hit is refused: two ordered, the creep's HP unchanged by them, the verdict still wants a pre-hit.
+	w = towered({})
+	w.ctx.attackAndConfirm = function(pick, opts)
+		return gen(function()
+			table.insert(w.order, "attack")
+			return { success = true, reason = "ok" }
+		end)
+	end
+	out = capture(function() w.CO.Shadow(w.core) w.res = w.drive() w.onEnd(w.res) end)
+	check("leftover: a third pre-hit becomes none: two attacks, no last hit, the attempt ends interrupted", table.concat(w.order, ",") == "attack,attack" and w.res ~= nil and w.res.success == false and w.res.reason == "interrupted" and w.res.message == "nowindow", table.concat(w.order, ",") .. " | " .. tostring(w.res and w.res.message))
+	check("leftover: the end line counts the two pre-hits", field(lines(out, "phase=end")[1], "ph") == "2", table.concat(out, " | "))
+
+	-- A tower that is dead: the pre-hit's interrupt and the running attempt's both read it as the tower leaving the creep.
+	w = towered({})
+	capture(function() w.CO.Shadow(w.core) w.drive() end)
+	check("leftover: a live tower on the creep does not interrupt the pre-hit", w.prehitOpts.interruptIf() == false)
+	w.tower.alive = false
+	check("leftover: a dead tower interrupts the pre-hit, even with its target still the creep", w.prehitOpts.interruptIf() == true and w.tower.target == w.creep)
+	out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
+	check("leftover: the pre-hit's end line says tl=tgt", field(lines(out, "phase=end")[1], "tl") == "tgt", table.concat(out, " | "))
+	w = towered({ hp = 40, due = 1.2 })
+	capture(function() w.CO.Shadow(w.core) w.drive() end)
+	w.tower.alive = false
+	check("leftover: a dead tower interrupts the running attempt before a swing", w.lhOpts.interruptIf() == true)
+	out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
+	check("leftover: its end line says tl=tgt", field(lines(out, "phase=end")[1], "tl") == "tgt", table.concat(out, " | "))
+
 	w = towered({ on = false })
 	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
 	check("leftover: switch off, a melee creep under our tower is refused kind and the tower's target is not read", w.starts == 0 and field(ch[1], "why") == "kind" and w.tower.targetReads == 0, w.tower.targetReads .. " | " .. table.concat(ch, " | "))

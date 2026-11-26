@@ -147,4 +147,4 @@ function FreshHumaniser(customHumaniser)
 	Customize.Ours = {}
 	return index
 end
-SUITE_OFF = { MidWater = true, ChoiceShadow = true, TowerCreeps = true }
+SUITE_OFF = { MidWater = true, ChoiceShadow = true }

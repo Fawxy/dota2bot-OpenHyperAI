@@ -698,6 +698,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `cl` num: `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`.
 - `lf` num: `job=creep` start, when a tower of ours was attacking the creep (Ours.TowerCreeps, the leftover rule, creep_row `Verdict`): `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it after armour, `ts` the tower shots before that one, `vd` the verdict (`wait`, `prehit`; `none` is refused and never starts).
 - `ph` num: `job=creep` end, on an attempt the leftover rule covers: the plain attacks (pre-hits) ordered before the last hit.
+- `tl` str: `job=creep` end, when the leftover rule gave the attempt up: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's refusal (`nowindow`, `mates`, `none`). Absent otherwise.
 - `cid` num: `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`).
 - `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
 - `rng` num: `job=creep` start: the hero's attack range.
