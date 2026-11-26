@@ -146,6 +146,7 @@ function check(route, o) {
     let len = 0, gap = Infinity; const bad = []; const hs = new Set(); const hit = new Map();
     for (let k = 1; k < route.length; k++) {
         const a = route[k - 1], b = route[k], L = dist(a, b); len += L;
+        if (L === 0) continue;
         for (let t = 0; t <= L; t += 16) {
             const q = { x: a.x + ((b.x - a.x) * t) / L, y: a.y + ((b.y - a.y) * t) / L };
             const c = walk(q.x, q.y);

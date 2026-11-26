@@ -18,6 +18,7 @@ end
 Convars:RegisterCommand("rig_map_grid", function(_, x0, y0, x1, y1, step)
 	local ok, err = pcall(function()
 		x0, y0, x1, y1, step = tonumber(x0), tonumber(y0), tonumber(x1), tonumber(y1), tonumber(step)
+		if not (x0 and y0 and x1 and y1 and step) or step <= 0 then error("usage: rig_map_grid <x0> <y0> <x1> <y1> <step above 0>") end
 		local rows, z0 = {}, math.huge
 		for y = y1, y0, -step do
 			local row = {}
