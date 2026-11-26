@@ -132,8 +132,13 @@ task the hero has (the runner's `replaced`), so the order among rows is the deci
   it decided for `begin`; it starts, cancels and orders nothing.
 - Facts: a fact of the lane, the camp or the team that more than one row asks is a read, passed to `wants` as its second
   argument (`Reads` and its one instance `READS` in `reads.ts`; the decider passes it in `turn`, `Offer` and `Ask`). Today
-  the one member is `reads.camp`, `camp_read.ts`: the lane camp's look (`CampStateOf`), the record of its strength
-  (`Known`, `NoteSighting`, `NoteStack`, `Hold`), `CampGate`, and who pulls it (`IsPuller`, `SpawnerFor`). A row takes
+  there are two members. `reads.camp`, `camp_read.ts`: the lane camp's look (`CampStateOf`), the record of its strength
+  (`Known`, `NoteSighting`, `NoteStack`, `Hold`), `CampGate`, and who pulls it (`IsPuller`, `SpawnerFor`).
+  `reads.creep`, `creep_claim.ts` (CANDIDATE(creep-claim); nothing reads it to decide yet): per enemy or own lane creep (the
+  `cid`), the claim (`Take`, `Release`, `Phase`: hero, rank in the trip table's line for its kind, game time the swing is due to be ordered,
+  the verb's phase; read with `ClaimsOn`, `HeldBy`) and each hero's latest answer (`Touch`, `AnswerOf`: what the creep row
+  noted, formerly its private `Seen`). The creep row takes the claim in `begin` and releases it in the task's `onEnd`; the
+  job lines carry `oc` (others already on the creep) at the start and `cl` (claim released) at the end. A row takes
   facts in `wants`, and in code `wants` calls, from `reads`, never by importing another row's file (ARCHITECTURE rule 3);
   code outside `wants` (`begin`, the verb, shadows) may import the read module. A new shared read is a module like
   `camp_read.ts` with one member added to `Reads`; the row that first needs it passes it down.

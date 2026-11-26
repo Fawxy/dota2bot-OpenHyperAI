@@ -37,7 +37,6 @@ local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local Offer = require(GetScriptDirectory().."/FunLib/humaniser/offer")
-local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
@@ -472,13 +471,13 @@ end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
---- A bot whose position the trip table lets act on a creep offer: a last hit (`creep`) or a deny.
+--- A bot the read covers: any of the five positions. Whether the row lets the hero act is the trip table's and the row's own (`CreepRow.On`), not this.
 function ____exports.MayOffer(bot)
     if not bot:IsBot() then
         return false
     end
     local pos = LaneConfig.PositionOf(bot)
-    return TripTable.Does("creep", pos) or TripTable.Does("deny", pos)
+    return pos ~= nil and pos >= 1 and pos <= 5
 end
 local function enemyFormat(es)
     local out = {}

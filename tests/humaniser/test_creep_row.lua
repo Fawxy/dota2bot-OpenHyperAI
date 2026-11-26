@@ -721,4 +721,74 @@ do -- the read's go is offered to the decider, which begins the row in the same 
 	check("offer: the line's target is the started creep", start ~= nil and field(dl[1], "btgt") == "creep:" .. field(start, "cid"), tostring(dl[1]))
 end
 
+-- The creep claim (creep_claim.ts, Reads.creep): taken in the row's begin, released at every end of the task.
+local function claimOf(pid, cid) for _, c in ipairs(package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cid)) do if c.pid == pid then return c end end end
+
+do -- a started attempt holds the claim until the task ends, whatever the end
+	local ends = {
+		{ "landed", { success = true } },
+		{ "cut", { success = false, reason = "timeout" } },
+		{ "taken by another mode", { success = false, reason = "preempted" } },
+	}
+	for _, e in ipairs(ends) do
+		local w = world()
+		local c = ranged()
+		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+		local out = capture(function() w.CO.Shadow(w.core) end)
+		local cid = tonumber(field(lines(out, "phase=start")[1], "cid"))
+		local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+		local held = claimOf(1, cid)
+		check("claim " .. e[1] .. ": held while the task runs, with the hero's rank and the due time", held ~= nil and held.rank == 60 and held.k == "lh" and near(held.due, 100.5) and Claim.HeldBy(1) == cid, tostring(held))
+		local out2 = capture(function() w.onEnd(e[2]) end)
+		check("claim " .. e[1] .. ": released at the end, which the end line says", claimOf(1, cid) == nil and Claim.HeldBy(1) == nil and field(lines(out2, "phase=end")[1], "cl") == "1", table.concat(out2, " | "))
+	end
+end
+
+do -- the runner refusing the start leaves no claim; the verb's phase is on the claim
+	local w = world({ refuse = true })
+	local c = ranged()
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	check("claim: a refused start takes none", package.loaded["bots/FunLib/humaniser/creep_claim"].HeldBy(1) == nil)
+
+	w = world()
+	c = ranged()
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	local out = capture(function() w.CO.Shadow(w.core) end)
+	local cid = tonumber(field(lines(out, "phase=start")[1], "cid"))
+	local before = claimOf(1, cid).phase
+	lastHitOpts(w).onPhase("wait", 100.2)
+	check("claim: the verb's phase is carried on it", before == nil and claimOf(1, cid).phase == "wait")
+end
+
+do -- two heroes on one creep: both hold, the second sees the first, one release leaves the other
+	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	world()
+	local o1 = Claim.Take(7, { pid = 1, rank = 60, k = "lh", due = 10 })
+	local o2 = Claim.Take(7, { pid = 2, rank = 60, k = "lh", due = 10.2 })
+	check("two claims: the second names the first as already on the creep", #o1 == 0 and #o2 == 1 and o2[1] == 1)
+	Claim.Release(1)
+	local left = Claim.ClaimsOn(7)
+	check("two claims: releasing one leaves the other", #left == 1 and left[1].pid == 2)
+	Claim.Release(2)
+	check("two claims: the last release frees the creep", #Claim.ClaimsOn(7) == 0)
+end
+
+do -- a hero's answer on a creep is dropped once a read no longer lists it
+	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	world()
+	Claim.Touch(1, { 5, 6 }, 100)[5].why = "race"
+	Claim.Touch(1, { 5 }, 100.2)
+	check("answers: the creep still listed keeps its answer, the one gone is dropped", Claim.AnswerOf(1, 5).why == "race" and Claim.AnswerOf(1, 6) == nil)
+end
+
+do -- a support is covered by the read but does not act with the deny switch off
+	local w = world({ deny = false })
+	w.core.pos = 4
+	local c = MakeCreep({ team = 2, x = 300, y = -5000, hp = 80, name = "npc_dota_creep_goodguys_melee" })
+	w.targets = { target(c, { walk = 0.3, due = 0.5, kind = "deny" }) }
+	local ch = lines(capture(function() w.CO.Shadow(w.core) T = T + 0.1 kill(c) w.targets = {} w.CO.Shadow(w.core) end), "kind=creep")
+	check("support: a shadow line with go=0 why=off, and no task started", #ch == 1 and field(ch[1], "src") == "shadow" and field(ch[1], "go") == "0" and field(ch[1], "why") == "off" and w.starts == 0, table.concat(ch, " | "))
+end
+
 finish()
