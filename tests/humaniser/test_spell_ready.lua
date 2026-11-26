@@ -176,6 +176,17 @@ do
 	T = T + 1
 	caster.abilities = { [0] = cast(perSec, { bits = 8, special = { [Data.SPELL_DAMAGE[perSec][1]] = 40 } }) }
 	check("a per-second spell is left out", #SpellReady.CreepSpellsOf(caster).spells == 0, perSec)
+
+	-- A spell Valve's estimate leaves out reads 0 from GetAbilityDamage: its damage is the SPELL_ADDED key's (the smoke game saw no Meat Hook).
+	local leftName
+	for name, r in pairs(Data.SPELL_ADDED) do
+		if r[4] == "left_out" and not r[2] and Data.SPELL_DAMAGE[name] == nil then leftName = name break end
+	end
+	T = T + 1
+	caster.abilities = { [0] = cast(leftName, { dmg = 0, bits = 16, special = { [Data.SPELL_ADDED[leftName][1]] = 80 } }) }
+	local left = SpellReady.CreepSpellsOf(caster)
+	check("a left-out spell takes its SPELL_ADDED damage in the creep read", #left.spells == 1 and left.spells[1].dmg == 80, leftName)
+	check("the chase's list stays as built: no damage, no entry", #SpellReady.ReadySpells(caster) == 0)
 end
 
 finish()

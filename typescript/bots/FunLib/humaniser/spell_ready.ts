@@ -173,20 +173,30 @@ export function ReadySpells(bot: Unit): ReadySpell[] {
     for (let slot = 0; slot < SLOTS; slot++) {
         const a = bot.GetAbilityInSlot(slot) as unknown as CastHandle | null | undefined;
         if (a === undefined || a === null || a.IsNull()) continue;
-        if (a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) continue;
-        const name = a.GetName();
-        const row = SPELL_DAMAGE[name];
-        const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
-        if (type(dmg) !== "number" || !(dmg > 0)) continue;
-        let range = a.GetCastRange();
-        if (!(range > 0)) {
-            const r = a.GetSpecialValueFloat("radius");
-            range = type(r) === "number" && r > 0 ? r : 0;
-        }
-        const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
-        out.push({ name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical });
+        const r = readyOf(a, false);
+        if (r !== undefined) out.push(r);
     }
     return out;
+}
+
+/**
+ * One ability as a ReadySpell when it is learned, shown, castable now and does damage: the value at its SPELL_DAMAGE key, or with
+ * `added` at its SPELL_ADDED key (the spells Valve's estimate leaves out, whose GetAbilityDamage reads 0: Earth Spike, Meat Hook),
+ * else GetAbilityDamage. ReadySpells passes `added` false, as the chase's catch read was built on.
+ */
+function readyOf(a: CastHandle, added: boolean): ReadySpell | undefined {
+    if (a.GetLevel() <= 0 || a.IsHidden() || !a.IsFullyCastable()) return undefined;
+    const name = a.GetName();
+    const row = SPELL_DAMAGE[name] ?? (added ? SPELL_ADDED[name] : undefined);
+    const dmg = row !== undefined ? a.GetSpecialValueFloat(row[0]) : a.GetAbilityDamage();
+    if (type(dmg) !== "number" || !(dmg > 0)) return undefined;
+    let range = a.GetCastRange();
+    if (!(range > 0)) {
+        const r = a.GetSpecialValueFloat("radius");
+        range = type(r) === "number" && r > 0 ? r : 0;
+    }
+    const dt = row !== undefined ? row[2] : a.GetDamageType !== undefined ? a.GetDamageType() : DamageType.Magical;
+    return { name, range, cp: a.GetCastPoint(), behavior: a.GetBehavior(), dmg, dtype: dt > 0 ? dt : DamageType.Magical };
 }
 
 /**
@@ -260,8 +270,8 @@ let creepAt = -1;
 let creepBy: Record<number, CreepSpells> = {};
 
 /**
- * The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list less
- * ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
+ * The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list with
+ * the SPELL_ADDED spells too, less ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
  * radius; with each one's mana, cooldown, class, radius, line width and speed. Read once a frame per hero.
  */
 export function CreepSpellsOf(bot: Unit): CreepSpells {
@@ -274,16 +284,18 @@ export function CreepSpellsOf(bot: Unit): CreepSpells {
     const cached = creepBy[pid];
     if (cached !== undefined) return cached;
     const keys: Record<string, number> = {};
+    const learned: CreepCastHandle[] = [];
     for (let slot = 0; slot < SLOTS; slot++) {
         const a = bot.GetAbilityInSlot(slot) as unknown as CreepCastHandle | null | undefined;
         if (a === undefined || a === null || a.IsNull() || a.GetLevel() <= 0 || a.IsHidden() || a.IsPassive() || a.IsUltimate()) continue;
         if (AbilityClasses.Classify(a.GetName(), false) === "key") keys[a.GetName()] = a.GetManaCost();
+        learned.push(a);
     }
     const spells: CreepSpell[] = [];
-    for (const r of ReadySpells(bot)) {
-        const a = bot.GetAbilityByName(r.name) as unknown as CreepCastHandle | null | undefined;
-        if (a === undefined || a === null || a.IsNull() || a.IsUltimate()) continue;
-        const row = SPELL_DAMAGE[r.name];
+    for (const a of learned) {
+        const r = readyOf(a, true);
+        if (r === undefined) continue;
+        const row = SPELL_DAMAGE[r.name] ?? SPELL_ADDED[r.name];
         if (row !== undefined && row[1]) continue;
         if (has(r.behavior, B_CHANNELLED) || has(r.behavior, B_TOGGLE)) continue;
         let shape: "u" | "p" | "n";

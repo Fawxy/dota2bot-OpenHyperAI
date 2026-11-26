@@ -1,5 +1,6 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
 local ____exports = {}
+local readyOf
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotScriptEnums = ____dota.BotScriptEnums
 local DamageType = ____dota.DamageType
@@ -8,6 +9,31 @@ local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_
 local ____spell_damage_data = require(GetScriptDirectory().."/FunLib/humaniser/spell_damage_data")
 local SPELL_ADDED = ____spell_damage_data.SPELL_ADDED
 local SPELL_DAMAGE = ____spell_damage_data.SPELL_DAMAGE
+function readyOf(a, added)
+    if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
+        return nil
+    end
+    local name = a:GetName()
+    local row = SPELL_DAMAGE[name] or (added and SPELL_ADDED[name] or nil)
+    local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
+    if type(dmg) ~= "number" or not (dmg > 0) then
+        return nil
+    end
+    local range = a:GetCastRange()
+    if not (range > 0) then
+        local r = a:GetSpecialValueFloat("radius")
+        range = type(r) == "number" and r > 0 and r or 0
+    end
+    local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
+    return {
+        name = name,
+        range = range,
+        cp = a:GetCastPoint(),
+        behavior = a:GetBehavior(),
+        dmg = dmg,
+        dtype = dt > 0 and dt or DamageType.Magical
+    }
+end
 local SLOTS = 6
 local spentAt = -1
 local spentBy = {}
@@ -185,31 +211,10 @@ function ____exports.ReadySpells(bot)
                         __continue32 = true
                         break
                     end
-                    if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
-                        __continue32 = true
-                        break
+                    local r = readyOf(a, false)
+                    if r ~= nil then
+                        out[#out + 1] = r
                     end
-                    local name = a:GetName()
-                    local row = SPELL_DAMAGE[name]
-                    local dmg = row ~= nil and a:GetSpecialValueFloat(row[1]) or a:GetAbilityDamage()
-                    if type(dmg) ~= "number" or not (dmg > 0) then
-                        __continue32 = true
-                        break
-                    end
-                    local range = a:GetCastRange()
-                    if not (range > 0) then
-                        local r = a:GetSpecialValueFloat("radius")
-                        range = type(r) == "number" and r > 0 and r or 0
-                    end
-                    local dt = row ~= nil and row[3] or (a.GetDamageType ~= nil and a:GetDamageType() or DamageType.Magical)
-                    out[#out + 1] = {
-                        name = name,
-                        range = range,
-                        cp = a:GetCastPoint(),
-                        behavior = a:GetBehavior(),
-                        dmg = dmg,
-                        dtype = dt > 0 and dt or DamageType.Magical
-                    }
                     __continue32 = true
                 until true
                 if not __continue32 then
@@ -272,8 +277,8 @@ local function firstKey(a, keys)
 end
 local creepAt = -1
 local creepBy = {}
---- The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list less
--- ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
+--- The spells `bot` can cast now that could take a lane creep in one cast (slice oha-creep-spell-shadow): ReadySpells' list with
+-- the SPELL_ADDED spells too, less ultimates, channelled, toggled and per-second spells, a unit-target spell that cannot target creeps, and a no-target one with no
 -- radius; with each one's mana, cooldown, class, radius, line width and speed. Read once a frame per hero.
 function ____exports.CreepSpellsOf(bot)
     local now = DotaTime()
@@ -287,15 +292,16 @@ function ____exports.CreepSpellsOf(bot)
         return cached
     end
     local keys = {}
+    local learned = {}
     do
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue45
+                local __continue47
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() or a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or a:IsUltimate() then
-                        __continue45 = true
+                        __continue47 = true
                         break
                     end
                     if AbilityClasses.Classify(
@@ -304,9 +310,10 @@ function ____exports.CreepSpellsOf(bot)
                     ) == "key" then
                         keys[a:GetName()] = a:GetManaCost()
                     end
-                    __continue45 = true
+                    learned[#learned + 1] = a
+                    __continue47 = true
                 until true
-                if not __continue45 then
+                if not __continue47 then
                     break
                 end
             end
@@ -314,22 +321,22 @@ function ____exports.CreepSpellsOf(bot)
         end
     end
     local spells = {}
-    for ____, r in ipairs(____exports.ReadySpells(bot)) do
+    for ____, a in ipairs(learned) do
         do
-            local __continue48
+            local __continue50
             repeat
-                local a = bot:GetAbilityByName(r.name)
-                if a == nil or a == nil or a:IsNull() or a:IsUltimate() then
-                    __continue48 = true
+                local r = readyOf(a, true)
+                if r == nil then
+                    __continue50 = true
                     break
                 end
-                local row = SPELL_DAMAGE[r.name]
+                local row = SPELL_DAMAGE[r.name] or SPELL_ADDED[r.name]
                 if row ~= nil and row[2] then
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 if has(r.behavior, B_CHANNELLED) or has(r.behavior, B_TOGGLE) then
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 local shape
@@ -337,7 +344,7 @@ function ____exports.CreepSpellsOf(bot)
                     local ____opt_4 = a.GetTargetType
                     local tt = ____opt_4 and ____opt_4(a)
                     if tt ~= nil and tt > 0 and not has(tt, T_CREEP) then
-                        __continue48 = true
+                        __continue50 = true
                         break
                     end
                     shape = "u"
@@ -346,7 +353,7 @@ function ____exports.CreepSpellsOf(bot)
                 elseif has(r.behavior, B_NO_TARGET) and r.range > 0 then
                     shape = "n"
                 else
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 local width = firstKey(a, WIDTH_KEYS)
@@ -365,9 +372,9 @@ function ____exports.CreepSpellsOf(bot)
                     half = shape == "n" and 0 or half,
                     speed = shape == "n" and 0 or firstKey(a, SPEED_KEYS)
                 }
-                __continue48 = true
+                __continue50 = true
             until true
-            if not __continue48 then
+            if not __continue50 then
                 break
             end
         end
@@ -454,21 +461,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue73
+                local __continue75
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue73 = true
+                        __continue75 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue73 = true
+                        __continue75 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue73 = true
+                    __continue75 = true
                 until true
-                if not __continue73 then
+                if not __continue75 then
                     break
                 end
             end
