@@ -1,4 +1,4 @@
--- Physics probe (branch oha-physics-probe, research only, never merged): server Lua, loaded like the setters
+-- Physics probe: server Lua, loaded like the setters
 -- (`script_reload_code bots/rigs/physics`). `rig_phys <scenario>` runs one mechanic's trials with units this script makes
 -- itself (no bot hero takes part), timed on the game clock, one `[RIG] phys ...` line per event.
 --   stats   every lane creep type, a hero and the towers: the server's readable stats; turn rate and walk speed measured
@@ -9,9 +9,14 @@
 --   block   a hero walking through a line of three allied creeps against an open line
 --   tower   Radiant top T2: when it takes a hero, creep-first and hero-first, the hero hitting a hero, the hero's order
 --           on its own creep, the hero stepping out
+--   order2  as order, our creep put nearer the attacker than the hero; with and without the order
+--   tower2  the T2 on a creep while our hero hits theirs (the call for help); the order on our creep, nearer the tower
+--   lanegoal a creep given the nearest Dire path corner as its goal, chasing a hero that walks off at 450
+--   trees   clear the site's trees again (they regrow about 5 min after the load clears them)
 --   height  a Dire ranged creep on the 128 shelf at a target on the 256 plateau against the same on the flat: hits in 40 s,
 --           first without Dire vision of the target, then with a viewer
--- Line of the main site: y=-2050 from x=-6000 to -4400 (flat 128, 1,280 or more from every tower).
+-- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
+-- Results and the API calls that read each value: master docs/reference/specifics/engine-physics.md.
 local function say(s) print("[RIG] phys " .. s) end
 local function now() return GameRules:GetDOTATime(false, false) end
 local R, D = DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS
