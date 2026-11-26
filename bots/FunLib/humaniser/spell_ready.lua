@@ -250,7 +250,7 @@ local SPEED_KEYS = {
     "travel_speed",
     "missile_speed"
 }
---- Behaviour bits (Valve's ability behaviour flags; the 0 defaults are for a test with no game globals).
+--- Valve's ability behaviour and target-type flags; the numbers after `??` are their values, for a test run with no game globals.
 local B_NO_TARGET = ABILITY_BEHAVIOR_NO_TARGET or 4
 local B_UNIT = ABILITY_BEHAVIOR_UNIT_TARGET or 8
 local B_POINT = ABILITY_BEHAVIOR_POINT or 16

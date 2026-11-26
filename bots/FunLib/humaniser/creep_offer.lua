@@ -427,27 +427,40 @@ function spellRead(bot, f, creep, o, now)
         end
         f.foes = foes
     end
-    local forecast
-    local answers = {}
+    local timings = {}
+    local takens = {}
+    local band = false
+    local horizon = 0
     for ____, s in ipairs(cs.spells) do
         local timing = SpellSecure.TimingOf(s, d, f.speed, turn)
         local taken = creep:GetActualIncomingDamage(s.dmg, s.dtype)
-        local hp = hpNow
+        timings[#timings + 1] = timing
+        takens[#takens + 1] = taken
         if hpNow <= taken * ____exports.SETTINGS.SpellBand then
-            if forecast == nil then
-                forecast = verbs.hpForecast(bot, creep, ____exports.SETTINGS.SpellHorizon)
-            end
-            hp = verbs.forecastHp(forecast, timing.land)
+            band = true
+            horizon = math.max(horizon, timing.land)
         end
-        answers[#answers + 1] = {
-            spell = s,
-            timing = timing,
-            taken = taken,
-            hp = hp,
-            kill = SpellSecure.Kills(hp, taken),
-            over = SpellSecure.OverReserve(mana, s, cs.keys),
-            also = SpellSecure.AlsoHit(s, f.hero, at, f.foes)
-        }
+    end
+    local forecast = band and verbs.hpForecast(bot, creep, horizon) or nil
+    local answers = {}
+    do
+        local i = 0
+        while i < #cs.spells do
+            local s = cs.spells[i + 1]
+            local timing = timings[i + 1]
+            local taken = takens[i + 1]
+            local hp = forecast ~= nil and hpNow <= taken * ____exports.SETTINGS.SpellBand and verbs.forecastHp(forecast, timing.land) or hpNow
+            answers[#answers + 1] = {
+                spell = s,
+                timing = timing,
+                taken = taken,
+                hp = hp,
+                kill = SpellSecure.Kills(hp, taken),
+                over = SpellSecure.OverReserve(mana, s, cs.keys),
+                also = SpellSecure.AlsoHit(s, f.hero, at, f.foes)
+            }
+            i = i + 1
+        end
     end
     local best = SpellSecure.Best(answers)
     if best == nil then
@@ -568,8 +581,7 @@ ____exports.SETTINGS = {
     SlackStep = 0.1,
     SlackCap = 99,
     TowerRadius = 2500,
-    SpellBand = 2,
-    SpellHorizon = 3
+    SpellBand = 2
 }
 local rowHook
 --- Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on).
@@ -850,6 +862,7 @@ function ____exports.Shadow(bot)
     local atkTarget = bot:GetAttackTarget()
     local slot = math.floor(now * 10) / 10
     local cands = {}
+    local spellTargets = {}
     for ____, t in ipairs(targets) do
         do
             local __continue106
@@ -907,18 +920,7 @@ function ____exports.Shadow(bot)
                     o.atk = true
                 end
                 if t.kind == "lasthit" then
-                    if f.spells == nil then
-                        f.spells = SpellReady.CreepSpellsOf(bot)
-                    end
-                    if #f.spells.spells > 0 then
-                        P.spell(
-                            bot,
-                            f,
-                            creep,
-                            o,
-                            now
-                        )
-                    end
+                    spellTargets[#spellTargets + 1] = {creep, o}
                 end
                 if rowHook ~= nil then
                     cands[#cands + 1] = candidate(
@@ -942,6 +944,24 @@ function ____exports.Shadow(bot)
     end
     if rowHook ~= nil then
         rowHook(bot, cands)
+    end
+    if #spellTargets == 0 then
+        return
+    end
+    f.spells = SpellReady.CreepSpellsOf(bot)
+    if #f.spells.spells == 0 then
+        return
+    end
+    for ____, ____value in ipairs(spellTargets) do
+        local creep = ____value[1]
+        local o = ____value[2]
+        P.spell(
+            bot,
+            f,
+            creep,
+            o,
+            now
+        )
     end
 end
 return ____exports

@@ -43,8 +43,6 @@ export const SETTINGS = {
      * above it the spell cannot kill within a landing's few seconds (judgement: the forecast is the read's dearest call).
      */
     SpellBand: 2,
-    /** The forecast's horizon for the spell read (s): past the slowest landing of a cast with no walk (judgement). */
-    SpellHorizon: 3,
 };
 
 type Timed = Unit & { GetSecondsPerAttack?(): number };
@@ -516,16 +514,28 @@ function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void 
         for (const e of enemiesOf(f)) foes.push({ x: e.x, y: e.y, hull: e.hull });
         f.foes = foes;
     }
-    let forecast: Lib.Verbs.HpForecast | undefined;
-    const answers: SpellSecure.Answer[] = [];
+    const timings: SpellSecure.Timing[] = [];
+    const takens: number[] = [];
+    let band = false;
+    let horizon = 0;
     for (const s of cs.spells) {
         const timing = SpellSecure.TimingOf(s, d, f.speed, turn);
         const taken = creep.GetActualIncomingDamage(s.dmg, s.dtype);
-        let hp = hpNow;
+        timings.push(timing);
+        takens.push(taken);
         if (hpNow <= taken * SETTINGS.SpellBand) {
-            if (forecast === undefined) forecast = verbs.hpForecast(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep, SETTINGS.SpellHorizon);
-            hp = verbs.forecastHp(forecast, timing.land);
+            band = true;
+            horizon = math.max(horizon, timing.land);
         }
+    }
+    // One forecast to the latest landing among the spells in band (the engine caps its horizon at 10 s).
+    const forecast = band ? verbs.hpForecast(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep, horizon) : undefined;
+    const answers: SpellSecure.Answer[] = [];
+    for (let i = 0; i < cs.spells.length; i++) {
+        const s = cs.spells[i];
+        const timing = timings[i];
+        const taken = takens[i];
+        const hp = forecast !== undefined && hpNow <= taken * SETTINGS.SpellBand ? verbs.forecastHp(forecast, timing.land) : hpNow;
         answers.push({ spell: s, timing, taken, hp, kill: SpellSecure.Kills(hp, taken), over: SpellSecure.OverReserve(mana, s, cs.keys), also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
     }
     const best = SpellSecure.Best(answers);
@@ -618,6 +628,7 @@ export function Shadow(bot: Unit): void {
     const atkTarget = bot.GetAttackTarget();
     const slot = math.floor(now * 10) / 10;
     const cands: Candidate[] = [];
+    const spellTargets: [Unit, Opp][] = [];
 
     for (const t of targets) {
         const creep = t.creep as unknown as Unit;
@@ -650,13 +661,15 @@ export function Shadow(bot: Unit): void {
             o.okTo = now;
         }
         if (atkTarget !== null && atkTarget !== undefined && atkTarget === creep) o.atk = true;
-        if (t.kind === "lasthit") {
-            if (f.spells === undefined) f.spells = SpellReady.CreepSpellsOf(bot);
-            if (f.spells.spells.length > 0) P.spell(bot, f, creep, o, now);
-        }
+        if (t.kind === "lasthit") spellTargets.push([creep, o]);
         if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
     if (rowHook !== undefined) rowHook(bot, cands);
+    // After the row: the spell read only logs, so an error in it cannot cost the row its decision this read.
+    if (spellTargets.length === 0) return;
+    f.spells = SpellReady.CreepSpellsOf(bot);
+    if (f.spells.spells.length === 0) return;
+    for (const [creep, o] of spellTargets) P.spell(bot, f, creep, o, now);
 }
 
 function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.Verbs.LaneTarget, creep: Unit, cid: number, o: Opp, a: Offer.Arrival, now: number): Candidate {
