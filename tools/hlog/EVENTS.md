@@ -319,7 +319,7 @@ Each neutral camp's spawn box once per game, from the first stack job (replay gr
 
 ## vmap
 
-Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind` start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`).
+Overrides.VisionMap (probe games only, `vision_map.ts`): the map's height grid and trees for a sight model. `kind` start (the box and `step`, `src` api | fallback), h (a row: `y`, `x0`, `n` cells, `hex` one digit a cell, the height level plus 8 when passable), t (`xy` "index:x:y" joined by ";"), end (`rows`, `trees`), camp (`xy` "idx:team:type:x:y:minx:miny:maxx:maxy" joined by ";", the neutral camps).
 
 `kind` str, `bx0` num, `by0` num, `bx1` num, `by1` num, `step` num, `src` str, `y` num, `x0` num, `n` num, `hex` str, `xy` str, `rows` num, `trees` num
 
@@ -1499,6 +1499,21 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ch` num: `kind=creep`: `GetHeightLevel` of the creep when the answers were taken; absent when the API gave none.
 - `ra` num: `kind=creep`: the hero's attack range (above 320 it attacks with a projectile, as the engine's lasthit.ts reads it).
 - `enh` str: `kind=creep`: the height level of each visible enemy hero, `pid:level` (`-` when the API gave none), joined by `;` in `en`'s order.
+- `sp` str: `kind=creep`, their creep (slice oha-creep-spell-shadow; spell_secure.ts): the spell read's best answer while the hero held a creep spell (SpellReady.CreepSpellsOf), taken at the first read where a spell would kill the creep, else where one came closest. Absent when it held none at any read. The spell's name.
+- `sx` str: `kind=creep`, with `sp`: `u` cast on the creep, `p` on its place, `n` no target (hits around the hero).
+- `sy` str: `kind=creep`, with `sp`: `k` a key spell (a hard disable or spell immunity, AbilityClasses), else `d`.
+- `sk` num: `kind=creep`, with `sp`: 1 when at some read the spell, cast then, would land with the creep alive and its damage after resistance at least the creep's forecast HP.
+- `sa` num: `kind=creep`, `sk=1`: seconds from `slot` to the first such read.
+- `sw` num: `kind=creep`, `sk=1`: seconds from the first such read to the last.
+- `sg` num: `kind=creep`, with `sp`: the creep's centre distance less the cast range (for `sx=n` its radius) at that read; above 0 the hero walks first.
+- `sl` num: `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight).
+- `sd` num: `kind=creep`, with `sp`: the spell's damage after the creep's resistance.
+- `sf` num: `kind=creep`, with `sp`: the creep's forecast HP when the damage lands (its HP then, when over twice `sd`: no forecast); 0 or less, dead by then.
+- `sm` num: `kind=creep`, with `sp`: the spell's mana cost.
+- `sr` num: `kind=creep`, with `sp`: the hero's mana after the cast less the dearest of its other learned key spells (0 or more: the reserve is met).
+- `sc` num: `kind=creep`, with `sp`: the spell's cooldown (s).
+- `sz` num: `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`).
+- `sn` num: `kind=creep`, with `sp`: how many creep spells the hero held at that read.
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.

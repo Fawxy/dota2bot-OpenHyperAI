@@ -19,6 +19,8 @@ import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Offer from "bots/FunLib/humaniser/offer";
+import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
+import * as SpellSecure from "bots/FunLib/humaniser/spell_secure";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -36,6 +38,13 @@ export const SETTINGS = {
     SlackCap: 99,
     /** Towers are read this far from the hero: the reader radius plus a tower's reach, rounded up (judgement). */
     TowerRadius: 2500,
+    /**
+     * The spell read forecasts the creep's HP only while its HP now is at most this many times a spell's damage after resistance;
+     * above it the spell cannot kill within a landing's few seconds (judgement: the forecast is the read's dearest call).
+     */
+    SpellBand: 2,
+    /** The forecast's horizon for the spell read (s): past the slowest landing of a cast with no walk (judgement). */
+    SpellHorizon: 3,
 };
 
 type Timed = Unit & { GetSecondsPerAttack?(): number };
@@ -71,6 +80,7 @@ interface Parts {
     lists: (this: void, bot: Unit) => { listed: LuaTable<Unit, boolean>; theirs: Unit[] };
     snapshot: (this: void, bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, others: Offer.Other[]) => Snap;
     race: (this: void, bot: Unit, creep: Unit) => [string, number | undefined];
+    spell: (this: void, bot: Unit, f: Frame, creep: Unit, o: Opp, now: number) => void;
 }
 let parts: Parts | undefined;
 
@@ -105,6 +115,23 @@ interface Snap {
     enh?: string;
 }
 
+/** The spell read's best answer on the creep at one read (SpellSecure.Best), as the line writes it. */
+interface SpellSnap {
+    name: string;
+    shape: string;
+    key: boolean;
+    gap: number;
+    land: number;
+    taken: number;
+    hp: number;
+    over: number;
+    also: number;
+    mana: number;
+    cd: number;
+    /** The spells the read weighed. */
+    n: number;
+}
+
 interface Opp {
     creep: Unit;
     lane: number;
@@ -129,6 +156,13 @@ interface Opp {
     why?: string;
     /** The row's latest reason for not going, as given at its last read of the creep (`early` and `kind` included); the line's `lw`. */
     last?: string;
+    /**
+     * Their creep only: the spell read's answer, kept from the first read at which a spell would kill it (`spFrom`, and `spTo` the
+     * last such read), else from the read at which a spell came closest. Undefined while the hero held no creep spell at any read.
+     */
+    sp?: SpellSnap;
+    spFrom?: number;
+    spTo?: number;
 }
 
 /**
@@ -256,7 +290,31 @@ function line(bot: Unit, o: Opp): void {
         ["ch", s.ch],
         ["ra", math.floor(s.ra)],
         ["enh", s.enh],
+        ...spellFields(o),
     ]);
+}
+
+function spellFields(o: Opp): Telemetry.Fields<"choice"> {
+    const p = o.sp;
+    if (p === undefined) return [];
+    const kill = o.spFrom !== undefined;
+    return [
+        ["sp", p.name],
+        ["sx", p.shape],
+        ["sy", p.key ? "k" : "d"],
+        ["sk", kill ? 1 : 0],
+        ["sa", kill ? r1(o.spFrom! - o.first) : undefined],
+        ["sw", kill && o.spTo !== undefined ? r1(o.spTo - o.spFrom!) : undefined],
+        ["sg", math.floor(p.gap + 0.5)],
+        ["sl", r2(p.land)],
+        ["sd", math.floor(p.taken + 0.5)],
+        ["sf", math.floor(p.hp + 0.5)],
+        ["sm", math.floor(p.mana + 0.5)],
+        ["sr", math.floor(p.over + 0.5)],
+        ["sc", r1(p.cd)],
+        ["sz", p.also],
+        ["sn", p.n],
+    ];
 }
 
 function hasOpen(pid: number): boolean {
@@ -304,6 +362,9 @@ interface Frame {
     enemies?: Offer.PathEnemy[];
     /** `pid:level` of each entry of `enemies`, in its order. */
     enemyHeights?: string[];
+    /** The hero's creep spells (SpellReady.CreepSpellsOf), read once a call when a creep of theirs is offered. */
+    spells?: SpellReady.CreepSpells;
+    foes?: SpellSecure.Foe[];
 }
 
 /** The terrain height level at a place; undefined when the API is absent or gives no number. */
@@ -438,6 +499,63 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
     };
 }
 
+/**
+ * The spell read on their creep at this read: each creep spell's answer (SpellSecure), the best kept on the opportunity as `Opp.sp`
+ * says. The creep's HP is forecast (the engine's hpForecast, which laneTargets also reads) only within `SpellBand`.
+ */
+function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void {
+    const cs = f.spells!;
+    const verbs = Tasks.Verbs()!;
+    const at = creep.GetLocation();
+    const d = dist(f.hero, at);
+    const turn = verbs.turnTime(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep);
+    const hpNow = creep.GetHealth();
+    const mana = bot.GetMana();
+    if (f.foes === undefined) {
+        const foes: SpellSecure.Foe[] = [];
+        for (const e of enemiesOf(f)) foes.push({ x: e.x, y: e.y, hull: e.hull });
+        f.foes = foes;
+    }
+    let forecast: Lib.Verbs.HpForecast | undefined;
+    const answers: SpellSecure.Answer[] = [];
+    for (const s of cs.spells) {
+        const timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+        const taken = creep.GetActualIncomingDamage(s.dmg, s.dtype);
+        let hp = hpNow;
+        if (hpNow <= taken * SETTINGS.SpellBand) {
+            if (forecast === undefined) forecast = verbs.hpForecast(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep, SETTINGS.SpellHorizon);
+            hp = verbs.forecastHp(forecast, timing.land);
+        }
+        answers.push({ spell: s, timing, taken, hp, kill: SpellSecure.Kills(hp, taken), over: SpellSecure.OverReserve(mana, s, cs.keys), also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
+    }
+    const best = SpellSecure.Best(answers);
+    if (best === undefined) return;
+    if (o.spFrom !== undefined) {
+        if (best.kill) o.spTo = now;
+        return;
+    }
+    const closer = o.sp === undefined || (best.hp > 0 && (o.sp.hp <= 0 || best.hp - best.taken < o.sp.hp - o.sp.taken));
+    if (!best.kill && !closer) return;
+    o.sp = {
+        name: best.spell.name,
+        shape: best.spell.shape,
+        key: best.spell.key,
+        gap: best.timing.gap,
+        land: best.timing.land,
+        taken: best.taken,
+        hp: best.hp,
+        over: best.over,
+        also: best.also,
+        mana: best.spell.mana,
+        cd: best.spell.cd,
+        n: cs.spells.length,
+    };
+    if (best.kill) {
+        o.spFrom = now;
+        o.spTo = now;
+    }
+}
+
 function partsOf(): Parts {
     if (parts !== undefined) return parts;
     parts = {
@@ -452,6 +570,7 @@ function partsOf(): Parts {
         }),
         snapshot: Telemetry.PerfStep("CO:snapshot", snapshot),
         race: Telemetry.PerfStep("CO:race", race),
+        spell: Telemetry.PerfStep("CO:spell", spellRead),
     };
     return parts;
 }
@@ -531,6 +650,10 @@ export function Shadow(bot: Unit): void {
             o.okTo = now;
         }
         if (atkTarget !== null && atkTarget !== undefined && atkTarget === creep) o.atk = true;
+        if (t.kind === "lasthit") {
+            if (f.spells === undefined) f.spells = SpellReady.CreepSpellsOf(bot);
+            if (f.spells.spells.length > 0) P.spell(bot, f, creep, o, now);
+        }
         if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
     if (rowHook !== undefined) rowHook(bot, cands);
