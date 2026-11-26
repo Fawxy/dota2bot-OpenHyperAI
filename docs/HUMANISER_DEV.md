@@ -121,6 +121,29 @@ planner and its camp jobs, intent arbitration, last-hit accuracy, the last-hit t
 Transitions, the state layer's owned and shadowed states) were deleted on 23/11/2026; tag `pre-humaniser-cut` holds
 them, `pre-lane-body-cut` the lane body before it. `!mark <note>` is the one chat command left (telemetry).
 
+### Rows and the decider
+A behaviour is a row (`Decider.Row` in `decider.ts`), and only the decider starts a row's task: a start replaces whatever
+task the hero has (the runner's `replaced`), so the order among rows is the decider's. A row is wired as:
+
+- `name`: logged as `held`, and the name of the row's task (the decider reads the runner's current task by it).
+- `wants(bot)`: asked every desire round in doctrine order until a row answers. Returns an `Offer` (`tgt`, the target;
+  `by`, the game time it must go by; both optional) while its task runs or when it would start one now, else undefined.
+  It checks its own `Ours.<Name>` switch, may keep its memo and write its own decision line (`ev=choice`), and keeps what
+  it decided for `begin`; it starts, cancels and orders nothing.
+- `begin(bot)`: starts the task as `wants` decided it (the aid, the go line, the job line); false when the runner
+  refused (it writes the `refused` line). Called only by the decider, which then passes the turn to the next row.
+- `step(bot)`: one frame of the verb from farm's Think while the row holds; true when finished. `soft` as before.
+- Registration: `index.ts` pushes the row into `Decider.ROWS` in doctrine order and wraps `wants`, `begin` and `step` in
+  guards (an error: no offer, not begun, finished).
+
+The decider begins the first row that wants the hero when its task is not running. A higher row begun while a lower row's
+task runs takes the hero from it; the decider's `ev=choice kind=decider` line then carries `beg`, the offer (`btgt`,
+`bby`) and `over` (the task replaced). A row that decides at a read of its own between rounds (the creep row, at the
+creep offer read) keeps its choice and calls `Decider.Offer(bot, row)`: the decider begins it in that call unless a row
+above holds the hero. `tasks.ts` refuses and logs (`ev=lua_error where=Tasks.Start`) a start of a row's task (`pull`,
+`stack`, `rune_detour`, `creep`) that does not come through the decider's begin; the job chooser's stack
+(`StackJob.Wants`) names itself and is exempt. Offline: `tests/humaniser/test_decider.lua`.
+
 ## Task runner
 Coroutine task runner: a task is a generator body (`walkTo`, `wait`, `lastHit`, ...) resumed once per frame from its host mode's `Think()`. OHA side: `FunLib/humaniser/tasks.lua` (TS: `tasks.ts`), exposed as `J.Humaniser.Tasks`.
 

@@ -35,6 +35,9 @@ local function capture(fn)
 	return printed
 end
 
+-- The row's turn as the decider takes it: its wants, and its begin when its walk does not run.
+local function ask(H, bot) return H.Decider.Ask(bot, H.RuneDetour.ROW) end
+
 local function lines(all, pat)
 	local out = {}
 	for _, l in ipairs(all) do if l:find(pat, 1, true) then table.insert(out, l) end end
@@ -97,10 +100,10 @@ do
 	a.speed = 150
 	local applied
 	local out = capture(function()
-		applied = R.ROW.applies(a)
+		applied = ask(H, a)
 		a.loc = Vector(0, -4500)
 		T = 251
-		R.ROW.applies(a)
+		ask(H, a)
 	end)
 	local ch = lines(out, "kind=rune_detour")
 	check("a detour over the budget does not hold the hero", applied == false)
@@ -114,7 +117,7 @@ do
 	local a = hero({ pid = 1, loc = Vector(0, -3000) })
 	a.mode = BotMode.Farm
 	local applied
-	local out = capture(function() applied = R.ROW.applies(a) end)
+	local out = capture(function() applied = ask(H, a) end)
 	local ch = lines(out, "kind=rune_detour")
 	check("a cheap detour holds the hero", applied == true, table.concat(out, "\n"))
 	check("its line is go=1 want=1", #ch == 1 and ch[1]:find("go=1", 1, true) and ch[1]:find("want=1", 1, true), table.concat(out, "\n"))
@@ -128,13 +131,13 @@ do
 		T = 253
 		R.ROW.step(a)
 		T = 254
-		again = R.ROW.applies(a)
+		again = ask(H, a)
 	end)
 	status[3] = RUNE_STATUS_AVAILABLE
 	local more
 	local out2 = capture(function()
 		T = 260
-		more = R.ROW.applies(a)
+		more = ask(H, a)
 	end)
 	check("an untaken walk may start once more for its spawn", more == true and #lines(out2, "phase=start") == 1, table.concat(out2, "\n"))
 end
@@ -142,9 +145,10 @@ end
 do
 	-- GetRuneStatus can stay available after a pickup (rdon1): the walk reads its own gold. A walk that ends untaken with the
 	-- rune still up starts once more; a gold jump marks it taken and no walk follows.
-	local function walk(R, a, jump)
+	local function walk(H, a, jump)
+		local R = H.RuneDetour
 		local out = capture(function()
-			R.ROW.applies(a)
+			ask(H, a)
 			for i = 1, 40 do
 				T = T + 0.1
 				if jump and i == 5 then a.gold = a.gold + 45 end
@@ -158,11 +162,11 @@ do
 	local a = hero({ pid = 7, loc = Vector(0, -2600) })
 	a.mode = BotMode.Farm
 	a.gold = 600
-	local out = walk(R, a, true)
+	local out = walk(H, a, true)
 	local ends = lines(out, "phase=end")
 	check("a gold jump in the walk reads took=1", #ends == 1 and ends[1]:find("took=1", 1, true) ~= nil, table.concat(out, " | "))
-	local o2 = walk(R, a, true)
-	local o3 = walk(R, a, true)
+	local o2 = walk(H, a, true)
+	local o3 = walk(H, a, true)
 	check("taken, the status still up (runes piled on the spot): it keeps walking while each walk takes one", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 1, table.concat(o3, " | "))
 	-- Review 24/11/2026: right after a walk the mode read is the hold's own; the row yields Rest seconds first.
 	local H2 = world(true)
@@ -172,14 +176,14 @@ do
 	z.gold = 600
 	local yielded, later
 	capture(function()
-		R2.ROW.applies(z)
+		ask(H2, z)
 		for _ = 1, 40 do
 			T = T + 0.1
 			if R2.ROW.step(z) then break end
 		end
-		yielded = R2.ROW.applies(z)
+		yielded = ask(H2, z)
 		T = T + 0.6
-		later = R2.ROW.applies(z)
+		later = ask(H2, z)
 	end)
 	check("no walk starts in the round right after one ends, one may after Rest", yielded == false and later == true)
 
@@ -188,9 +192,9 @@ do
 	local b = hero({ pid = 8, loc = Vector(0, -2600) })
 	b.mode = BotMode.Farm
 	b.gold = 600
-	local o1 = walk(R, b, false)
-	local o2 = walk(R, b, false)
-	local o3 = walk(R, b, false)
+	local o1 = walk(H, b, false)
+	local o2 = walk(H, b, false)
+	local o3 = walk(H, b, false)
 	check("an untaken walk ends took=0", #lines(o1, "took=0") == 1, table.concat(o1, " | "))
 	check("it starts once more, then no third time", #lines(o2, "phase=start") == 1 and #lines(o3, "phase=start") == 0, table.concat(o3, " | "))
 end
@@ -203,10 +207,10 @@ do
 	a.mode = BotMode.Roam
 	local applied
 	local out = capture(function()
-		applied = R.ROW.applies(a)
+		applied = ask(H, a)
 		a.loc = Vector(0, -4500)
 		T = T + 1
-		R.ROW.applies(a)
+		ask(H, a)
 	end)
 	local ch = lines(out, "kind=rune_detour")
 	check("a hero roaming is not held", applied == false)
@@ -217,11 +221,11 @@ do
 	c.mode = BotMode.Farm
 	local held
 	local out2 = capture(function()
-		R.ROW.applies(b)
-		held = R.ROW.applies(c)
+		ask(H, b)
+		held = ask(H, c)
 		c.loc = Vector(0, -4500)
 		T = T + 1
-		R.ROW.applies(c)
+		ask(H, c)
 	end)
 	check("a teammate walking for the rune holds the second back", held == false and #lines(out2, "why=ally") == 1, table.concat(out2, " | "))
 end

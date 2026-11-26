@@ -9,11 +9,37 @@ local function __TS__ArrayPush(self, ...)
     end
     return len
 end
+
+local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
+    if fromIndex == nil then
+        fromIndex = 0
+    end
+    local len = #self
+    if len == 0 then
+        return -1
+    end
+    if fromIndex >= len then
+        return -1
+    end
+    if fromIndex < 0 then
+        fromIndex = len + fromIndex
+        if fromIndex < 0 then
+            fromIndex = 0
+        end
+    end
+    for i = fromIndex + 1, len do
+        if self[i] == searchElement then
+            return i - 1
+        end
+    end
+    return -1
+end
 -- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
@@ -34,7 +60,7 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that applies holds. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
+--- Doctrine order: the first row that wants the hero holds it. index.ts fills it with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
 ____exports.ROWS = {}
 --- The mode file that hosts the decider. Never a rival in the retreat read: its own desire is not computed while a row holds,
 -- and counting it only when fresh (the round after a yield) would make the hold flicker every other round.
@@ -61,9 +87,37 @@ local function isSoft(row, bot)
     end
     return ____temp_0
 end
-local function pick(bot)
+--- The name of the hero's running task, however the runner was loaded.
+local function runningTask(bot)
+    local ____opt_1 = Tasks.ForOurs.Running(bot)
+    return ____opt_1 and ____opt_1.name
+end
+local function begin(bot, s, row, offer)
+    local over = runningTask(bot)
+    if not Tasks.Begin(
+        row.name,
+        function() return row.begin(bot) end
+    ) then
+        return false
+    end
+    s.begun = {row = row, offer = offer, over = over}
+    return true
+end
+--- One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused.
+local function turn(bot, s, row)
+    local offer = row.wants(bot)
+    if offer == nil then
+        return nil
+    end
+    if runningTask(bot) == row.name or begin(bot, s, row, offer) then
+        return offer
+    end
+    return nil
+end
+--- A refused begin passes the turn to the next row.
+local function pick(bot, s)
     for ____, row in ipairs(____exports.ROWS) do
-        if row.applies(bot) then
+        if turn(bot, s, row) ~= nil then
             return row
         end
     end
@@ -101,18 +155,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue15
+            local __continue22
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue15 = true
+                    __continue22 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue15 = true
+                __continue22 = true
             until true
-            if not __continue15 then
+            if not __continue22 then
                 break
             end
         end
@@ -121,16 +175,23 @@ local function retreatLeads(s)
 end
 --- `win` is the mode Valve gave the hero from the last round's desires, read at this round's farm call: Valve asks every mode
 -- once a round, so the hold or yield decided now shows up in the next line.
-local function note(bot, s)
+local function note(bot, s, heldRow, softNow)
+    if heldRow == nil then
+        heldRow = s.held
+    end
+    if softNow == nil then
+        softNow = s.soft
+    end
+    local b = s.begun
+    s.begun = nil
     if not Telemetry.IsEnabled() then
         return
     end
-    local ____opt_1 = s.held
-    local held = ____opt_1 and ____opt_1.name or "-"
+    local held = heldRow and heldRow.name or "-"
     local win = HDebug.ModeName(bot:GetActiveMode())
     local let_ = s.letAt ~= nil
-    local soft = s.soft == true
-    if held == s.lineHeld and win == s.lineWin and let_ == s.lineLet and soft == s.lineSoft then
+    local soft = softNow == true
+    if b == nil and held == s.lineHeld and win == s.lineWin and let_ == s.lineLet and soft == s.lineSoft then
         return
     end
     s.lineHeld = held
@@ -146,11 +207,23 @@ local function note(bot, s)
         {"held", held},
         {"win", win}
     }
-    if s.held ~= nil then
+    if heldRow ~= nil then
         fields[#fields + 1] = {"hs", soft and "soft" or "hard"}
     end
     if s.letAt ~= nil then
         __TS__ArrayPush(fields, {"let", "retreat"}, {"d_retreat", s.letAt})
+    end
+    if b ~= nil then
+        __TS__ArrayPush(
+            fields,
+            {"beg", b.row.name},
+            {"btgt", b.offer.tgt},
+            {
+                "bby",
+                b.offer.by ~= nil and math.floor(b.offer.by * 10 + 0.5) / 10 or nil
+            },
+            {"over", b.over}
+        )
     end
     Telemetry.Event("choice", fields)
 end
@@ -158,21 +231,21 @@ end
 function ____exports.Host(bot, inner)
     return function()
         local s = stateOf(bot)
-        local row = pick(bot)
-        local ____temp_3
+        local row = pick(bot, s)
+        local ____temp_5
         if row ~= nil then
-            ____temp_3 = retreatLeads(s)
+            ____temp_5 = retreatLeads(s)
         else
-            ____temp_3 = nil
+            ____temp_5 = nil
         end
-        s.letAt = ____temp_3
-        local ____temp_4
+        s.letAt = ____temp_5
+        local ____temp_6
         if s.letAt == nil then
-            ____temp_4 = row
+            ____temp_6 = row
         else
-            ____temp_4 = nil
+            ____temp_6 = nil
         end
-        s.held = ____temp_4
+        s.held = ____temp_6
         s.soft = s.held ~= nil and isSoft(s.held, bot)
         pcall(function() return note(bot, s) end)
         if s.held == nil then
@@ -187,7 +260,7 @@ end
 --- Chooser.Gate, for every gated mode file, after NoteDesire saw the value as returned: while a soft row holds, an OHA Lua
 -- mode's desire above CAP is returned as CAP, so only the Valve-only modes, retreat and attack's file outbid the hold. The
 -- hold is the one decided at the last farm call, so files Valve asks before farm lag by one round: uncapped in the round a
--- soft hold starts, still capped in the round it lets go or stops applying. The cap follows `held`, so the lag cannot
+-- soft hold starts, still capped in the round it lets go or stops wanting the hero. The cap follows `held`, so the lag cannot
 -- flicker on its own. Anything else, and any value that is not a number, passes unchanged.
 -- 
 -- Known effect, not stock's: retreat is uncapped, so a retreat value between the hold's worth (about SOFT; SOFT / BONUS in a
@@ -217,19 +290,61 @@ function ____exports.HostThink(bot, inner, cannotAct)
         return nil
     end
 end
---- The decider is yielding this hero to stock's retreat although a row applied (a cut row names it as its end's reason).
+--- A row that decides at a read of its own (the creep row, at the creep offer read) asks to be begun now, so its start keeps the
+-- read's moment. Begun when no row above it holds the hero (its task runs). The rows above are not asked `wants` here: theirs
+-- takes the lane read and writes its decision lines at the moment it is first asked, so a second ask between rounds would move
+-- them. Their last round's answer adds nothing: a row picked then has its task running now, unless that task has ended, and
+-- then the row no longer wants the hero. A row above that comes to want the hero takes it at the next round (`over`). The row's
+-- own `wants` is asked for the offer. True when the row was begun; a row not in ROWS is never begun.
+-- What a row wants: its target (a name or id) and the game time it must go by. Both optional; logged when the row is begun.
+function ____exports.Offer(bot, row)
+    local at = __TS__ArrayIndexOf(____exports.ROWS, row)
+    if at < 0 then
+        return false
+    end
+    local s = stateOf(bot)
+    local cur = runningTask(bot)
+    do
+        local i = 0
+        while i < at do
+            if cur == ____exports.ROWS[i + 1].name then
+                return false
+            end
+            i = i + 1
+        end
+    end
+    local offer = row.wants(bot)
+    if offer == nil or cur == row.name or not begin(bot, s, row, offer) then
+        return false
+    end
+    pcall(function() return note(
+        bot,
+        s,
+        row,
+        isSoft(row, bot)
+    ) end)
+    return true
+end
+--- One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running.
+function ____exports.Ask(bot, row)
+    local s = stateOf(bot)
+    local held = turn(bot, s, row) ~= nil
+    s.begun = nil
+    return held
+end
+--- The decider is yielding this hero to stock's retreat although a row wanted it (a cut row names it as its end's reason).
 function ____exports.LetGo(bot)
     return stateOf(bot).letAt ~= nil
 end
 --- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
 function ____exports.Soft(bot)
-    local ____opt_5 = heroes[bot:GetPlayerID()]
-    return (____opt_5 and ____opt_5.soft) == true
+    local ____opt_7 = heroes[bot:GetPlayerID()]
+    return (____opt_7 and ____opt_7.soft) == true
 end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_7 = heroes[bot:GetPlayerID()]
-    return ____opt_7 and ____opt_7.held
+    local ____opt_9 = heroes[bot:GetPlayerID()]
+    return ____opt_9 and ____opt_9.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()

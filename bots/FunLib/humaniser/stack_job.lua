@@ -915,10 +915,10 @@ function follow(bot, a, trk, units, campIdx)
     end
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue164
+            local __continue166
             repeat
                 if n:IsNull() or not n:IsAlive() or not n:CanBeSeen() then
-                    __continue164 = true
+                    __continue166 = true
                     break
                 end
                 local t = out:get(n) or ({max = 0, aggro = false})
@@ -932,9 +932,9 @@ function follow(bot, a, trk, units, campIdx)
                     t.drop = sec(a)
                 end
                 out:set(n, t)
-                __continue164 = true
+                __continue166 = true
             until true
-            if not __continue164 then
+            if not __continue166 then
                 break
             end
         end
@@ -1044,11 +1044,11 @@ function describe(bot, units, campIdx)
     local parts = {}
     for ____, n in ipairs(units or ({})) do
         do
-            local __continue194
+            local __continue196
             repeat
                 if n:IsNull() or not n:IsAlive() then
                     parts[#parts + 1] = "dead"
-                    __continue194 = true
+                    __continue196 = true
                     break
                 end
                 local name = (string.gsub(
@@ -1058,7 +1058,7 @@ function describe(bot, units, campIdx)
                 ))
                 if sp == nil or not n:CanBeSeen() then
                     parts[#parts + 1] = name .. ":?"
-                    __continue194 = true
+                    __continue196 = true
                     break
                 end
                 local d = math.floor(GetUnitToLocationDistance(n, sp.location))
@@ -1068,9 +1068,9 @@ function describe(bot, units, campIdx)
                     0
                 ) and "in" or "out"
                 parts[#parts + 1] = (((((name .. ":") .. tostring(d)) .. ":") .. inBox) .. ":") .. (n:GetAttackTarget() == bot and "a" or "-")
-                __continue194 = true
+                __continue196 = true
             until true
-            if not __continue194 then
+            if not __continue196 then
                 break
             end
         end
@@ -1663,6 +1663,8 @@ local gateWhy = {}
 local rowMinutes = {}
 local rowGate = {}
 local running = {}
+--- A stack the row's `wants` decided to start this round, for its `begin`.
+local rowPending = {}
 local campsLogged = false
 --- One `ev=camp` line per spawner, once the spawner list is final: the boxes a replay grader needs (the replay has none).
 local function logCamps()
@@ -1790,6 +1792,9 @@ function ____exports.ResetCache()
     for k in pairs(rowGate) do
         __TS__Delete(rowGate, k)
     end
+    for k in pairs(rowPending) do
+        __TS__Delete(rowPending, k)
+    end
 end
 --- The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`).
 function ____exports.Applies(bot)
@@ -1804,19 +1809,19 @@ function ____exports.Candidates(team)
     local out = {}
     for ____, s in ipairs(Camps.Spawners()) do
         do
-            local __continue92
+            local __continue94
             repeat
                 if s.team ~= team or s.type == "ancient" or (Stacking.Window(s.idx)) == nil then
-                    __continue92 = true
+                    __continue94 = true
                     break
                 end
                 local data = Camps.ByIdx(s.idx, team)
                 if data ~= nil and data.stack ~= nil then
                     out[#out + 1] = data
                 end
-                __continue92 = true
+                __continue94 = true
             until true
-            if not __continue92 then
+            if not __continue94 then
                 break
             end
         end
@@ -1909,22 +1914,22 @@ local function campFor(bot, sp, stand, others, pile)
         local best
         for ____, n in ipairs(bot:GetNearbyNeutralCreeps(r.NeutralSearch, false) or ({})) do
             do
-                local __continue112
+                local __continue114
                 repeat
                     if n == nil or n == nil or not n:IsAlive() or not n:CanBeSeen() or other(n) or not Camps.InBox(
                         sp.idx,
                         n:GetLocation(),
                         r.BoxMargin
                     ) then
-                        __continue112 = true
+                        __continue114 = true
                         break
                     end
                     if best == nil or GetUnitToUnitDistance(bot, n) < GetUnitToUnitDistance(bot, best) then
                         best = n
                     end
-                    __continue112 = true
+                    __continue114 = true
                 until true
-                if not __continue112 then
+                if not __continue114 then
                     break
                 end
             end
@@ -2357,10 +2362,10 @@ function ____exports.Wants(bot, blocked, host)
     handled[pid] = handled[pid] or ({})
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue244
+            local __continue246
             repeat
                 if handled[pid][minute] or now < minute * GameRules.NEUTRAL_EVERY + ____exports.SETTINGS.LookFrom or now >= (minute + 1) * GameRules.NEUTRAL_EVERY then
-                    __continue244 = true
+                    __continue246 = true
                     break
                 end
                 local pos4 = LaneConfig.PositionOf(bot) == 4
@@ -2501,7 +2506,8 @@ function ____exports.Wants(bot, blocked, host)
                         stallAfter = ____exports.SETTINGS.StallAfter,
                         onEnd = function(result) return finish(bot, a, result) end
                     },
-                    function(ctx) return body(bot, plan, a, ctx) end
+                    function(ctx) return body(bot, plan, a, ctx) end,
+                    "StackJob.Wants"
                 )
                 if not ok then
                     return skip("refused")
@@ -2521,7 +2527,7 @@ function ____exports.Wants(bot, blocked, host)
                 jobLine(bot, a, "start", "trigger")
                 return true
             until true
-            if not __continue244 then
+            if not __continue246 then
                 break
             end
         end
@@ -2541,11 +2547,11 @@ function ____exports.CalendarEntries(bot, now)
     local a = running[pid]
     for ____, minute in ipairs(____exports.Minutes()) do
         do
-            local __continue268
+            local __continue270
             repeat
                 local ____end = minute * 60 + 60 + jobEnd()
                 if now >= ____end then
-                    __continue268 = true
+                    __continue270 = true
                     break
                 end
                 if a ~= nil and a.minute == minute then
@@ -2558,12 +2564,12 @@ function ____exports.CalendarEntries(bot, now)
                         fixed = false,
                         running = true
                     }
-                    __continue268 = true
+                    __continue270 = true
                     break
                 end
                 local ____opt_46 = handled[pid]
                 if (____opt_46 and ____opt_46[minute]) == true or now >= minute * 60 + 60 then
-                    __continue268 = true
+                    __continue270 = true
                     break
                 end
                 local data, stand = ____exports.Nearest(
@@ -2595,7 +2601,7 @@ function ____exports.CalendarEntries(bot, now)
                     data, stand = pullCamp(bot)
                 end
                 if data == nil or stand == nil then
-                    __continue268 = true
+                    __continue270 = true
                     break
                 end
                 local walk = travel(bot, stand)
@@ -2630,9 +2636,9 @@ function ____exports.CalendarEntries(bot, now)
                     back = ____end + walk,
                     fixed = false
                 }
-                __continue268 = true
+                __continue270 = true
             until true
-            if not __continue268 then
+            if not __continue270 then
                 break
             end
         end
@@ -2825,11 +2831,13 @@ function ____exports.Shadow(bot)
         "shadow"
     )
 end
-local function rowApplies(bot)
-    if not rowOn(bot) then
-        return false
-    end
+--- The row's `wants`: an offer while a stack runs for the hero, or when this minute's stack should start now.
+local function rowOffer(bot)
     local pid = bot:GetPlayerID()
+    rowPending[pid] = nil
+    if not rowOn(bot) then
+        return nil
+    end
     readOutcome(bot)
     Tasks.Tick(bot)
     local cur = running[pid]
@@ -2838,15 +2846,15 @@ local function rowApplies(bot)
             cur.hit = true
         end
         track(bot, cur)
-        return true
+        return {tgt = "camp:" .. tostring(cur.campIdx)}
     end
     if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
-        return false
+        return nil
     end
     local now = DotaTime()
     local slot = rowSlot(bot, now)
     if slot == nil then
-        return false
+        return nil
     end
     local known = PullJob.Known(slot.sp)
     if not rowWants(known) then
@@ -2858,10 +2866,11 @@ local function rowApplies(bot)
             known.n > 0 and "strong" or "empty",
             known
         )
-        return false
+        return nil
     end
     local why = rowBlock(bot)
-    if now > slot.aggroAt - slot.walk - ____exports.SETTINGS.MinSlack then
+    local by = slot.aggroAt - slot.walk - ____exports.SETTINGS.MinSlack
+    if now > by then
         rowLine(
             bot,
             slot,
@@ -2870,11 +2879,11 @@ local function rowApplies(bot)
             rowGate[pid] or why or "late",
             known
         )
-        return false
+        return nil
     end
     if why ~= nil then
         rowGate[pid] = why
-        return false
+        return nil
     end
     if settling[pid] ~= nil then
         report(bot, settling[pid])
@@ -2895,6 +2904,24 @@ local function rowApplies(bot)
         slot.minute,
         a
     )
+    rowPending[pid] = {slot = slot, known = known, a = a, plan = plan}
+    return {
+        tgt = "camp:" .. tostring(slot.data.campIdx),
+        by = by
+    }
+end
+--- The row's `begin`: starts the stack `rowOffer` decided this round.
+local function rowBegin(bot)
+    local pid = bot:GetPlayerID()
+    local pd = rowPending[pid]
+    rowPending[pid] = nil
+    if pd == nil then
+        return false
+    end
+    local slot = pd.slot
+    local known = pd.known
+    local a = pd.a
+    local plan = pd.plan
     local ok = Tasks.Start(
         bot,
         {
@@ -2943,5 +2970,5 @@ local function rowStep(bot)
     return running[bot:GetPlayerID()] == nil
 end
 --- The decider's row (registered in index.ts after the pull's).
-____exports.ROW = {name = "stack", applies = rowApplies, step = rowStep}
+____exports.ROW = {name = "stack", wants = rowOffer, begin = rowBegin, step = rowStep}
 return ____exports

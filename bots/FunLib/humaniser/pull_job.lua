@@ -1182,6 +1182,7 @@ local timers = {}
 local gateWhy = {}
 records = {}
 watchedAt = {}
+local pending = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({
         running,
@@ -1191,7 +1192,8 @@ function ____exports.ResetCache()
         gateWhy,
         timers,
         records,
-        watchedAt
+        watchedAt,
+        pending
     }) do
         for k in pairs(t) do
             t[k] = nil
@@ -2058,29 +2060,50 @@ local function startBlock(bot, camp, now, hitAt)
     return campDmgGate(bot, camp.dmg) or (acting(bot) and "acting" or nil)
 end
 seedsLogged = false
-local function rowApplies(bot)
-    logSeeds()
-    if not rowOn(bot) then
-        return false
-    end
+--- The decision line of a slot, which marks it handled.
+local function decide(bot, d, slot, camp, go, why, aid)
     local pid = bot:GetPlayerID()
+    handled[pid] = slot
+    gateWhy[pid] = nil
+    choiceLine(
+        bot,
+        d,
+        slot,
+        go,
+        why,
+        camp,
+        "own",
+        aid
+    )
+end
+--- The row's `wants`, asked every scoring round: an offer while a pull runs or when one should start now. The lane is read once
+-- per slot at the leave time; a wanted pull then waits on `startBlock` until it could no longer reach the camp by the hit's late
+-- limit. A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been
+-- without the hero for `preemptAfter`; its wave is handled, so it does not start again.
+local function rowWants(bot)
+    logSeeds()
+    local pid = bot:GetPlayerID()
+    pending[pid] = nil
+    if not rowOn(bot) then
+        return nil
+    end
     Tasks.Tick(bot)
     local cur = running[pid]
     if cur ~= nil then
         if bot:WasRecentlyDamagedByAnyHero(HERO_HIT_WITHIN) then
             cur.hit = true
         end
-        return true
+        return {tgt = "camp:" .. tostring(cur.plan.camp.campIdx)}
     end
     trail(bot, false)
     if Tasks.Jobs() == nil or not LaneConfig.InLaningPhase() or not bot:IsAlive() then
-        return false
+        return nil
     end
     watch(bot)
     local now = DotaTime()
     local due = dueSlot(bot, now)
     if due == nil then
-        return false
+        return nil
     end
     local p = due.p
     local timer = due.timer
@@ -2089,41 +2112,37 @@ local function rowApplies(bot)
     local d = due.d
     local camp = ____exports.CampStateOf(p.spawner)
     camp.known = ____exports.Known(p.spawner)
-    local function done(go, why, aid)
-        handled[pid] = p.slot
-        gateWhy[pid] = nil
-        choiceLine(
+    local function done(go, why)
+        return decide(
             bot,
             d,
             p.slot,
-            go,
-            why,
             camp,
-            "own",
-            aid
+            go,
+            why
         )
     end
     if not d.want then
         done(false, d.drill == true and "drill" or (d.reading == nil and "no-read" or "lane"))
-        return false
+        return nil
     end
     if camp.known.n < ____exports.SETTINGS.StrongAt and ____exports.CampGate(camp, now, hitAt) == nil then
         done(false, "weak")
-        return false
+        return nil
     end
     camp.dmg = ____exports.CampDamage(bot, camp, p.spawner.type)
     camp.php = bot:GetHealth()
     camp.se = siteEnemy(p)
     local why = startBlock(bot, camp, now, hitAt)
-    if now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate then
+    local late = hitAt + LaneConfig.Settings().Timing.JobStartLate
+    if now + walk > late then
         done(false, gateWhy[pid] or why or "late")
-        return false
+        return nil
     end
     if why ~= nil then
         gateWhy[pid] = why
-        return false
+        return nil
     end
-    local aggroAt = hitAt
     trail(bot, true)
     local pull = {
         plan = p,
@@ -2136,6 +2155,24 @@ local function rowApplies(bot)
         timer = timer,
         start = camp
     }
+    pending[pid] = {pull = pull, aggroAt = hitAt, d = d, camp = camp}
+    return {
+        tgt = "camp:" .. tostring(p.camp.campIdx),
+        by = late - walk
+    }
+end
+--- The row's `begin`: starts the pull `rowWants` decided this round.
+local function rowBegin(bot)
+    local pid = bot:GetPlayerID()
+    local pd = pending[pid]
+    pending[pid] = nil
+    if pd == nil then
+        return false
+    end
+    local pull = pd.pull
+    local aggroAt = pd.aggroAt
+    local d = pd.d
+    local camp = pd.camp
     local ok = Tasks.Start(
         bot,
         {
@@ -2148,11 +2185,26 @@ local function rowApplies(bot)
         function(ctx) return body(bot, pull, aggroAt, ctx) end
     )
     if not ok then
-        done(false, "refused")
+        decide(
+            bot,
+            d,
+            pull.plan.slot,
+            camp,
+            false,
+            "refused"
+        )
         return false
     end
     pull.aid = Telemetry.NextAid(pid)
-    done(true, nil, pull.aid)
+    decide(
+        bot,
+        d,
+        pull.plan.slot,
+        camp,
+        true,
+        nil,
+        pull.aid
+    )
     running[pid] = pull
     jobLine(bot, pull, "start", "trigger")
     return true
@@ -2163,7 +2215,7 @@ local function rowStep(bot)
     return running[bot:GetPlayerID()] == nil
 end
 --- The decider's row (registered in index.ts, so the decider imports no row).
-____exports.ROW = {name = "pull", applies = rowApplies, step = rowStep}
+____exports.ROW = {name = "pull", wants = rowWants, begin = rowBegin, step = rowStep}
 function ____exports.Running(bot)
     return running[bot:GetPlayerID()] ~= nil
 end

@@ -277,47 +277,23 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
+local rows = {{"PullRow", PullJob.ROW}, {"StackRow", StackJob.ROW}, {"RuneDetourRow", RuneDetour.ROW}, {"CreepRow", CreepRow.ROW}}
 if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
-    if Telemetry.GuardsEnabled() then
-        PullJob.ROW.applies = Telemetry.Guard("PullRow.applies", PullJob.ROW.applies, no)
-        PullJob.ROW.step = Telemetry.Guard(
-            "PullRow.step",
-            PullJob.ROW.step,
-            function() return true end
-        )
+    for ____, ____value in ipairs(rows) do
+        local where = ____value[1]
+        local row = ____value[2]
+        if Telemetry.GuardsEnabled() then
+            row.wants = Telemetry.Guard(where .. ".wants", row.wants, none)
+            row.begin = Telemetry.Guard(where .. ".begin", row.begin, no)
+            row.step = Telemetry.Guard(
+                where .. ".step",
+                row.step,
+                function() return true end
+            )
+        end
+        local ____Decider_ROWS_0 = Decider.ROWS
+        ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = row
     end
-    local ____Decider_ROWS_0 = Decider.ROWS
-    ____Decider_ROWS_0[#____Decider_ROWS_0 + 1] = PullJob.ROW
-    if Telemetry.GuardsEnabled() then
-        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no)
-        StackJob.ROW.step = Telemetry.Guard(
-            "StackRow.step",
-            StackJob.ROW.step,
-            function() return true end
-        )
-    end
-    local ____Decider_ROWS_1 = Decider.ROWS
-    ____Decider_ROWS_1[#____Decider_ROWS_1 + 1] = StackJob.ROW
-    if Telemetry.GuardsEnabled() then
-        RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no)
-        RuneDetour.ROW.step = Telemetry.Guard(
-            "RuneDetourRow.step",
-            RuneDetour.ROW.step,
-            function() return true end
-        )
-    end
-    local ____Decider_ROWS_2 = Decider.ROWS
-    ____Decider_ROWS_2[#____Decider_ROWS_2 + 1] = RuneDetour.ROW
-    if Telemetry.GuardsEnabled() then
-        CreepRow.ROW.applies = Telemetry.Guard("CreepRow.applies", CreepRow.ROW.applies, no)
-        CreepRow.ROW.step = Telemetry.Guard(
-            "CreepRow.step",
-            CreepRow.ROW.step,
-            function() return true end
-        )
-    end
-    local ____Decider_ROWS_3 = Decider.ROWS
-    ____Decider_ROWS_3[#____Decider_ROWS_3 + 1] = CreepRow.ROW
     CreepOffer.SetRow(
         Telemetry.GuardsEnabled() and Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) or CreepRow.Consider,
         CreepRow.On,

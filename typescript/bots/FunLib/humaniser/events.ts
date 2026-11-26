@@ -2894,14 +2894,21 @@ export const EVENTS = {
         pid: "num",
         /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
         aid: "num",
-        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
         /** kind=decider, while a row holds: its strength as asked this round, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it); a row's strength may change while it holds (no row does today: all are hard). */
         hs: "str",
-        /** kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
+        /** kind=decider: `retreat` when a row wanted the hero but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
         let: "str",
+        /** kind=decider: the row the decider began (started its task) since its last line; a begin always writes a line. Present with `let` when the row was begun in the round the decider let go (its task is then cut by the runner's preemptAfter). */
+        beg: "str",
+        /** kind=decider, with `beg`: the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
+        btgt: "str",
+        bby: "num",
+        /** kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran. */
+        over: "str",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */

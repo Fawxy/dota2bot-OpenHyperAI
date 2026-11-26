@@ -144,7 +144,40 @@ export function IsActive(): boolean {
     return lib !== undefined && Enabled();
 }
 
-export function Start(bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory): boolean {
+/**
+ * The decider's rows' task names: only the decider starts one (`Begin`), since a start replaces whatever task the hero has
+ * (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
+ */
+const ROW_TASKS: Record<string, boolean> = { pull: true, stack: true, rune_detour: true, creep: true };
+
+/**
+ * The older chooser path, as built, starts a `stack` task of its own and names itself in `via`. RuneJob.Wants and
+ * RuneJob.MidWants start `rune`, which is no row's task, so they need no entry.
+ */
+const EXEMPT: Record<string, boolean> = { "StackJob.Wants": true };
+
+/** The row whose begin the decider is running, if any. */
+let beginning: string | undefined;
+
+/** The decider's begin: `begin` runs with `row`'s task start allowed. An error in it is raised again after the allowance ends. */
+export function Begin(row: string, begin: (this: void) => boolean): boolean {
+    const prev = beginning;
+    beginning = row;
+    const [ok, res] = pcall(begin);
+    beginning = prev;
+    if (!ok) error(res, 0);
+    return res === true;
+}
+
+/** A row's task started anywhere but the decider's begin: refused and logged (ev=lua_error where=Tasks.Start). */
+function refusedRowStart(name: string, via: string | undefined): boolean {
+    if (ROW_TASKS[name] !== true || beginning === name || (via !== undefined && EXEMPT[via] === true)) return false;
+    Telemetry.Failed("Tasks.Start", `row task ${name} started outside the decider's begin`);
+    return true;
+}
+
+export function Start(bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory, via?: string): boolean {
+    if (refusedRowStart(opts.name, via)) return false;
     const l = loadBundle();
     return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
 }
@@ -199,7 +232,8 @@ export function Jobs(): typeof JobVerbs | undefined {
  * with the humaniser or its tasks off. The humaniser's own calls above stay gated on Enabled().
  */
 export const ForOurs = {
-    Start: (bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory): boolean => {
+    Start: (bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory, via?: string): boolean => {
+        if (refusedRowStart(opts.name, via)) return false;
         const l = loadBundle(true);
         return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
     },
