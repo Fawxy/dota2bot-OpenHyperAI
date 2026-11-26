@@ -682,6 +682,152 @@ for rep = 1, 2 do
 	})
 end
 
+
+-- order2: the order on our creep when it is nearer the attacker than the hero (probe 2's re-picks took the nearer unit) ----
+local function order2Trial(withOrder, rep)
+	return {
+		tag = string.format("order2_%s_%d", withOrder and "order" or "control", rep),
+		timeout = 6,
+		setup = function(c)
+			c.cx, c.cy = X0 + 400, Y
+			c.cr = creep("melee", D, V(c.cx, c.cy), "melee")
+			tank(c.cr)
+			c.h = hero("npc_dota_hero_axe", R, V(c.cx + 90, c.cy), "axe", true)
+			c.step = 0
+			watch(c, c.cr, { c.h })
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if c.step == 0 and t > 1.0 then
+				-- Our creep put beside the attacker, nearer than the hero, once the attacker is on the hero.
+				c.step = 1
+				c.r = creep("melee", R, V(c.cx - 20, c.cy - 55), "own")
+				passive(c.r)
+				c.w[1].others = { c.h, c.r }
+				say(string.format("%s own_in rel=%.2f on=%s hero_d=%s own_d=%s", c.tag, t, L(c.cr:GetAttackTarget()), f0(d2(c.cr, c.h)), f0(d2(c.cr, c.r))))
+			elseif c.step == 1 and t > 2.5 then
+				c.step = 2
+				say(string.format("%s %s rel=%.2f on=%s hero_d=%s own_d=%s", c.tag, withOrder and "order" or "no_order", t, L(c.cr:GetAttackTarget()),
+					f0(d2(c.cr, c.h)), f0(d2(c.cr, c.r))))
+				if withOrder then attackOrder(c.h, c.r) end
+			end
+		end,
+	}
+end
+S.order2 = {}
+for rep = 1, 3 do
+	table.insert(S.order2, order2Trial(true, rep))
+	table.insert(S.order2, order2Trial(false, rep))
+end
+
+-- tower2: the call for help from a tower on a creep; the order on our creep with the creep nearer the tower ------------
+S.tower2 = {}
+for rep = 1, 3 do
+	table.insert(S.tower2, {
+		tag = "tower2_help_" .. rep,
+		timeout = 10,
+		setup = function(c)
+			c.tw = tower2()
+			c.cx, c.cy = c.tw:GetAbsOrigin().x, c.tw:GetAbsOrigin().y
+			c.cr = creep("melee", D, inReach(c, 1, 0), "dcreep")
+			tank(c.cr)
+			passive(c.cr)
+			c.step = 0
+			towerWatch(c, c.tw, { c.cr })
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if c.step == 0 and t > 1.5 then
+				c.step = 1
+				c.h = hero("npc_dota_hero_sniper", D, inReach(c, 2, -40), "dhero", true)
+				c.a = hero("npc_dota_hero_axe", R, inReach(c, 3, -55), "rhero")
+				c.w[1].others = { c.cr, c.h, c.a }
+				say(string.format("%s heroes_in rel=%.2f on=%s", c.tag, t, L(c.tw:GetAttackTarget())))
+			elseif c.step == 1 and t > 3.5 then
+				c.step = 2
+				say(string.format("%s hit_hero rel=%.2f on=%s", c.tag, t, L(c.tw:GetAttackTarget())))
+				attackOrder(c.h, c.a)
+			end
+		end,
+	})
+	for _, withOrder in ipairs({ true, false }) do
+		table.insert(S.tower2, {
+			tag = string.format("tower2_own_%s_%d", withOrder and "order" or "control", rep),
+			timeout = 8,
+			setup = function(c)
+				c.tw = tower2()
+				local o = c.tw:GetAbsOrigin()
+				c.cx, c.cy = o.x, o.y
+				-- The hero at 600 from the tower's centre, our creep at 350: nearer the tower.
+				local a = math.rad(-60)
+				c.h = hero("npc_dota_hero_sniper", D, V(o.x + 600 * math.cos(a), o.y + 600 * math.sin(a)), "dhero", true)
+				c.step = 0
+				towerWatch(c, c.tw, { c.h })
+			end,
+			tick = function(c, t)
+				watchTick(c, t)
+				if c.step == 0 and t > 1.5 then
+					c.step = 1
+					local o = c.tw:GetAbsOrigin()
+					local a = math.rad(-75)
+					c.cr = creep("melee", D, V(o.x + 350 * math.cos(a), o.y + 350 * math.sin(a)), "dcreep")
+					tank(c.cr)
+					passive(c.cr)
+					c.w[1].others = { c.h, c.cr }
+				elseif c.step == 1 and t > 3 then
+					c.step = 2
+					say(string.format("%s %s rel=%.2f on=%s hero_d=%s creep_d=%s", c.tag, withOrder and "order" or "no_order", t, L(c.tw:GetAttackTarget()),
+						f0(d2(c.tw, c.h)), f0(d2(c.tw, c.cr))))
+					if withOrder then attackOrder(c.h, c.cr) end
+				end
+			end,
+		})
+	end
+end
+
+-- lanegoal: a Dire melee creep given the nearest Dire path corner as its goal, aggroed by a hero that walks off east ----
+S.lanegoal = {}
+for rep = 1, 2 do
+	table.insert(S.lanegoal, {
+		tag = "lanegoal_" .. rep,
+		timeout = 16,
+		setup = function(c)
+			c.cx, c.cy = X0, Y
+			local best, bd
+			for _, e in ipairs(Entities:FindAllByClassname("path_corner")) do
+				local n = e:GetName()
+				local d = (e:GetAbsOrigin() - V(X0, Y)):Length2D()
+				if string.find(n, "bad") and (bd == nil or d < bd) then best, bd = e, d end
+			end
+			if best == nil then error("no Dire path_corner") end
+			say(string.format("%s goal %s at %s,%s d=%s", c.tag, best:GetName(), f0(best:GetAbsOrigin().x), f0(best:GetAbsOrigin().y), f0(bd)))
+			c.cr = creep("melee", D, V(X0, Y), "melee")
+			tank(c.cr)
+			c.cr:SetInitialGoalEntity(best)
+			c.h = hero("npc_dota_hero_axe", R, V(X0 + 300, Y), "axe")
+			pcall(function() c.h:SetBaseMoveSpeed(450) end)
+			c.home = c.cr:GetAbsOrigin()
+			c.go, c.lastLog = false, 0
+			watch(c, c.cr, { c.h })
+		end,
+		tick = function(c, t)
+			watchTick(c, t)
+			if not c.go and c.cr:GetAttackTarget() == c.h then
+				c.go = true
+				c.tgo = t
+				moveOrder(c.h, V(-4300, Y))
+				say(string.format("%s go rel=%.2f", c.tag, t))
+			end
+			if t - c.lastLog >= 0.5 then
+				c.lastLog = t
+				local p = c.cr:GetAbsOrigin()
+				say(string.format("%s pos rel=%.2f creep=%s,%s gap=%s from_home=%s attack=%s", c.tag, t, f0(p.x), f0(p.y), f0(d2(c.cr, c.h)),
+					f0((p - c.home):Length2D()), L(c.cr:GetAttackTarget())))
+			end
+		end,
+	})
+end
+
 -- height --------------------------------------------------------------------------------------------------------------
 local function heightTrial(tag, sx, sy, tx, ty, viewer, secs)
 	return {
