@@ -1,5 +1,5 @@
 'use strict';
-// queries/support_orphans.sql: a support's orphan last hits (their ranged creep, support in reach, no core in reach), its deny chances
+// queries/support_orphans.sql: a support's orphan last hits (their creep, support in reach, no core in reach), its deny chances
 // (our creeps with it in reach), and where the two fall within the window for the same support. Bot lane at y = -6256 (x 0 is on the
 // lane's polyline). Radiant: sniper (pid 0, pos 2), lion (pid 1, pos 5, range 600). Dire: zuus (pid 5, pos 2).
 const test = require('node:test');
@@ -25,7 +25,7 @@ const around = (t, pid, x, ar) => [snap(t - 0.5, pid, x, ar), snap(t + 0.5, pid,
  * D2 300  Radiant melee, zuus last-hits it                              deny chance, their last hit, 100 s from any orphan
  * N1 400  ranged, sniper's last hit, sniper 300 away                    a core in reach: not an orphan
  * O3 550  ranged, their zuus denies it                                  orphan, denied by them
- * M1 500  melee, nobody                                                 not ranged: not an orphan
+ * M1 500  melee, nobody                                                 orphan unless `kind` leaves melee out
  */
 function load() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hlog-support-orphans-'));
@@ -57,17 +57,20 @@ const like = '%so_A_off_1%';
 const cols = ['team', 'orph', 'orph_sup', 'orph_core', 'orph_dn', 'orph_unpaid', 'dch', 'dch_sup', 'dch_core', 'dch_them', 'dch_other', 'clash', 'dclash'];
 const pick = r => cols.map(c => r[c]);
 
-test('support_orphans: orphans need their ranged creep, the support and no core in reach; a clash needs a deny chance in the window', () => {
+test('support_orphans: orphans need their creep of a named kind, the support and no core in reach; a clash needs a deny chance in the window', () => {
     const store = load();
-    assert.deepStrictEqual(store.query(sqlOf('support_orphans'), { like }).map(pick), [
+    assert.deepStrictEqual(store.query(sqlOf('support_orphans'), { like, kind: 'ranged' }).map(pick), [
         [2, 3, 1, 0, 1, 1, 2, 1, 0, 1, 0, 1, 1],
         [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ]);
+    assert.deepStrictEqual(store.query(sqlOf('support_orphans'), { like }).map(r => [r.team, r.orph, r.orph_unpaid, r.clash]), [[2, 4, 2, 1], [3, 0, 0, 0]],
+        'with kind unset the melee creep nobody took is an orphan too');
+    assert.deepStrictEqual(store.query(sqlOf('support_orphans'), { like, kind: 'melee,siege' }).map(r => [r.team, r.orph, r.orph_unpaid]), [[2, 1, 1], [3, 0, 0]]);
     assert.deepStrictEqual(store.query(sqlOf('support_orphans'), { like, win: 0.5 }).map(r => [r.team, r.clash, r.dclash]), [[2, 0, 0], [3, 0, 0]],
         'a deny chance 1 s from the orphan is outside a 0.5 s window');
 });
 
 test('support_orphans: sum = 1 gives means per team-game by arm and side', () => {
     const rows = load().query(sqlOf('support_orphans'), { like, sum: 1 }).map(r => ({ ...r }));
-    assert.deepStrictEqual(rows.map(r => [r.tg, r.m_orph, r.m_dch, r.s_clash, r.s_dclash]), [[2, 1.5, 1, 1, 1]]);
+    assert.deepStrictEqual(rows.map(r => [r.tg, r.m_orph, r.m_dch, r.s_clash, r.s_dclash]), [[2, 2, 1, 1, 1]]);
 });
