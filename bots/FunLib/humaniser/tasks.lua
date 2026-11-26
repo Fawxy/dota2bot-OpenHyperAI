@@ -141,7 +141,41 @@ end)
 function ____exports.IsActive()
     return lib ~= nil and ____exports.Enabled()
 end
-function ____exports.Start(bot, opts, body)
+--- The decider's rows' task names (`Decider.Add` registers each): only the decider starts one (`Begin`), since a start replaces
+-- whatever task the hero has (the runner's `replaced`) and the order among rows is the decider's. A row's name is its task's name.
+local ROW_TASKS = {}
+--- Guards `name` as a row's task: from now on only the decider's begin may start it.
+function ____exports.GuardRowTask(name)
+    ROW_TASKS[name] = true
+end
+--- The older chooser path, as built, starts a `stack` task of its own and names itself in `via`. RuneJob.Wants and
+-- RuneJob.MidWants start `rune`, which is no row's task, so they need no entry.
+local EXEMPT = {["StackJob.Wants"] = true}
+--- The row whose begin the decider is running, if any.
+local beginning
+--- The decider's begin: `begin` runs with `row`'s task start allowed. An error in it is raised again after the allowance ends.
+function ____exports.Begin(row, begin)
+    local prev = beginning
+    beginning = row
+    local ok, res = pcall(begin)
+    beginning = prev
+    if not ok then
+        error(res, 0)
+    end
+    return res == true
+end
+--- A row's task started anywhere but the decider's begin: refused and logged (ev=lua_error where=Tasks.Start).
+local function refusedRowStart(name, via)
+    if ROW_TASKS[name] ~= true or beginning == name or via ~= nil and EXEMPT[via] == true then
+        return false
+    end
+    Telemetry.Failed("Tasks.Start", ("row task " .. name) .. " started outside the decider's begin")
+    return true
+end
+function ____exports.Start(bot, opts, body, via)
+    if refusedRowStart(opts.name, via) then
+        return false
+    end
     local l = loadBundle()
     return l ~= nil and l.Tasks.task(bot, opts, body)
 end
@@ -200,7 +234,10 @@ end
 --- The task calls for a job behind an Ours switch (StackJob): the same runner, loaded for the switch alone, so the job runs
 -- with the humaniser or its tasks off. The humaniser's own calls above stay gated on Enabled().
 ____exports.ForOurs = {
-    Start = function(bot, opts, body)
+    Start = function(bot, opts, body, via)
+        if refusedRowStart(opts.name, via) then
+            return false
+        end
         local l = loadBundle(true)
         return l ~= nil and l.Tasks.task(bot, opts, body)
     end,

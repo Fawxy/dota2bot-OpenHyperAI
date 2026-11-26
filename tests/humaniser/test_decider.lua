@@ -1,16 +1,21 @@
 dofile(HARNESS_DIR .. "/lane_world.lua")
 -- The decider in the farm host (decider.ts, plan s3 step 7): with nothing held, farm's own desire and Think pass through; a row that
--- applies holds the hero at the hard strength and its verb replaces farm's Think until it finishes; one ev=choice kind=decider line
+-- wants the hero holds it at the hard strength and its verb replaces farm's Think until it finishes; one ev=choice kind=decider line
 -- per change of what is held or of the mode Valve gave the hero; no verb step while the bot cannot act.
 local dota = require("bots/ts_libs/dota/index")
 local BotMode = dota.BotMode
 
 local CAN_ACT = function() return false end -- the cannotAct check: the bot can always act
 
+-- The runner's current task as the decider reads it (the stub rows below start none of the engine's).
+local RUN = {}
+
 local function world()
 	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true } })
 	H.Decider.Reset()
 	for k in pairs(H.Decider.ROWS) do H.Decider.ROWS[k] = nil end
+	RUN.task = nil
+	package.loaded["bots/FunLib/humaniser/tasks"].ForOurs.Running = function() return RUN.task end
 	T = 300
 	local bot = MakeUnit({ pid = 4, team = 2, loc = Vector(0, 0, 0) })
 	bot.mode = BotMode.Laning
@@ -36,12 +41,23 @@ local function capture(fn)
 	return lines
 end
 
--- A row that applies while `on.applies` and finishes on the step `on.finishAt`.
+-- A row that wants the hero while `on.applies`, whose begin starts its task (`on.begun` counts them) and whose verb finishes
+-- on the step `on.finishAt`.
 local function row(on)
 	return {
 		name = "test_row",
-		applies = function() return on.applies end,
-		step = function() on.steps = on.steps + 1 return on.steps >= on.finishAt end,
+		wants = function() if on.applies then return {} end end,
+		begin = function()
+			on.begun = (on.begun or 0) + 1
+			RUN.task = { name = "test_row" }
+			return true
+		end,
+		step = function()
+			on.steps = on.steps + 1
+			if on.steps < on.finishAt then return false end
+			RUN.task = nil
+			return true
+		end,
 	}
 end
 
@@ -67,7 +83,7 @@ end
 do
 	local H, bot = world()
 	local on = { applies = true, steps = 0, finishAt = 2 }
-	H.Decider.ROWS[1] = row(on)
+	H.Decider.Add(row(on))
 	local f = farm()
 	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think, CAN_ACT)
 	local v1, v2, v3
@@ -94,7 +110,7 @@ end
 do
 	local H, bot = world()
 	local on = { applies = true, steps = 0, finishAt = 5 }
-	H.Decider.ROWS[1] = row(on)
+	H.Decider.Add(row(on))
 	local f = farm()
 	local stunned = true
 	local think = H.Decider.HostThink(bot, f.Think, function() return stunned end)
@@ -117,7 +133,7 @@ end
 do
 	local H, bot = world()
 	local on = { applies = true, steps = 0, finishAt = 99 }
-	H.Decider.ROWS[1] = row(on)
+	H.Decider.Add(row(on))
 	local f = farm()
 	local desire, think = H.Decider.Host(bot, f.GetDesire), H.Decider.HostThink(bot, f.Think, CAN_ACT)
 	local held, let, back
@@ -143,7 +159,7 @@ end
 
 do
 	local H, bot = world()
-	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 99 })
+	H.Decider.Add(row({ applies = true, steps = 0, finishAt = 99 }))
 	local f = farm()
 	local desire = H.Decider.Host(bot, f.GetDesire)
 	local zero, tie, farmHigh, stale, staleRival
@@ -190,7 +206,7 @@ do -- a soft row's first round with farm already active (OHA's farm, say): SOFT 
 	local H, bot = world()
 	local r = row({ applies = true, steps = 0, finishAt = 99 })
 	r.soft = true
-	H.Decider.ROWS[1] = r
+	H.Decider.Add(r)
 	bot.mode = BotMode.Farm
 	local f = farm()
 	local v
@@ -206,7 +222,7 @@ end
 
 do
 	local H, bot = world()
-	H.Decider.ROWS[1] = row({ applies = true, steps = 0, finishAt = 99 })
+	H.Decider.Add(row({ applies = true, steps = 0, finishAt = 99 }))
 	local f = farm()
 	local v, roam
 	local lines = capture(function()
@@ -226,7 +242,7 @@ do
 	local on = { applies = true, steps = 0, finishAt = 99 }
 	local r = row(on)
 	r.soft = true
-	H.Decider.ROWS[1] = r
+	H.Decider.Add(r)
 	local f = farm()
 	local desire = H.Decider.Host(bot, f.GetDesire)
 	local v, got, held, let, after, gone, goneRoam
@@ -282,7 +298,7 @@ do -- a row's soft may be a function, asked each round: soft then hard while it 
 	local on = { applies = true, steps = 0, finishAt = 99, soft = true }
 	local r = row(on)
 	r.soft = function() return on.soft end
-	H.Decider.ROWS[1] = r
+	H.Decider.Add(r)
 	local f = farm()
 	local desire = H.Decider.Host(bot, f.GetDesire)
 	local soft, capSoft, hard, capHard, gone
@@ -303,6 +319,152 @@ do -- a row's soft may be a function, asked each round: soft then hard while it 
 		#lines == 3 and lines[1]:find("held=test_row", 1, true) and lines[1]:find("hs=soft", 1, true) and lines[2]:find("hs=hard", 1, true)
 		and lines[3]:find("held=-", 1, true), table.concat(lines, " | "))
 	check("control: the row no longer applying yields farm's own desire", gone == 0.4, tostring(gone))
+end
+
+-- Only the decider starts a row's task (master docs/proposals/2026-11-26-decider-owns-starts.md s3), on the engine's own runner:
+-- a start replaces the hero's running task, so who starts and in what order is the decider's.
+local function runnerWorld()
+	local H = LaneFresh({ Enable = true }, { enable = false, skill = 1, telemetry = { Enable = true }, supportPull = true })
+	H.Decider.Reset()
+	for k in pairs(H.Decider.ROWS) do H.Decider.ROWS[k] = nil end
+	T = 300
+	local bot = MakeUnit({ pid = 4, team = 2, loc = Vector(0, 0, 0) })
+	bot.mode = BotMode.Farm
+	return H, bot, package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
+end
+
+local FOREVER = function() return { next = function() return { done = false } end } end
+
+-- A row on the runner: wants the hero while `on.want` or while its task runs; its begin starts the task `name`.
+local function taskRow(F, name, on)
+	local r = { name = name, begun = 0, ends = {} }
+	r.wants = function()
+		if r.running or on.want then return { tgt = "camp:" .. name, by = 312.34 } end
+	end
+	r.begin = function(bot)
+		r.begun = r.begun + 1
+		local ok = F.Start(bot, { name = name, host = BotMode.Farm, onEnd = function(res)
+			r.running = false
+			r.ends[#r.ends + 1] = res
+		end }, FOREVER)
+		r.running = ok
+		return ok
+	end
+	r.step = function() return not r.running end
+	return r
+end
+
+do -- a higher row that wants the hero while a lower row's task runs takes it; the decider's line names the lower row
+	local H, bot, F = runnerWorld()
+	local hiOn, loOn = { want = false }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	local lines = capture(function()
+		desire()
+		T = T + 0.2
+		hiOn.want = true
+		desire()
+	end)
+	local cur = F.Running(bot)
+	check("takeover: the higher row is begun and its task runs", hi.begun == 1 and cur ~= nil and cur.name == "hi", tostring(cur and cur.name))
+	check("takeover: the lower row's task ended, replaced", #lo.ends == 1 and lo.ends[1].message == "replaced", tostring(lo.ends[1] and lo.ends[1].message))
+	check("takeover: the line names the row begun, its offer and the lower row it took the hero from",
+		#lines == 2 and lines[2]:find("held=hi", 1, true) and lines[2]:find("beg=hi", 1, true) and lines[2]:find("over=lo", 1, true)
+		and lines[2]:find("btgt=camp:hi", 1, true) and lines[2]:find("bby=312.3", 1, true), table.concat(lines, " | "))
+	check("control: the lower row's begin line names nothing taken over", lines[1] ~= nil and lines[1]:find("beg=lo", 1, true) and not lines[1]:find("over=", 1, true),
+		tostring(lines[1]))
+end
+
+do -- a lower row that wants the hero while a higher row holds it is not begun, in the round or at a read's offer
+	local H, bot, F = runnerWorld()
+	local hiOn, loOn = { want = true }, { want = false }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	local v, offered, afterRound, afterOffer
+	capture(function()
+		desire()
+		hiOn.want = false
+		loOn.want = true
+		T = T + 0.2
+		v = desire()
+		afterRound = F.Running(bot)
+		offered = H.Decider.Offer(bot, lo)
+		afterOffer = F.Running(bot)
+	end)
+	check("held: the higher row was begun once by the decider and still holds", hi.begun == 1 and v == H.Decider.HARD and #hi.ends == 0,
+		hi.begun .. " " .. tostring(v))
+	check("held: the higher row's task is the runner's current one after the round and after the lower row's offer",
+		afterRound ~= nil and afterRound.name == "hi" and afterOffer ~= nil and afterOffer.name == "hi",
+		tostring(afterRound and afterRound.name) .. " " .. tostring(afterOffer and afterOffer.name))
+	check("held: the lower row's begin was never called, in the round or at its offer", lo.begun == 0 and offered == false, lo.begun .. " " .. tostring(offered))
+end
+
+do -- a read's offer (the creep row's hook): begun in the same call when no row above holds the hero
+	local H, bot, F = runnerWorld()
+	local hi, lo = taskRow(F, "hi", { want = false }), taskRow(F, "lo", { want = true })
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local offered
+	local lines = capture(function() offered = H.Decider.Offer(bot, lo) end)
+	local cur = F.Running(bot)
+	check("offer: nothing above holds, so the row is begun in the call", offered == true and lo.begun == 1 and cur ~= nil and cur.name == "lo",
+		tostring(offered) .. " " .. tostring(cur and cur.name))
+	check("offer: the decider's line goes out at the begin, naming the row", #lines == 1 and lines[1]:find("held=lo", 1, true) and lines[1]:find("beg=lo", 1, true),
+		table.concat(lines, " | "))
+	local unregistered = taskRow(F, "other", { want = true })
+	check("offer: a row the decider does not hold in its rows is not begun", H.Decider.Offer(bot, unregistered) == false and unregistered.begun == 0)
+end
+
+do -- a row's task started anywhere but the decider's begin is refused and logged; the running task survives
+	local H, bot, F = runnerWorld()
+	local pull = taskRow(F, "pull", { want = true })
+	H.Decider.Add(pull)
+	H.Decider.Add(taskRow(F, "creep", { want = false }))
+	local started, exempt
+	local out = {}
+	local old = print
+	print = function(l) out[#out + 1] = tostring(l) end
+	local ok, err = pcall(function()
+		H.Decider.Host(bot, function() return 0.4 end)()
+		started = F.Start(bot, { name = "creep", host = BotMode.Farm }, FOREVER)
+	end)
+	print = old
+	if not ok then error(err, 0) end
+	local cur = F.Running(bot)
+	local errs = {}
+	for _, l in ipairs(out) do if l:find("ev=lua_error", 1, true) then errs[#errs + 1] = l end end
+	check("outside begin: a row's start is refused", started == false)
+	check("outside begin: the pull begun by the decider still runs", cur ~= nil and cur.name == "pull" and #pull.ends == 0, tostring(cur and cur.name))
+	check("outside begin: one line naming the task", #errs == 1 and errs[1]:find("where=Tasks.Start", 1, true) and errs[1]:find("row task creep", 1, true),
+		table.concat(errs, " | "))
+	capture(function() exempt = F.Start(bot, { name = "stack", host = BotMode.Farm }, FOREVER, "StackJob.Wants") end)
+	check("control: the chooser's stack (StackJob.Wants) is exempt and starts", exempt == true and F.Running(bot).name == "stack")
+end
+
+do -- a begin that throws ends the decider's allowance: the row's task started afterwards outside begin is refused and logged
+	local H, bot, F = runnerWorld()
+	local bad = taskRow(F, "bad", { want = true })
+	bad.begin = function() error("boom") end
+	H.Decider.Add(bad)
+	local raised, started
+	local out = {}
+	local old = print
+	print = function(l) out[#out + 1] = tostring(l) end
+	local ok, err = pcall(function()
+		raised = not pcall(H.Decider.Host(bot, function() return 0.4 end))
+		started = F.Start(bot, { name = "bad", host = BotMode.Farm }, FOREVER)
+	end)
+	print = old
+	if not ok then error(err, 0) end
+	local errs = {}
+	for _, l in ipairs(out) do if l:find("where=Tasks.Start", 1, true) then errs[#errs + 1] = l end end
+	check("throwing begin: the error reaches the caller", raised == true)
+	check("throwing begin: the row's task started afterwards is refused and logged", started == false and F.Running(bot) == nil and #errs == 1
+		and errs[1]:find("row task bad", 1, true), table.concat(errs, " | "))
 end
 
 finish()

@@ -17,6 +17,8 @@ local function capture(fn)
 	if not ok then error(err, 0) end
 	return printed
 end
+-- The row's offer to the decider: one while its attempt runs (the latch).
+local function holds(w) return w.CR.ROW.wants(w.core) ~= nil end
 local function lines(all, pat) local r = {} for _, l in ipairs(all) do if l:find(pat, 1, true) then table.insert(r, l) end end return r end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
@@ -51,10 +53,18 @@ local function world(o)
 	F.Jobs = function() return {} end
 	F.Running = function() return w.running end
 	F.Tick = function() end
+	-- The runner's current task: the decider reads it to see that the row's attempt runs; it ends with the task's onEnd.
 	F.Start = function(_, opts, body)
 		w.starts = w.starts + 1
-		w.onEnd, w.opts, w.body = opts.onEnd, opts, body
-		return o.refuse ~= true
+		w.opts, w.body = opts, body
+		if o.refuse == true then return false end
+		local task = { name = opts.name }
+		w.running = task
+		w.onEnd = function(r)
+			if w.running == task then w.running = nil end
+			opts.onEnd(r)
+		end
+		return true
 	end
 	F.Step = function() w.steps = w.steps + 1 return true end
 	package.loaded["bots/FunLib/humaniser/lane_hits"].Reset()
@@ -103,11 +113,11 @@ do -- a near ranged creep about to come due, stock not on it: an attempt, the la
 	local a1, a2, s1, s2, a3
 	local out = capture(function()
 		w.CO.Shadow(w.core)
-		a1 = w.CR.ROW.applies(w.core)
+		a1 = holds(w)
 		s1 = w.CR.ROW.step(w.core)
 		w.onEnd({ success = true })
 		s2 = w.CR.ROW.step(w.core)
-		a3 = w.CR.ROW.applies(w.core)
+		a3 = holds(w)
 		T = T + 0.1
 		kill(c)
 		w.targets = {}
@@ -131,7 +141,7 @@ do -- the attempt's lines: the creep, the walk at go, when the hero was first in
 		w.targets = { target(c, { walk = 0.3, due = 0.5, dies = 3 }) }
 		return capture(function()
 			w.CO.Shadow(w.core)
-			w.CR.ROW.applies(w.core)
+			holds(w)
 			T = T + 0.4
 			w.CR.ROW.step(w.core)
 			if moveIn then
@@ -173,7 +183,7 @@ do -- the start line says what held the row and what the spare was: need from th
 		local out = capture(function()
 			prep(w, c)
 			w.CO.Shadow(w.core)
-			w.CR.ROW.applies(w.core)
+			holds(w)
 		end)
 		return lines(out, "job=creep")[1]
 	end
@@ -412,7 +422,7 @@ do -- the hold per phase: HARD through every phase, the phase times and the swin
 		local desires, deciderLines, after = {}, {}, nil
 		local out = capture(function()
 			w.CO.Shadow(w.core)
-			w.CR.ROW.applies(w.core)
+			holds(w)
 			local t0 = T
 			local verb = lastHitOpts(w)
 			for _, p in ipairs(phases) do
@@ -480,7 +490,7 @@ do -- the early go: a creep past the walk plus one cycle but inside the walk plu
 	step(w, 0.2)
 	step(w, 1.2)
 	read(w, 1.3, 1.0)
-	local kept = w.CR.ROW.applies(w.core)
+	local kept = holds(w)
 	T = w.t0 + 1.5
 	w.cap(function() w.onEnd({ success = true, message = "end=0" }) end)
 	local e = lines(w.out, "phase=end")[1]
@@ -619,7 +629,7 @@ do -- refused by the runner: no hold, why=refused
 	local a
 	local ch = lines(capture(function()
 		w.CO.Shadow(w.core)
-		a = w.CR.ROW.applies(w.core)
+		a = holds(w)
 		T = T + 0.1
 		kill(c)
 		w.targets = {}
@@ -698,6 +708,17 @@ do -- another task running for the hero (a pull or stack) is not replaced by an 
 	check("row: a support with a pull running starts no deny and notes row", w.starts == 0 and #ch == 1 and field(ch[1], "why") == "row", table.concat(ch, " | "))
 	w, ch = support(nil)
 	check("control: the same support with no task running starts the deny", w.starts == 1 and field(ch[1], "go") == "1", tostring(w.starts))
+end
+
+do -- the read's go is offered to the decider, which begins the row in the same call: its line at the read names the creep
+	local w = world()
+	local c = ranged()
+	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
+	local out = capture(function() w.CO.Shadow(w.core) end)
+	local dl = lines(out, "kind=decider")
+	local start = lines(out, "phase=start")[1]
+	check("offer: one start at the read, begun by the decider", w.starts == 1 and #dl == 1 and field(dl[1], "beg") == "creep" and field(dl[1], "held") == "creep", table.concat(dl, " | "))
+	check("offer: the line's target is the started creep", start ~= nil and field(dl[1], "btgt") == "creep:" .. field(start, "cid"), tostring(dl[1]))
 end
 
 finish()

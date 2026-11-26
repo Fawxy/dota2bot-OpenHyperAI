@@ -545,6 +545,8 @@ const gateWhy: Record<number, string | undefined> = {};
 const rowMinutes: Record<number, Record<number, boolean>> = {};
 const rowGate: Record<number, string | undefined> = {};
 const running: Record<number, Attempt | undefined> = {};
+/** A stack the row's `wants` decided to start this round, for its `begin`. */
+const rowPending: Record<number, { slot: RowSlot; known: PullJob.CampKnown; a: Attempt; plan: JobVerbs.StackPlan } | undefined> = {};
 let campsLogged = false;
 
 /** One `ev=camp` line per spawner, once the spawner list is final: the boxes a replay grader needs (the replay has none). */
@@ -605,6 +607,7 @@ export function ResetCache(): void {
     for (const k in exits) delete exits[k];
     for (const k in rowMinutes) delete rowMinutes[k];
     for (const k in rowGate) delete rowGate[k];
+    for (const k in rowPending) delete rowPending[k];
 }
 
 /** The switch is on and `bot` is position 5, or position 4 with Ours.DoubleStack (it stacks its listed camps only: `Pos4For`). */
@@ -1314,8 +1317,11 @@ export function Wants(bot: Unit, blocked: (bot: Unit, ask?: { neutrals?: boolean
         a.dwhy = dwhy;
         if (double) a.first = { campIdx: fd!.a.campIdx, type: fd!.a.type, stand: fd!.stand, fsec: fd!.fsec, sec: fd!.sec };
         const plan = Plan(bot, data, stand, minute, a);
-        const ok = Tasks.Start(bot, { name: "stack", host, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
-            body(bot, plan, a, ctx)
+        const ok = Tasks.Start(
+            bot,
+            { name: "stack", host, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: result => finish(bot, a, result) },
+            (ctx: Lib.Ctx) => body(bot, plan, a, ctx),
+            "StackJob.Wants"
         );
         if (!ok) return skip("refused");
         handled[pid][minute] = true;
@@ -1545,34 +1551,37 @@ export function Shadow(bot: Unit): void {
     rowLine(bot, slot, false, rowWants(known), "off", known, "shadow");
 }
 
-function rowApplies(bot: Unit): boolean {
-    if (!rowOn(bot)) return false;
+/** The row's `wants`: an offer while a stack runs for the hero, or when this minute's stack should start now. */
+function rowOffer(bot: Unit): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
+    rowPending[pid] = undefined;
+    if (!rowOn(bot)) return undefined;
     readOutcome(bot);
     Tasks.Tick(bot);
     const cur = running[pid];
     if (cur !== undefined) {
         if (bot.WasRecentlyDamagedByAnyHero(3)) cur.hit = true;
         track(bot, cur);
-        return true;
+        return { tgt: `camp:${cur.campIdx}` };
     }
-    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return undefined;
     const now = DotaTime();
     const slot = rowSlot(bot, now);
-    if (slot === undefined) return false;
+    if (slot === undefined) return undefined;
     const known = PullJob.Known(slot.sp);
     if (!rowWants(known)) {
         rowLine(bot, slot, false, false, known.n > 0 ? "strong" : "empty", known);
-        return false;
+        return undefined;
     }
     const why = rowBlock(bot);
-    if (now > slot.aggroAt - slot.walk - SETTINGS.MinSlack) {
+    const by = slot.aggroAt - slot.walk - SETTINGS.MinSlack;
+    if (now > by) {
         rowLine(bot, slot, false, true, rowGate[pid] ?? why ?? "late", known);
-        return false;
+        return undefined;
     }
     if (why !== undefined) {
         rowGate[pid] = why;
-        return false;
+        return undefined;
     }
     if (settling[pid] !== undefined) {
         report(bot, settling[pid]!);
@@ -1580,6 +1589,17 @@ function rowApplies(bot: Unit): boolean {
     }
     const a: Attempt = { minute: slot.minute, campIdx: slot.data.campIdx, type: slot.data.type, startedAt: now, host: ROW_HOST, row: true };
     const plan = Plan(bot, slot.data, slot.stand, slot.minute, a);
+    rowPending[pid] = { slot, known, a, plan };
+    return { tgt: `camp:${slot.data.campIdx}`, by };
+}
+
+/** The row's `begin`: starts the stack `rowOffer` decided this round. */
+function rowBegin(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const pd = rowPending[pid];
+    rowPending[pid] = undefined;
+    if (pd === undefined) return false;
+    const { slot, known, a, plan } = pd;
     const ok = Tasks.Start(bot, { name: "stack", host: ROW_HOST, preemptAfter: SETTINGS.PreemptAfter, stallAfter: SETTINGS.StallAfter, onEnd: (result) => finish(bot, a, result) }, (ctx: Lib.Ctx) =>
         body(bot, plan, a, ctx)
     );
@@ -1607,4 +1627,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts after the pull's). */
-export const ROW: Decider.Row = { name: "stack", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "stack", wants: rowOffer, begin: rowBegin, step: rowStep };

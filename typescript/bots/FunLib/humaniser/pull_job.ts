@@ -222,9 +222,18 @@ const gateWhy: Record<number, string | undefined> = {};
 /** By camp idx: this hero's record of each camp (CampRecord). */
 const records: Record<number, CampRecord | undefined> = {};
 const watchedAt: Record<number, number | undefined> = {};
+/** A pull `rowWants` decided to start, for `rowBegin`. */
+interface Pending {
+    pull: Pull;
+    aggroAt: number;
+    d: Decision;
+    camp: CampState;
+}
+
+const pending: Record<number, Pending | undefined> = {};
 
 export function ResetCache(): void {
-    for (const t of [running, trailing, handled, decided, gateWhy, timers, records, watchedAt] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, trailing, handled, decided, gateWhy, timers, records, watchedAt, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 function isSupport(u: Unit): boolean {
@@ -1162,12 +1171,6 @@ function startBlock(bot: Unit, camp: CampState, now: number, hitAt: number): str
     return campDmgGate(bot, camp.dmg!) ?? (acting(bot) ? "acting" : undefined);
 }
 
-/**
- * The row's `applies`, asked every scoring round: true while a pull runs or as one starts. The lane is read once per slot at
- * the leave time; a wanted pull then waits on `startBlock` until it could no longer reach the camp by the hit's late limit.
- * A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been without
- * the hero for `preemptAfter`; its wave is handled, so it does not start again.
- */
 let seedsLogged = false;
 
 /** Once a game, the seeded pull camps' resolution (`ev=pull_camp_seed`), once the spawner list is in. */
@@ -1179,64 +1182,86 @@ function logSeeds(): void {
     for (const r of reads) Telemetry.Event("pull_camp_seed", [["key", r.key], ["idx", r.idx], ["td", r.td], ["ld", r.ld], ["ok", r.ok ? 1 : 0]]);
 }
 
-function rowApplies(bot: Unit): boolean {
-    logSeeds();
-    if (!rowOn(bot)) return false;
+/** The decision line of a slot, which marks it handled. */
+function decide(bot: Unit, d: Decision, slot: number, camp: CampState, go: boolean, why: string | undefined, aid?: number): void {
     const pid = bot.GetPlayerID();
+    handled[pid] = slot;
+    gateWhy[pid] = undefined;
+    choiceLine(bot, d, slot, go, why, camp, "own", aid);
+}
+
+/**
+ * The row's `wants`, asked every scoring round: an offer while a pull runs or when one should start now. The lane is read once
+ * per slot at the leave time; a wanted pull then waits on `startBlock` until it could no longer reach the camp by the hit's late
+ * limit. A pull the decider let go of (stock's retreat) or another mode took is ended by the engine once the host has been
+ * without the hero for `preemptAfter`; its wave is handled, so it does not start again.
+ */
+function rowWants(bot: Unit): Decider.Offer | undefined {
+    logSeeds();
+    const pid = bot.GetPlayerID();
+    pending[pid] = undefined;
+    if (!rowOn(bot)) return undefined;
     Tasks.Tick(bot);
     const cur = running[pid];
     if (cur !== undefined) {
         if (bot.WasRecentlyDamagedByAnyHero(HERO_HIT_WITHIN)) cur.hit = true;
-        return true;
+        return { tgt: `camp:${cur.plan.camp.campIdx}` };
     }
     trail(bot, false);
-    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return false;
+    if (Tasks.Jobs() === undefined || !LaneConfig.InLaningPhase() || !bot.IsAlive()) return undefined;
     watch(bot);
     const now = DotaTime();
     const due = dueSlot(bot, now);
-    if (due === undefined) return false;
+    if (due === undefined) return undefined;
     const { p, timer, hitAt, walk, d } = due;
     const camp = CampStateOf(p.spawner);
     camp.known = Known(p.spawner);
-    const done = (go: boolean, why: string | undefined, aid?: number) => {
-        handled[pid] = p.slot;
-        gateWhy[pid] = undefined;
-        choiceLine(bot, d, p.slot, go, why, camp, "own", aid);
-    };
+    const done = (go: boolean, why: string | undefined) => decide(bot, d, p.slot, camp, go, why);
     if (!d.want) {
         done(false, d.drill === true ? "drill" : d.reading === undefined ? "no-read" : "lane");
-        return false;
+        return undefined;
     }
     // Only a strong camp takes the wave (families proposal s5); under the bar the stack row builds it. A camp seen empty or
     // with one neutral says so (CampGate, in the start check).
     if (camp.known.n < SETTINGS.StrongAt && CampGate(camp, now, hitAt) === undefined) {
         done(false, "weak");
-        return false;
+        return undefined;
     }
     camp.dmg = CampDamage(bot, camp, p.spawner.type);
     camp.php = bot.GetHealth();
     camp.se = siteEnemy(p);
     const why = startBlock(bot, camp, now, hitAt);
-    if (now + walk > hitAt + LaneConfig.Settings().Timing.JobStartLate) {
+    const late = hitAt + LaneConfig.Settings().Timing.JobStartLate;
+    if (now + walk > late) {
         done(false, gateWhy[pid] ?? why ?? "late");
-        return false;
+        return undefined;
     }
     if (why !== undefined) {
         gateWhy[pid] = why;
-        return false;
+        return undefined;
     }
-    const aggroAt = hitAt;
     trail(bot, true);
     const pull: Pull = { plan: p, left: now, host: HOST, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
+    pending[pid] = { pull, aggroAt: hitAt, d, camp };
+    return { tgt: `camp:${p.camp.campIdx}`, by: late - walk };
+}
+
+/** The row's `begin`: starts the pull `rowWants` decided this round. */
+function rowBegin(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const pd = pending[pid];
+    pending[pid] = undefined;
+    if (pd === undefined) return false;
+    const { pull, aggroAt, d, camp } = pd;
     const ok = Tasks.Start(bot, { name: "pull", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r, info) => finish(bot, pull, r, info.label) }, (ctx: Lib.Ctx) =>
         body(bot, pull, aggroAt, ctx)
     );
     if (!ok) {
-        done(false, "refused");
+        decide(bot, d, pull.plan.slot, camp, false, "refused");
         return false;
     }
     pull.aid = Telemetry.NextAid(pid);
-    done(true, undefined, pull.aid);
+    decide(bot, d, pull.plan.slot, camp, true, undefined, pull.aid);
     running[pid] = pull;
     jobLine(bot, pull, "start", "trigger");
     return true;
@@ -1249,7 +1274,7 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). */
-export const ROW: Decider.Row = { name: "pull", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "pull", wants: rowWants, begin: rowBegin, step: rowStep };
 
 function Step(bot: Unit): boolean {
     const p = running[bot.GetPlayerID()];

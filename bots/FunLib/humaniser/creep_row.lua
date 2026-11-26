@@ -335,8 +335,9 @@ end
 running = {}
 --- pid -> the creep of the hero's last attempt: one attempt a creep.
 local lastCid = {}
+local pending = {}
 function ____exports.ResetCache()
-    for ____, t in ipairs({running, lastCid, seen}) do
+    for ____, t in ipairs({running, lastCid, seen, pending}) do
         for k in pairs(t) do
             t[k] = nil
         end
@@ -590,8 +591,9 @@ end
 -- yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
 -- `tried` (this creep's attempt has ended); then Claim's;
 -- `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
--- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
--- `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
+-- creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
+-- The chosen creep is then offered to the decider (`Decider.Offer`), which begins the row at once unless a row above holds the
+-- hero; `refused` when the task runner said no or the decider did not begin it. The last of these reasons given while the creep was about to come due is kept per hero
 -- and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
 function ____exports.Consider(bot, cands)
     if not ____exports.On(bot) then
@@ -693,10 +695,37 @@ function ____exports.Consider(bot, cands)
             end
         end
     end
+    pending[pid] = {
+        best = best,
+        k = ____exports.KindOf(bot, best.t.kind, best.ck),
+        need = ____exports.Need(bot, best.creep),
+        lead = lead,
+        now = now,
+        seen = recs[best.cid]
+    }
+    Decider.Offer(bot, ____exports.ROW)
+    if pending[pid] == nil then
+        return
+    end
+    pending[pid] = nil
+    best.note(false, "refused")
+    recs[best.cid].why = "refused"
+end
+--- The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment.
+local function rowBegin(bot)
+    local pid = bot:GetPlayerID()
+    local pd = pending[pid]
+    pending[pid] = nil
+    if pd == nil then
+        return false
+    end
+    local best = pd.best
+    local k = pd.k
+    local need = pd.need
+    local lead = pd.lead
+    local now = pd.now
     local t = best.t
     local creep = t.creep
-    local need = ____exports.Need(bot, best.creep)
-    local k = ____exports.KindOf(bot, t.kind, best.ck)
     local ok = Tasks.Start(
         bot,
         {
@@ -721,8 +750,8 @@ function ____exports.Consider(bot, cands)
     )
     if not ok then
         best.note(false, "refused")
-        recs[best.cid].why = "refused"
-        return
+        pd.seen.why = "refused"
+        return false
     end
     local aid = Telemetry.NextAid(pid)
     best.note(true, nil, aid)
@@ -750,21 +779,35 @@ function ____exports.Consider(bot, cands)
         {
             need = need,
             reach = CreepOffer.Reach(bot, best.creep),
-            seen = recs[best.cid],
+            seen = pd.seen,
             now = now,
             sa = sa ~= nil and sa ~= nil and sa == creep,
             lead = lead,
             k = k
         }
     )
+    return true
 end
---- The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here.
-local function rowApplies(bot)
+--- The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
+-- row decides at the read (Consider), never at the decider's round.
+local function rowWants(bot)
     if not ____exports.On(bot) then
-        return false
+        return nil
     end
     Tasks.Tick(bot)
-    return running[bot:GetPlayerID()] ~= nil
+    local pid = bot:GetPlayerID()
+    local a = running[pid]
+    if a ~= nil then
+        return {tgt = "creep:" .. tostring(a.cid)}
+    end
+    local pd = pending[pid]
+    if pd == nil then
+        return nil
+    end
+    return {
+        tgt = "creep:" .. tostring(pd.best.cid),
+        by = pd.now + pd.best.t.due - pd.need
+    }
 end
 --- The row's verb: one frame of the attempt; true once it has ended.
 local function rowStep(bot)
@@ -801,5 +844,5 @@ local function rowStep(bot)
     return false
 end
 --- The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3).
-____exports.ROW = {name = "creep", applies = rowApplies, step = rowStep}
+____exports.ROW = {name = "creep", wants = rowWants, begin = rowBegin, step = rowStep}
 return ____exports

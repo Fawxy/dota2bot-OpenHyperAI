@@ -31,6 +31,8 @@ local went = {}
 local running = {}
 --- pid -> when its last walk ended.
 local endedAt = {}
+--- pid -> the walk the row's `wants` decided to start this round, for its `begin`.
+local pending = {}
 function ____exports.ResetCache()
     for k in pairs(passes) do
         passes[k] = nil
@@ -43,6 +45,9 @@ function ____exports.ResetCache()
     end
     for k in pairs(endedAt) do
         endedAt[k] = nil
+    end
+    for k in pairs(pending) do
+        pending[k] = nil
     end
 end
 function ____exports.On()
@@ -284,39 +289,53 @@ local function finish(bot, ex, res)
         took
     )
 end
---- The row's `applies`: true while a walk runs or as one starts.
-local function rowApplies(bot)
-    if not ____exports.On() or Drill.Held(bot) then
-        return false
-    end
+--- The row's `wants`: an offer while a walk runs or when one should start now.
+local function rowWants(bot)
     local pid = bot:GetPlayerID()
+    pending[pid] = nil
+    if not ____exports.On() or Drill.Held(bot) then
+        return nil
+    end
     Tasks.Tick(bot)
-    if running[pid] ~= nil then
-        return true
+    local w = running[pid]
+    if w ~= nil then
+        return {tgt = "rune:" .. tostring(w.rune)}
     end
     if Tasks.Jobs() == nil then
-        return false
+        return nil
     end
     local now = DotaTime()
     local ended = endedAt[pid]
     if ended ~= nil and now - ended < ____exports.SETTINGS.Rest then
-        return false
+        return nil
     end
     local r = observe(bot, "own", now)
     if r == nil then
-        return false
+        return nil
     end
     local p = passes[pid]
     if r.ex > ____exports.SETTINGS.Budget then
         if not p.want then
             p.why = "detour"
         end
-        return false
+        return nil
     end
     p.want = true
     local why = block(bot, r)
     if why ~= nil then
         p.why = why
+        return nil
+    end
+    pending[pid] = r
+    return {tgt = "rune:" .. tostring(r.rune)}
+end
+--- The row's `begin`: starts the walk `rowWants` decided this round.
+local function rowBegin(bot)
+    local pid = bot:GetPlayerID()
+    local r = pending[pid]
+    pending[pid] = nil
+    local p = passes[pid]
+    if r == nil or p == nil then
         return false
     end
     local ex = r.ex
@@ -391,5 +410,5 @@ local function rowStep(bot)
     return running[bot:GetPlayerID()] == nil
 end
 --- The decider's row (registered in index.ts, so the decider imports no row).
-____exports.ROW = {name = "rune_detour", applies = rowApplies, step = rowStep}
+____exports.ROW = {name = "rune_detour", wants = rowWants, begin = rowBegin, step = rowStep}
 return ____exports

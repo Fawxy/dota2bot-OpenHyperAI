@@ -94,12 +94,15 @@ interface Walk {
 const running: Record<number, Walk | undefined> = {};
 /** pid -> when its last walk ended. */
 const endedAt: Record<number, number | undefined> = {};
+/** pid -> the walk the row's `wants` decided to start this round, for its `begin`. */
+const pending: Record<number, Read | undefined> = {};
 
 export function ResetCache(): void {
     for (const [k] of pairs(passes)) passes[k as number] = undefined;
     for (const [k] of pairs(went)) went[k as number] = undefined;
     for (const [k] of pairs(running)) running[k as number] = undefined;
     for (const [k] of pairs(endedAt)) endedAt[k as number] = undefined;
+    for (const [k] of pairs(pending)) pending[k as number] = undefined;
 }
 
 export function On(): boolean {
@@ -256,29 +259,42 @@ function finish(bot: Unit, ex: number, res: Lib.Result): void {
     jobLine(bot, "end", res.success ? "ok" : res.reason, ex, cut, w, took);
 }
 
-/** The row's `applies`: true while a walk runs or as one starts. */
-function rowApplies(bot: Unit): boolean {
-    if (!On() || Drill.Held(bot)) return false;
+/** The row's `wants`: an offer while a walk runs or when one should start now. */
+function rowWants(bot: Unit): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
+    pending[pid] = undefined;
+    if (!On() || Drill.Held(bot)) return undefined;
     Tasks.Tick(bot);
-    if (running[pid] !== undefined) return true;
-    if (Tasks.Jobs() === undefined) return false;
+    const w = running[pid];
+    if (w !== undefined) return { tgt: `rune:${w.rune}` };
+    if (Tasks.Jobs() === undefined) return undefined;
     const now = DotaTime();
     const ended = endedAt[pid];
-    if (ended !== undefined && now - ended < SETTINGS.Rest) return false;
+    if (ended !== undefined && now - ended < SETTINGS.Rest) return undefined;
     const r = observe(bot, "own", now);
-    if (r === undefined) return false;
+    if (r === undefined) return undefined;
     const p = passes[pid]!;
     if (r.ex > SETTINGS.Budget) {
         if (!p.want) p.why = "detour";
-        return false;
+        return undefined;
     }
     p.want = true;
     const why = block(bot, r);
     if (why !== undefined) {
         p.why = why;
-        return false;
+        return undefined;
     }
+    pending[pid] = r;
+    return { tgt: `rune:${r.rune}` };
+}
+
+/** The row's `begin`: starts the walk `rowWants` decided this round. */
+function rowBegin(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const r = pending[pid];
+    pending[pid] = undefined;
+    const p = passes[pid];
+    if (r === undefined || p === undefined) return false;
     const ex = r.ex;
     const timeout = r.dr / math.max(100, bot.GetCurrentMovementSpeed()) + SETTINGS.Slack;
     const ok = Tasks.Start(bot, { name: "rune_detour", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (res) => finish(bot, ex, res) }, () =>
@@ -306,4 +322,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). */
-export const ROW: Decider.Row = { name: "rune_detour", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "rune_detour", wants: rowWants, begin: rowBegin, step: rowStep };

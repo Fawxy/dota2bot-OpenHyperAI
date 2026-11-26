@@ -186,30 +186,24 @@ if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);
 }
 Telemetry.PerfDeepInstall();
-// The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (not applying; finished).
+// The decider's rows, in doctrine order. A row's error yields the hero to stock for that call (no offer; not begun; finished).
+const rows: [string, Decider.Row][] = [
+    ["PullRow", PullJob.ROW],
+    ["StackRow", StackJob.ROW],
+    ["RuneDetourRow", RuneDetour.ROW],
+    ["CreepRow", CreepRow.ROW],
+];
 if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
-    if (Telemetry.GuardsEnabled()) {
-        PullJob.ROW.applies = Telemetry.Guard("PullRow.applies", PullJob.ROW.applies, no);
-        PullJob.ROW.step = Telemetry.Guard("PullRow.step", PullJob.ROW.step, () => true);
+    for (const [where, row] of rows) {
+        if (Telemetry.GuardsEnabled()) {
+            row.wants = Telemetry.Guard(`${where}.wants`, row.wants, none);
+            row.begin = Telemetry.Guard(`${where}.begin`, row.begin, no);
+            row.step = Telemetry.Guard(`${where}.step`, row.step, () => true);
+        }
+        Decider.Add(row);
     }
-    Decider.ROWS.push(PullJob.ROW);
-    if (Telemetry.GuardsEnabled()) {
-        StackJob.ROW.applies = Telemetry.Guard("StackRow.applies", StackJob.ROW.applies, no);
-        StackJob.ROW.step = Telemetry.Guard("StackRow.step", StackJob.ROW.step, () => true);
-    }
-    Decider.ROWS.push(StackJob.ROW);
-    if (Telemetry.GuardsEnabled()) {
-        RuneDetour.ROW.applies = Telemetry.Guard("RuneDetourRow.applies", RuneDetour.ROW.applies, no);
-        RuneDetour.ROW.step = Telemetry.Guard("RuneDetourRow.step", RuneDetour.ROW.step, () => true);
-    }
-    Decider.ROWS.push(RuneDetour.ROW);
-    if (Telemetry.GuardsEnabled()) {
-        CreepRow.ROW.applies = Telemetry.Guard("CreepRow.applies", CreepRow.ROW.applies, no);
-        CreepRow.ROW.step = Telemetry.Guard("CreepRow.step", CreepRow.ROW.step, () => true);
-    }
-    Decider.ROWS.push(CreepRow.ROW);
-    // The creep row decides at the creep offer read, on the candidates that read lists. Its error is logged
-    // (ev=lua_error where=CreepRow.Consider) and that read starts nothing.
+    // The creep row decides at the creep offer read, on the candidates that read lists, and asks the decider to begin it there.
+    // Its error is logged (ev=lua_error where=CreepRow.Consider) and that read begins nothing.
     CreepOffer.SetRow(Telemetry.GuardsEnabled() ? Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) : CreepRow.Consider, CreepRow.On, CreepRow.OfferLead);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;

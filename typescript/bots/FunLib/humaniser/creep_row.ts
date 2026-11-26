@@ -214,8 +214,20 @@ const running: Record<number, Attempt | undefined> = {};
 /** pid -> the creep of the hero's last attempt: one attempt a creep. */
 const lastCid: Record<number, number | undefined> = {};
 
+/** The candidate Consider chose, while it asks the decider to begin the row (`Decider.Offer`): what `begin` starts. */
+interface Pending {
+    best: CreepOffer.Candidate;
+    k: "lh" | "dn";
+    need: number;
+    lead: number;
+    now: number;
+    seen: Seen;
+}
+
+const pending: Record<number, Pending | undefined> = {};
+
 export function ResetCache(): void {
-    for (const t of [running, lastCid, seen] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, lastCid, seen, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
 }
 
 export function On(bot: Unit): boolean {
@@ -368,8 +380,9 @@ export function OfferLead(this: void, bot: Unit): number {
  * yet about to come due), `acting`, `row` (another task runs for the hero: a pull or stack), `held` (stock's retreat holds the hero: a later read may still go),
  * `tried` (this creep's attempt has ended); then Claim's;
  * `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at the
- * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`);
- * `refused` (the task runner said no). The last of these reasons given while the creep was about to come due is kept per hero
+ * creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither; asked after `early`).
+ * The chosen creep is then offered to the decider (`Decider.Offer`), which begins the row at once unless a row above holds the
+ * hero; `refused` when the task runner said no or the decider did not begin it. The last of these reasons given while the creep was about to come due is kept per hero
  * and creep (`Seen`), with the hero's mode when it was `held`, and goes out on the start line (`hw`, `hm`).
  */
 export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): void {
@@ -428,10 +441,25 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         recs[c.cid].why = "other";
         recs[c.cid].ok = "other";
     }
+    pending[pid] = { best, k: KindOf(bot, best.t.kind, best.ck)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid] };
+    Decider.Offer(bot, ROW);
+    if (pending[pid] === undefined) return;
+    // Not begun and not refused by the runner: Consider's own `other` check already turned away a row above holding the hero,
+    // so what is left is an error in the row's guarded `wants`. It reads as the runner's refusal, not as another row.
+    pending[pid] = undefined;
+    best.note(false, "refused");
+    recs[best.cid].why = "refused";
+}
+
+/** The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment. */
+function rowBegin(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const pd = pending[pid];
+    pending[pid] = undefined;
+    if (pd === undefined) return false;
+    const { best, k, need, lead, now } = pd;
     const t = best.t;
     const creep = t.creep;
-    const need = Need(bot, best.creep);
-    const k = KindOf(bot, t.kind, best.ck)!;
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
         const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
@@ -439,8 +467,8 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     });
     if (!ok) {
         best.note(false, "refused");
-        recs[best.cid].why = "refused";
-        return;
+        pd.seen.why = "refused";
+        return false;
     }
     const aid = Telemetry.NextAid(pid);
     best.note(true, undefined, aid);
@@ -460,7 +488,8 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     running[pid] = a;
     lastCid[pid] = best.cid;
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: recs[best.cid], now, sa: sa !== null && sa !== undefined && sa === creep, lead, k });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k });
+    return true;
 }
 
 /** The verb's phase change, from the engine's onPhase (the phase times of the end line). */
@@ -469,11 +498,19 @@ function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
     if (a !== undefined) enterPhase(a, p, t);
 }
 
-/** The row's `applies`: true while an attempt runs (the latch). The attempt starts at the read (Consider), never here. */
-function rowApplies(bot: Unit): boolean {
-    if (!On(bot)) return false;
+/**
+ * The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
+ * row decides at the read (Consider), never at the decider's round.
+ */
+function rowWants(bot: Unit): Decider.Offer | undefined {
+    if (!On(bot)) return undefined;
     Tasks.Tick(bot);
-    return running[bot.GetPlayerID()] !== undefined;
+    const pid = bot.GetPlayerID();
+    const a = running[pid];
+    if (a !== undefined) return { tgt: `creep:${a.cid}` };
+    const pd = pending[pid];
+    if (pd === undefined) return undefined;
+    return { tgt: `creep:${pd.best.cid}`, by: pd.now + pd.best.t.due - pd.need };
 }
 
 /** The row's verb: one frame of the attempt; true once it has ended. */
@@ -506,4 +543,4 @@ function rowStep(bot: Unit): boolean {
 }
 
 /** The decider's row (registered in index.ts, so the decider imports no row). Hard (plan s3). */
-export const ROW: Decider.Row = { name: "creep", applies: rowApplies, step: rowStep };
+export const ROW: Decider.Row = { name: "creep", wants: rowWants, begin: rowBegin, step: rowStep };
