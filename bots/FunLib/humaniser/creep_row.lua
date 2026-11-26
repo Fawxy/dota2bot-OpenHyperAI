@@ -478,6 +478,70 @@ local function mateTakes(bot, creep)
     local a = k.attacker
     return a ~= bot and a:GetTeam() == bot:GetTeam()
 end
+--- Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
+-- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+-- then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
+-- creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
+-- `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
+-- gives `tried`, so a stale `why` from before a go is overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
+function ____exports.FreeFor(bot, cid, now)
+    local pid = bot:GetPlayerID()
+    local pos = LaneConfig.PositionOf(bot)
+    local mine = TripTable.RankOf("creep", pos)
+    if mine == nil or not TripTable.Outranked("creep", pos) then
+        return nil
+    end
+    for ____, c in ipairs(CreepClaim.ClaimsOn(cid)) do
+        if c.pid ~= pid and c.k == "lh" and c.rank < mine then
+            return "claimed"
+        end
+    end
+    local lane = bot:GetAssignedLane()
+    local wait = false
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue64
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m:GetPlayerID() == pid then
+                        __continue64 = true
+                        break
+                    end
+                    local cell = TripTable.RankOf(
+                        "creep",
+                        LaneConfig.PositionOf(m)
+                    )
+                    if cell == nil or cell >= mine then
+                        __continue64 = true
+                        break
+                    end
+                    if not m:IsBot() then
+                        if m:GetAssignedLane() == lane then
+                            return "human"
+                        end
+                        __continue64 = true
+                        break
+                    end
+                    local a = CreepClaim.AnswerOf(
+                        m:GetPlayerID(),
+                        cid
+                    )
+                    if a ~= nil and a.why == nil and now - a.at <= CreepClaim.ANSWER_FRESH then
+                        wait = true
+                    end
+                    __continue64 = true
+                until true
+                if not __continue64 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return wait and "wait" or nil
+end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
@@ -835,7 +899,7 @@ function ____exports.Consider(bot, cands)
         else
             local ____temp_49
             if k == "lh" then
-                ____temp_49 = CreepClaim.FreeFor(bot, c.cid, now)
+                ____temp_49 = ____exports.FreeFor(bot, c.cid, now)
             else
                 ____temp_49 = nil
             end
@@ -862,18 +926,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue109
+            local __continue120
             repeat
                 if c == best or kindOf(bot, c) == nil then
-                    __continue109 = true
+                    __continue120 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue109 = true
+                __continue120 = true
             until true
-            if not __continue109 then
+            if not __continue120 then
                 break
             end
         end

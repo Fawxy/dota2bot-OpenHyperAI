@@ -3,7 +3,7 @@
  * `lh` (switch Ours.LaneCreeps): a core takes their ranged creep by a right-click, in range with a swing to spare, and with Ours.TowerCreeps
  * (slice oha-tower-creeps) their creep of any kind inside our tower's range too; trip table row `creep`
  * (pos 1 to 3; a support too with Ours.SupportCreeps, slice oha-support-creeps, their ranged creep only: its cell is above the cores', so the
- * creep must be free for it, `CreepClaim.FreeFor`, refusals `claimed`, `wait`, `human`, and its attempt yields, `yd=1` on the end line, to a
+ * creep must be free for it, `FreeFor`, refusals `claimed`, `wait`, `human`, and its attempt yields, `yd=1` on the end line, to a
  * lower-cell hero that holds a claim on the creep before the support's swing is ordered). `dn` (switch Ours.CreepDeny, slice oha-creep-deny): a support denies our own lane creep of any kind; trip table row
  * `deny` (pos 4 and 5). `KindOf` is the one predicate per kind; the cells, the go and the hold are shared, a deny skipping the `tower`
  * and `given` cells, and a last hit skipping `tower` with Ours.TowerCreeps.
@@ -365,6 +365,39 @@ function mateTakes(bot: Unit, creep: unknown): boolean {
     return a !== bot && a.GetTeam() === bot.GetTeam();
 }
 
+export type Free = "claimed" | "wait" | "human";
+
+/**
+ * Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
+ * with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+ * then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
+ * creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
+ * `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
+ * gives `tried`, so a stale `why` from before a go is overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
+ */
+export function FreeFor(this: void, bot: Unit, cid: number, now: number): Free | undefined {
+    const pid = bot.GetPlayerID();
+    const pos = LaneConfig.PositionOf(bot);
+    const mine = TripTable.RankOf("creep", pos);
+    if (mine === undefined || !TripTable.Outranked("creep", pos)) return undefined;
+    for (const c of CreepClaim.ClaimsOn(cid)) if (c.pid !== pid && c.k === "lh" && c.rank < mine) return "claimed";
+    const lane = bot.GetAssignedLane();
+    let wait = false;
+    for (let i = 1; i <= 5; i++) {
+        const m = GetTeamMember(i);
+        if (m === null || m === undefined || m.GetPlayerID() === pid) continue;
+        const cell = TripTable.RankOf("creep", LaneConfig.PositionOf(m));
+        if (cell === undefined || cell >= mine) continue;
+        if (!m.IsBot()) {
+            if (m.GetAssignedLane() === lane) return "human";
+            continue;
+        }
+        const a = CreepClaim.AnswerOf(m.GetPlayerID(), cid);
+        if (a !== undefined && a.why === undefined && now - a.at <= CreepClaim.ANSWER_FRESH) wait = true;
+    }
+    return wait ? "wait" : undefined;
+}
+
 /** A lower-cell hero holds a claim on the creep this hero holds and this hero's swing is not yet ordered (a core's cell is never above a support's). */
 function yieldsTo(pid: number, cid: number): boolean {
     const mine = CreepClaim.ClaimsOn(cid).find((c) => c.pid === pid);
@@ -576,7 +609,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (held) why = "held";
         else if (lastCid[pid] === c.cid) why = "tried";
         else {
-            why = k === "lh" ? CreepClaim.FreeFor(bot, c.cid, now) : undefined;
+            why = k === "lh" ? FreeFor(bot, c.cid, now) : undefined;
             if (why === undefined) why = Claim(factsOf(bot, c));
         }
         if (why !== undefined && why !== "kind" && why !== "early") {

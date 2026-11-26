@@ -177,7 +177,7 @@ Customize.Humaniser = {
 -- Needs LaneCreeps. On: it beat the reference arm on its line (batch twc1). Off: their ranged creep outside our tower's range only.
 -- SupportCreeps (the creep row's last hit for a support, slice oha-support-creeps; no-creep-unpaid proposal s6a): a support (pos 4 and 5) last-hits
 -- their ranged creep when no hero with a lower creep cell in the trip table has it on offer without a refusal, holds a claim on it or is a human
--- in its lane, and yields it to such a hero that starts on it before its swing (creep_claim FreeFor, creep_row); their ranged creep outside our tower's
+-- in its lane, and yields it to such a hero that starts on it before its swing (creep_row FreeFor); their ranged creep outside our tower's
 -- range only. Needs LaneCreeps. Off: stock plays. On by default: provisional (plan s5's widening, after its firing audit scraudit1), deleted at the
 -- next checkpoint batch if the line or its guards fall.
 -- LaneCreeps (decider row, doctrine D11; no-creep-unpaid proposal s5): a core (pos 1 to 3) last-hits their ranged creep in the

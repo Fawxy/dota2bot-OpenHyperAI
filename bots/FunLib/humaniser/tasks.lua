@@ -9,6 +9,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local Utils = require(GetScriptDirectory().."/FunLib/utils")
 local attempted = false
 local lib
@@ -49,8 +50,15 @@ local function CoreCanTake(bot, creep, allies)
 end
 --- One table per bot, cleared on a new frame (no allocation per frame).
 local filterCache = {}
+--- A core (the lowest `creep` cell) keeps the core-in-reach rule whatever the switch: `FreeFor` never holds it back.
+local function opens(bot)
+    return Ours.On("SupportCreeps") and TripTable.Outranked(
+        "creep",
+        LaneConfig.PositionOf(bot)
+    )
+end
 --- Deleted with Ours.SupportCreeps' judgement (a flag between two versions of our own code): with the switch on `f.open` skips the core-in-reach
--- rule below, as the claim read's `FreeFor` (creep_claim.ts) replaces it.
+-- rule below for a support, as creep_row's `FreeFor` replaces it there.
 local function mayTake(bot, creep, f)
     if creep == nil or creep == nil or creep:IsNull() then
         return false
@@ -80,13 +88,13 @@ local adapter = {
             f = {
                 t = now,
                 by = {},
-                open = Ours.On("SupportCreeps")
+                open = opens(bot)
             }
             filterCache[pid] = f
         elseif f.t ~= now then
             f.t = now
             f.allies = nil
-            f.open = Ours.On("SupportCreeps")
+            f.open = opens(bot)
             for k in pairs(f.by) do
                 f.by[k] = nil
             end

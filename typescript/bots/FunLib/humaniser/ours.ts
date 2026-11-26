@@ -46,7 +46,7 @@ export const DEFAULTS = {
      *  `tower` refusal is lifted. Needs LaneCreeps. Off: the row takes their ranged creep outside our tower's range only. On: it beat the reference arm on its line (oha-tower-creeps' batch twc1). */
     TowerCreeps: true,
     /** The lane's creeps, a support's last hit, on the creep row (creep_row.ts, slice oha-support-creeps; no-creep-unpaid proposal s6a): a
-     *  support (pos 4 and 5) last-hits their ranged creep when no hero with a lower `creep` cell has it (creep_claim `FreeFor`), and yields
+     *  support (pos 4 and 5) last-hits their ranged creep when no hero with a lower `creep` cell has it (creep_row `FreeFor`), and yields
      *  it to one that starts on it before its swing; their ranged creep only, outside our tower's range (the under-tower hit is a core's).
      *  Needs LaneCreeps. Off: a support takes no last hit and stock plays. On: provisional (plan s5's widening, merged after its firing
      *  audit scraudit1; deleted at the next checkpoint batch if the line or guards fall). */

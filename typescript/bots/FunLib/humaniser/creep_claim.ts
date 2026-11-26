@@ -1,15 +1,12 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
-import type { Unit } from "bots/ts_libs/dota";
-import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
-import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 
 /**
  * The creep claim, a read (`Reads.creep`, hum/reads.ts; ARCHITECTURE rule 3), keyed by the creep's id (`Telemetry.CreepId`; the five
  * teammates share one Lua state). Per creep it holds the claim, which hero is going for it (its rank in the trip table, the game time
  * its swing is due to be ordered and the verb's phase), and each hero's latest answer on it, go or refusal with the reason, which the creep row writes
  * as the offer reads. Stored knowledge, like the camp's record: it lasts across frames and carries its writers (`Take`, `Release`,
- * `Phase`, `Touch`). It decides nothing; `FreeFor` is a pure reader of it, asked by the creep row for a hero whose `creep` cell is above
- * the lowest (slice oha-support-creeps, proposal no-creep-unpaid s6a), and the row's yield reads `ClaimsOn`.
+ * `Phase`, `Touch`). It decides nothing and reads no position (ARCHITECTURE rule 18): the creep row's `FreeFor` and its yield read
+ * `ClaimsOn` and `AnswerOf` (slice oha-support-creeps, proposal no-creep-unpaid s6a).
  */
 
 /** What the reads saw of one creep for one hero; dropped once a read no longer lists the creep. */
@@ -122,36 +119,3 @@ export function HeldBy(this: void, pid: number): number | undefined {
 
 /** An answer older than this (s) is not a read of the hero's now: a dead hero's or a hero whose row is off stops touching its answers. */
 export const ANSWER_FRESH = 1;
-
-export type Free = "claimed" | "wait" | "human";
-
-/**
- * Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
- * with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it), then over the teammates
- * with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its creep is never free) and
- * `wait` (it has the creep on offer and has not refused it yet: its answer has no `why`). A fresh answer with a `why` is a refusal
- * (`Consider` sets `why` on every refusal, and the next read after an attempt's end gives `tried`, so a stale `why` from before a go is
- * overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
- */
-export function FreeFor(this: void, bot: Unit, cid: number, now: number): Free | undefined {
-    const pid = bot.GetPlayerID();
-    const pos = LaneConfig.PositionOf(bot);
-    const mine = TripTable.RankOf("creep", pos);
-    if (mine === undefined || !TripTable.Outranked("creep", pos)) return undefined;
-    for (const c of ClaimsOn(cid)) if (c.pid !== pid && c.k === "lh" && c.rank < mine) return "claimed";
-    const lane = bot.GetAssignedLane();
-    let wait = false;
-    for (let i = 1; i <= 5; i++) {
-        const m = GetTeamMember(i);
-        if (m === null || m === undefined || m.GetPlayerID() === pid) continue;
-        const cell = TripTable.RankOf("creep", LaneConfig.PositionOf(m));
-        if (cell === undefined || cell >= mine) continue;
-        if (!m.IsBot()) {
-            if (m.GetAssignedLane() === lane) return "human";
-            continue;
-        }
-        const a = AnswerOf(m.GetPlayerID(), cid);
-        if (a !== undefined && a.why === undefined && now - a.at <= ANSWER_FRESH) wait = true;
-    }
-    return wait ? "wait" : undefined;
-}
