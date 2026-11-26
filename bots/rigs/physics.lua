@@ -45,6 +45,9 @@
 --   release3 the order on our creep at 2.6 s, after the window, with the hero level with our creep or in front of it
 --   lanes   real waves where they meet: a Dire creep fighting ours, drawn from 300; its distance to every tier one
 --           (leaves real lane creeps alive)
+-- Round 3d:
+--   reshow4 up the ramp at 300, 200 or 150; or a landed hit on a chaser halfway up, or on the nearest creep once unseen
+--   down    the draw from the high ground down to ours: the chase, and the hand-over to our ranged creep below
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
 -- Round 3 also kills real lane creeps within 1800 of the top T1 sites (-6336,600) and (-6300,5300), and moves real Dire
 -- wave creeps to the main site (release, restrict).
@@ -1998,6 +2001,138 @@ for rep = 1, 2 do
 	for _, stop in ipairs({ "level", "front" }) do
 		for _, w in ipairs({ true, false }) do table.insert(S.release3, release3Trial(stop, w, rep)) end
 	end
+end
+
+-- Round 3d (the user's ways up a ramp, 27/11/2026). reshow4: as reshow3, the hero walks up at 300 (`none`, the control),
+-- at 200 or 150 (`slow200`, `slow150`), or at 300 stopping at 0.5 of the ramp line (just before it leaves sight) to land
+-- one hit on the nearest creep on it, then on up (`hitmid`), or at the first unseen tick turning to land one hit on the
+-- nearest Dire creep, then on up (`hitlost`). The wave's regen is 0 so a landed hit shows in its HP.
+local RAMPLEN = (RAMP1 - RAMP0):Length2D()
+local function rampFrac(u)
+	local d = u:GetAbsOrigin() - RAMP0
+	return (d.x * (RAMP1.x - RAMP0.x) + d.y * (RAMP1.y - RAMP0.y)) / (RAMPLEN * RAMPLEN)
+end
+local function nearestOf(c, onHero)
+	local best, bd
+	for _, cr in ipairs(c.crs) do
+		if cr:IsAlive() and (not onHero or on(cr, c.h)) then
+			local d = d2(cr, c.h)
+			if bd == nil or d < bd then best, bd = cr, d end
+		end
+	end
+	return best
+end
+local function reshow4Trial(mode, rep)
+	local speed = mode == "slow200" and 200 or mode == "slow150" and 150 or 300
+	return {
+		tag = string.format("reshow4_%s_%d", mode, rep),
+		timeout = 20,
+		setup = function(c)
+			c.cx, c.cy = RAMP0.x, RAMP0.y
+			c.crs = wave(c, rampAt(0.2), false)
+			for _, cr in ipairs(c.crs) do pcall(function() cr:SetBaseHealthRegen(0) end) end
+			c.step = 0
+		end,
+		tick = function(c, t)
+			if c.step == 0 and t > 1.5 then
+				c.step = 1
+				c.h = hero("npc_dota_hero_axe", R, rampAt(0.4), "hero", true)
+				pcall(function() c.h:SetBaseMoveSpeed(speed) end)
+				c.tg = hero("npc_dota_hero_sniper", D, RAMP0, "dtgt")
+				watchAll(c, { c.b1 })
+			elseif c.step == 1 and t > 2.5 then
+				c.step = 2
+				drawOrder(c, t)
+			elseif c.step == 2 then
+				watchTick(c, t)
+				drawCheck(c, t)
+				gaps(c, t)
+				if t - c.tord > 0.8 and not c.moved then
+					c.moved = true
+					moveOrder(c.h, RAMP1)
+				end
+				local unseen = not c.h:CanBeSeenByAnyOpposingTeam()
+				if unseen ~= c.lastUnseen then
+					say(string.format("%s %s rel=%.2f after_order=%.2f z=%.0f frac=%.2f", c.tag, unseen and "unseen" or "seen", t, t - c.tord,
+						c.h:GetAbsOrigin().z, rampFrac(c.h)))
+					c.lastUnseen = unseen
+				end
+				local want = c.moved and not c.swing and ((mode == "hitmid" and rampFrac(c.h) >= 0.5) or (mode == "hitlost" and unseen))
+				if want then
+					local cr = nearestOf(c, mode == "hitmid")
+					if cr then
+						c.swing = { cr = cr, hp = cr:GetHealth(), t = t }
+						say(string.format("%s swing rel=%.2f after_order=%.2f at=%s d=%s frac=%.2f", c.tag, t, t - c.tord, L(cr), f0(d2(cr, c.h)), rampFrac(c.h)))
+						attackOrder(c.h, cr)
+					end
+				end
+				local s = c.swing
+				if s and not s.done and (s.cr:GetHealth() < s.hp or t - s.t > 2.5) then
+					s.done = true
+					say(string.format("%s %s rel=%.2f after_order=%.2f frac=%.2f", c.tag, s.cr:GetHealth() < s.hp and "landed" or "no_hit", t, t - c.tord, rampFrac(c.h)))
+					moveOrder(c.h, RAMP1)
+				end
+				if t - c.tord > 14 then return true end
+			end
+		end,
+	}
+end
+S.reshow4 = {}
+for rep = 1, 2 do
+	for _, mode in ipairs({ "none", "slow200", "slow150", "hitmid", "hitlost" }) do table.insert(S.reshow4, reshow4Trial(mode, rep)) end
+end
+
+-- down: the draw from their high ground down to ours. The wave fights at 0.75 of the ramp line (256), the hero 280 below
+-- it at 0.55 walks down from 0.8 s: to 0.1 (`chase`), or to 0.12 with our ranged creep at 0.3 (`release`, 250 past it).
+local function downTrial(mode, rep)
+	return {
+		tag = string.format("down_%s_%d", mode, rep),
+		timeout = 15,
+		setup = function(c)
+			c.cx, c.cy = RAMP0.x, RAMP0.y
+			c.crs = wave(c, rampAt(0.75), false)
+			if mode == "release" then
+				c.own = creep("ranged", R, rampAt(0.3), "own")
+				tank(c.own)
+			end
+			c.step = 0
+		end,
+		tick = function(c, t)
+			if c.step == 0 and t > 1.5 then
+				c.step = 1
+				c.h = hero("npc_dota_hero_axe", R, rampAt(0.55), "hero", true)
+				pcall(function() c.h:SetBaseMoveSpeed(300) end)
+				c.tg = hero("npc_dota_hero_sniper", D, RAMP0, "dtgt")
+				watchAll(c, { c.own or c.b1, c.b1 })
+			elseif c.step == 1 and t > 2.5 then
+				c.step = 2
+				drawOrder(c, t)
+			elseif c.step == 2 then
+				watchTick(c, t)
+				drawCheck(c, t)
+				gaps(c, t)
+				if t - c.tord > 0.8 and not c.moved then
+					c.moved = true
+					moveOrder(c.h, rampAt(mode == "release" and 0.12 or 0.1))
+				end
+				local unseen = not c.h:CanBeSeenByAnyOpposingTeam()
+				if unseen ~= c.lastUnseen then
+					say(string.format("%s %s rel=%.2f after_order=%.2f z=%.0f", c.tag, unseen and "unseen" or "seen", t, t - c.tord, c.h:GetAbsOrigin().z))
+					c.lastUnseen = unseen
+				end
+				if t - c.tord > 9 then
+					local parts = {}
+					for _, cr in ipairs(c.crs) do table.insert(parts, L(cr) .. "=" .. L(cr:GetAttackTarget())) end
+					say(string.format("%s final %s", c.tag, table.concat(parts, " ")))
+					return true
+				end
+			end
+		end,
+	}
+end
+S.down = {}
+for rep = 1, 2 do
+	for _, mode in ipairs({ "chase", "release" }) do table.insert(S.down, downTrial(mode, rep)) end
 end
 
 -- lanes: real waves where they meet. A Dire lane creep attacking a Radiant lane creep (at most one per 1,500, so one per
