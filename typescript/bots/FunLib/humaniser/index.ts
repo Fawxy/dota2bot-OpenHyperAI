@@ -25,13 +25,14 @@ import * as Plays from "bots/FunLib/humaniser/plays/plays";
 import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
+import * as CreepRow from "bots/FunLib/humaniser/creep_row";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, RuneDetour, CreepOffer, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, RuneDetour, CreepOffer, CreepRow, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -202,6 +203,14 @@ if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
         RuneDetour.ROW.step = Telemetry.Guard("RuneDetourRow.step", RuneDetour.ROW.step, () => true);
     }
     Decider.ROWS.push(RuneDetour.ROW);
+    if (Telemetry.GuardsEnabled()) {
+        CreepRow.ROW.applies = Telemetry.Guard("CreepRow.applies", CreepRow.ROW.applies, no);
+        CreepRow.ROW.step = Telemetry.Guard("CreepRow.step", CreepRow.ROW.step, () => true);
+    }
+    Decider.ROWS.push(CreepRow.ROW);
+    // The creep row decides at the creep offer read, on the candidates that read lists. Its error is logged
+    // (ev=lua_error where=CreepRow.Consider) and that read starts nothing.
+    CreepOffer.SetRow(Telemetry.GuardsEnabled() ? Telemetry.Guard("CreepRow.Consider", CreepRow.Consider) : CreepRow.Consider, CreepRow.On, CreepRow.OfferLead);
 }
 const guardedTick = Telemetry.GuardsEnabled() ? Telemetry.Guard("Tick", tick) : tick;
 

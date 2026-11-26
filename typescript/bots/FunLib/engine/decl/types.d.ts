@@ -31,6 +31,8 @@ export interface TaskUnit {
     Action_MoveToLocation(loc: Vec): void;
     Action_AttackUnit(u: any, once: boolean): void;
     GetAttackRange(): number;
+    /** Hull radius, as Dota's `GetBoundingRadius`; absent counts 0 in `attackReach`. */
+    GetBoundingRadius?(): number;
     GetAttackDamage?(): number;
     /** Base wind-up in seconds: over GetAttackSpeed, the seconds from swing start to the attack point. */
     GetAttackPoint?(): number;
@@ -112,6 +114,8 @@ export interface TaskCreep extends TaskAttacker {
     GetActualIncomingDamage?(damage: number, damageType: number): number;
     GetIncomingTrackingProjectiles?(): TaskProjectile[];
     GetUnitName?(): string;
+    /** Hull radius, as Dota's `GetBoundingRadius`; absent counts 0 in `attackReach`. */
+    GetBoundingRadius?(): number;
 }
 /** Minimal structural attack target handle. */
 export interface TaskTarget {

@@ -77,7 +77,7 @@ local function doing(bot)
     local mode = bot:GetActiveMode()
     local task = Tasks.Running(bot)
     local held = Decider.Held(bot)
-    local hold = held == nil and "" or (held.soft == true and " soft" or " hard")
+    local hold = held == nil and "" or (Decider.Soft(bot) and " soft" or " hard")
     if task ~= nil and task.host == mode then
         local text = (task.name .. (task.label ~= nil and ":" .. task.label or "")) .. hold
         return {text = text, colour = OURS_COLOUR, ring = task.name}

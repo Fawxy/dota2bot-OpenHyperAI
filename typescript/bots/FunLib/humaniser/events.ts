@@ -1310,11 +1310,11 @@ export const EVENTS = {
     // Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
     job: {
         pid: "num",
-        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). */
+        /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`. */
         aid: "num",
         /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
         tgt: "str",
-        /** `stack`, `rune`, `pull` or `rune_detour`. */
+        /** `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason). */
         job: "str",
         /** `start` (`why=trigger`) or `end`. */
         phase: "str",
@@ -1324,7 +1324,7 @@ export const EVENTS = {
         host: "num",
         /** 1 when hero damage landed during the job. */
         hit: "num",
-        /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name. */
+        /** On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name; `late_back` (`job=creep`, `why=cancelled`; only in logs banked before the creep row held hard from the go: the row ended its own soft attempt because the hero came back too late). */
         cut: "str",
         /** With `cut=retreat`: the hero's HP share then. */
         hp: "num",
@@ -1334,6 +1334,52 @@ export const EVENTS = {
         took: "num",
         /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
         gj: "num",
+        /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
+        cid: "num",
+        /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */
+        gw: "num",
+        gd: "num",
+        /** `job=creep` start: the hero's attack range. */
+        rng: "num",
+        /** `job=creep` start: the engine's attackReach of the creep at the go (attack range and both hulls, centre to centre): inside it a swing starts without a move. hlog's `lost_inrange` reads it. */
+        rch: "num",
+        /** `job=creep` start: seconds until the hero can order its swing from inside the verb's range (the walk to the engine's attackReach of the creep (attack range and both hulls, centre to centre), at its move speed) and the spare at go (`gd` less it; negative: the creep came due first). */
+        gn: "num",
+        sp: "num",
+        /** `job=creep` start: the last reason the row refused this creep while it was about to come due (`held`, `acting`, a cell's, `notime_new`, `notime_held`, `notime_acting`, `notime`, ...), and the hero's mode name then when that was `held`; absent when it went at the first such read. */
+        hw: "str",
+        hm: "str",
+        /** `job=creep` start: seconds from the first read where the creep was about to come due to the go. */
+        hs: "num",
+        /** `job=creep` start: 1 when the hero's attack target was this creep at the go; `nw` 1 when the go came at the first read that listed the creep. */
+        sa: "num",
+        nw: "num",
+        /** `job=creep` start: the lead in force at the go (s): the creep was about to come due within the walk plus this, one own attack cycle or `CreepRow.SETTINGS.EarlyLead` when that is longer. */
+        ld: "num",
+        /** `job=creep` end: seconds the attempt spent in each phase of the engine's lastHit (`onPhase`): `pw` walk (outside reach), `pq` wait (in reach, no swing ordered), `ps` swing (ordered, up to the end); 0 for a phase never entered. */
+        pw: "num",
+        pq: "num",
+        ps: "num",
+        /** `job=creep` end: only in logs banked before the row held hard from the go in every attempt: seconds from the go to the hold turning hard (0 once it did; -1 never). Not emitted now. */
+        hc: "num",
+        /** `job=creep` end: only in banked logs: the creep's due (s) when the hold turned hard. Not emitted now. */
+        hd: "num",
+        /** `job=creep` end: seconds from the go to the verb's swing order; -1 when none. */
+        so: "num",
+        /** `job=creep` end: how many times another mode had the hero (a gap between the row's steps over `Round`, the end's own included) and for how many seconds in all. */
+        tk: "num",
+        tks: "num",
+        /** `job=creep` end: seconds from the go to the row's first step (the wait for the host mode's next call); -1 when it never stepped. Not `tin`: that is the first step inside the verb's range. */
+        wt: "num",
+        /** `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never. */
+        tin: "num",
+        /** `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`). */
+        sw: "num",
+        /** `job=creep` end: the hero's HP (absolute) at the start and at the end. */
+        hp0: "num",
+        hp1: "num",
+        /** `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut. */
+        msg: "str",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {
@@ -2844,13 +2890,13 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0` and on `kind=creep`, `shadow` and `decider` lines. */
+        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
         aid: "num",
-        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, always `src=shadow go=0 why=off`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let` or `win`). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
-        /** kind=decider, while a row holds: its strength, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it). */
+        /** kind=decider, while a row holds: its strength as asked this round, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it); a row's strength may change while it holds (no row does today: all are hard). */
         hs: "str",
         /** kind=decider: `retreat` when a row applied but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise. */
         let: "str",
@@ -2858,8 +2904,10 @@ export const EVENTS = {
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: PullJob StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `other` (it went for another creep), `refused`. */
         why: "str",
+        /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting` and `notime`, which `why` overwrites with an earlier one, can be counted. */
+        lw: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
         /** The lane. */
@@ -2924,6 +2972,16 @@ export const EVENTS = {
         ein: "num",
         /** `kind=creep`: 1 when the hero's attack target was this creep at any read while it was offered (stock was on it). */
         atk: "num",
+        /** `kind=creep`: visible enemy heroes whose hit is at least ours (`md`) that can walk into their own attack range of the creep before `due` (the race). */
+        erc: "num",
+        /** `kind=creep`: the soonest of those walks (s); absent when `erc` is 0. */
+        ert: "num",
+        /** `kind=creep`: 1 when the creep is inside one of our towers' attack range (and both hulls). */
+        otw: "num",
+        /** `kind=creep`, `go=1`: seconds from `slot` to the read that started the row's attempt. */
+        gat: "num",
+        /** `kind=creep`, `go=1`: the engine's walk into range (s) at that read. */
+        gw: "num",
         /** `kind=creep`: `GetHeightLevel` (0 to 7) of the hero's place when the answers were taken; absent when the API gave none. */
         hh: "num",
         /** `kind=creep`: `GetHeightLevel` of the stand spot when the answers were taken; absent when the API gave none. */

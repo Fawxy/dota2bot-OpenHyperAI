@@ -1,7 +1,7 @@
 # Contract: `lastHit` and `deny` (atomic actions)
 
 ```
-name / version / owner:  lastHit, deny / 6 (v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
+name / version / owner:  lastHit, deny / 9 (v9, slice oha-creep-swing: opts.onPhase reports the verb's phase (`walk`, `wait`, `swing`) on each change, no change to its orders or timing; v8, slice oha-creep-reach: ok also when the creep is gone before this verb's swing and the bot's last-hit count rose above its value at the start (a swing ordered earlier by the host took it), message `hit=other ...`; v7, slice oha-creep-reach: the range test is attackReach (attack range and both hulls, centre to centre), not the bare attack range, so a hero between the two swings without a move order; v6, slice engine-neutrals, 24/11/2026: neutral creeps join the attacker index, so
                 a camp's neutrals on the creep count as incoming damage; v5, slice oha-engine-windup, 24/11/2026: the incoming wind-ups the belief counts
                 are timed as attack point / attack speed from the first read, measured in game; v4 slice lh-unphased, 20/11/2026: the creep-attacker watch fields `cf cwf ca cc cpt
                 cs` on every message; v3 slice pre-hit, 05/11/2026: an attacker with a wind-up seen or a projectile in flight is phased: its repeats
@@ -10,7 +10,7 @@ name / version / owner:  lastHit, deny / 6 (v6, slice engine-neutrals, 24/11/202
                 contract, written as the kill belief, the outcome rule and the message fields changed) / engine (main loop)
 layer:          atomic action (one swing on one lane creep, confirmed on the bot's last-hit or deny count)
 intent:         Swing once at a lane creep so the hit lands as the killing blow (lastHit: an enemy creep; deny: an allied
-                creep below half HP), waiting in attack range until the bot believes a swing ordered now does that.
+                creep below half HP), waiting in attack reach (attackReach: attack range and both hulls) until the bot believes a swing ordered now does that.
 applicability:  A bot handle with GetAttackDamage and GetAttackPoint (deny: also GetDenies); otherwise `unsupported`.
                 With `target` given the caller has chosen the creep (laneFarm does, from laneTargets through its
                 `pick`); without it the verb picks the creep closest to dying within `searchRadius` (needs
@@ -19,7 +19,8 @@ applicability:  A bot handle with GetAttackDamage and GetAttackPoint (deny: also
                 candidate, `no_target` when there is none.
 inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: laneFarm passes eta + 1.5); opts.deadline;
                 opts.searchRadius (default attack range + 300, taste); opts.hold (tag for the adapter's hold while
-                waiting); opts.interruptIf.
+                waiting); opts.interruptIf; opts.onPhase (called on each change of phase with the phase and its time: `walk` outside
+                attack reach, `wait` in reach before the swing is ordered, `swing` right after the attack is ordered).
                 Kill belief (game facts, each frame): own hit time = attack point / attack speed + cooldown left (with the
                 adapter's attackClock) + projectile flight for a ranged bot (dist - 39, over projectile speed); incoming
                 damage = attack projectiles in flight at the creep plus every visible attacker of either team winding up
@@ -37,7 +38,8 @@ inputs:         target (creep handle); opts.maxWait (s, default 1.5, taste: lane
                 swingwc1-2); on enemy heroes and neutral creeps it is not measured (UNVERIFIED in-game for neutrals: the
                 wind-up reading, the fogged location, CanBeSeen skipped for them).
 effect check:   ok once the bot's GetLastHits (GetDenies) count rises, checked each frame until 0.5 s past the predicted
-                landing.
+                landing; before the swing, the same count rising above its value at the start when the creep is gone is ok too,
+                with the message `hit=other w=<s> why=<held> ...` (the swing was not this verb's).
 outcomes:       ok | missed | taken_by_other | denied | timeout | no_target | etiquette | dead | interrupted |
                 unsupported. missed: the creep was alive at the predicted landing, or our attack fired and the creep
                 was gone after the landing without the kill, or nothing resolved 0.5 s past the landing (early or wrong
@@ -55,7 +57,7 @@ interruption:   interruptIf and deadline while waiting; once the swing is ordere
 skill:          Skill.lastHitError (width) and the per-creep roll: a negative shift shortens the relied horizon (swings
                 late), a positive one extends it with the attackers' DPS (swings early); eps scales own damage. At
                 skill 1 the belief is exact.
-telemetry:      none of its own; the Result message carries the calibration fields for the caller's ev=lh: `w hp pred
+telemetry:      none of its own besides opts.onPhase; the Result message carries the calibration fields for the caller's ev=lh: `w hp pred
                 mine t m obs idps end dt fa lhp fg` (wait, HP and believed HP at the order, own damage, hit time,
                 frame margin, observed and indexed damage rate, HP at the end, order-to-end time, order-to-fire time or
                 -1, HP on the first frame at or past the landing or -1, mean frame gap), and before `end`, only when the swing
@@ -68,16 +70,17 @@ telemetry:      none of its own; the Result message carries the calibration fiel
                 attackers that are not heroes, one per attacker per frame, and of those the ones read winding up) and, when
                 cf > 0, `ca cc cpt cs` (the last one's GetAnimActivity, GetAnimCycle, GetAttackPoint, GetSecondsPerAttack):
                 the same check on lane creeps, neutral creeps (slice engine-neutrals) and towers (slice lh-unphased). Read by hlog `@lh_swings`.
-fixtures:       engine test_lasthit (predict melee, hidden allies, fogged target, variance, turn, long horizon, think
+fixtures:       engine test_lasthit ("in reach beyond the range", "outside the reach", "laneTargets: the walk to reach"; predict melee, hidden allies, fogged target, variance, turn, long horizon, think
                 gap, observed rate, killed in our wind-up, wind-up once, projectile in flight, calibration fields,
-                enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
+                phases reported (walk, wait, swing in order; in reach never walks; a cut walk reports only walk; pushed out of reach while waiting reports walk again; deny of a creep above half hp reports wait, swing), enemy hero wind-ups relied on, not relied on, a neutral on the creep (DPS, forecast, deny, fogged), and under a lapse, hero watch (relied on, idle hero aimed at
                 the creep, two heroes with one wind-up frame),
                 deny 50% rule, etiquette); bot test_states_laning_body.
 evidence:       calibration in lane-only games llhscn1 and llhscn2 (03/11/2026, slice lane-last-hits: relied horizon,
                 wind-up double count); the 0.45 s look-ahead sits just under a lane creep's 0.467 s attack point (game
                 file); the kill belief is otherwise game-fact maths with no tuned numbers. maxWait, searchRadius, the
                 0.5 s resolve slack, the 0.25 s cooldown queue and the frame margin bounds are taste.
-consumers:      engine laneFarm (every attempt); bot states/laning through it (cores: last hits and denies; deny-only
-                supports: denies).
+consumers:      engine laneFarm (every attempt); the bot creep row (humaniser/creep_row.ts: ctx.lastHit, and onPhase for
+                its hold per phase); the bot job_verbs camp last hit (its `lastHit` hook on camp neutrals); named: the
+                deny row (master docs/proposals/2026-11-25-no-creep-unpaid.md).
 status:         offline-verified (in-game: the slice's check run, docs/team/slices/lane-last-hits.md)
 ```

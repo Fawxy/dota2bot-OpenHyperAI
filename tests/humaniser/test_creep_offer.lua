@@ -2,6 +2,9 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- The creep offer's shadow (creep_offer.ts): an opportunity per hero and lane creep, its snapshot, and its one line. The
 -- engine's laneTargets and hpForecast are stubs (w.targets, w.hits); the stub map's bot lane runs along y = -5000.
 
+-- The engine's own attackReach: the stubbed Verbs below carry the real fact, so the row and the read answer as the verb does.
+local REAL_ENGINE = dofile(BOTS_ROOT .. "/bots/FunLib/engine/tasks.lua")
+
 local dota = require("bots/ts_libs/dota/index")
 local Lane = dota.Lane
 
@@ -19,12 +22,15 @@ local function num(line, k) return tonumber(field(line, k)) end
 
 local function world(every)
 	local H = LaneFresh({ Enable = true }, { skill = 1, telemetry = { Enable = true } })
+	-- The read alone: the creep row (test_creep_row.lua) is off, so every line is the shadow's.
+	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = false
 	CURRENT_TEAM = 2
 	T = 100
 	local w = { targets = {}, hits = {}, calls = {} }
 	local F = package.loaded["bots/FunLib/humaniser/tasks"].ForOurs
 	F.Verbs = function()
 		return {
+			attackReach = REAL_ENGINE.Verbs.attackReach,
 			laneTargets = function(bot, opts) w.opts = opts w.calls[bot] = (w.calls[bot] or 0) + 1 return w.targets end,
 			hpForecast = function(bot, creep, horizon)
 				local copy = {}
@@ -92,7 +98,7 @@ do -- a creep that is never arrivable: want 0, the snapshot at the largest slack
 		and field(l[1], "want") == "0" and field(l[1], "slot") == "100" and field(l[1], "who") == "t", l[1])
 	check("the snapshot is the largest slack's", near(num(l[1], "walk"), 0.6) and near(num(l[1], "slk"), -0.85), l[1])
 	check("no window when arriving was never possible", field(l[1], "wo") == nil and field(l[1], "wl") == nil, l[1])
-	check("the engine was asked over the reader radius", w.opts.radius == 1600 and w.opts.within == 1)
+	check("the engine was asked over the reader radius, due within one attack cycle of the hero (the stub's 1.7 s)", w.opts.radius == 1600 and near(w.opts.within, 1.7))
 end
 
 do -- arrivable: the snapshot is the first ok read's, the window runs to the last ok read

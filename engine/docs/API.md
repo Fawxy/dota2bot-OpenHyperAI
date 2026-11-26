@@ -90,7 +90,20 @@ read goes through the adapter. Bodies and verbs never read OHA directly.
 ## lastHit v2 and deny (request S4)
 `lastHit(bot, opts)` last-hits an enemy lane creep, `deny(bot, opts)` an allied one. Options: `target`,
 `searchRadius` (default attack range + 300), `maxWait` (s to wait for the creep to become due, default 1.5),
-`deadline`, `interruptIf`, `hold` (tag passed to the adapter's `hold` while standing in range).
+`deadline`, `interruptIf`, `hold` (tag passed to the adapter's `hold` while standing in reach), `onPhase(phase, t)`: called once on each change
+of the verb's phase from the closed set `walk` (outside attack reach, moving in), `wait` (in reach, no swing ordered yet) and `swing` (the attack
+is ordered, not yet confirmed), with the time of the change; `swing` is reported right after the order, on the same frame. A phase the verb never
+reaches is never reported, and a bot pushed back out of reach reports `walk` again.
+
+**Attack reach (`Verbs.attackReach(attacker, target, range?)`, a fact).** The centre-to-centre distance within which the
+attacker begins an attack on the target without moving: its `GetAttackRange()` (or the `range` the caller already read) plus
+both hull radii (`GetBoundingRadius`, 0 for a handle without one). One home for the quantity: `lastHit`/`deny` test the
+distance against it before they order a swing (a hero farther away is ordered to walk to the creep), `laneTargets`' `walk`
+is the walk to it, and callers (the bot's creep row and read) call it rather than keep a range of their own. Source (slice
+oha-creep-reach, commit A): of 21,212 hero attacks on lane creeps in banked games begun within 0.12 s of the creep's death,
+they began up to range + 40 from a melee creep (hull 16) and range + 32 from a ranged creep (hull 8), the heroes' hull being
+24; 28 began farther. UNVERIFIED: that the hero did not move in those attacks (the logs give its place at the creep's death),
+heroes of another hull, siege creeps (none beyond range + 40).
 
 **Choosing.** Without `target`: the creep within `searchRadius` (for `lastHit`, allowed by `lastHitFilter`)
 closest to dying to the bot's hit; above skill 0.6, a ranged/siege creep (by unit name) that is killable now
@@ -100,7 +113,7 @@ wins over a melee one.
 next, enemy creeps first, then allied ones: `{ creep, kind: "lasthit"|"deny", eta, due, walk, dies, ranged }[]`. Considers enemy creeps (filtered by
 `lastHitFilter`) and allied ones (`deny: false` / `lastHit: false` turn a side off) within `radius` (max(800, range
 + 400)) that become killable at most `within` (1 s) after the bot could be in range: `due` = (believed HP at our hit -
-own damage) / incoming DPS (0 when killable now), `walk` = into range at the current speed, eta = max(due, walk), `dies` =
+own damage) / incoming DPS (0 when killable now), `walk` = into attack reach at the current speed, eta = max(due, walk), `dies` =
 when the others kill it at their current DPS (`math.huge` with no one on it); exact (no skill error; the verbs add it when they swing);
 `ranged` = a ranged or siege creep (by unit name). Facts only: which one to take is the caller's choice (slice 5a
 moved the old `nextLastHit` priority biases to bot code). Contract: `docs/contracts/laneTargets.md`.
@@ -129,7 +142,7 @@ For a caller that plans beyond one swing (the bot's pre-hit under its tower). Th
 `walk`/`hold`/`lasthit`/`deny`/`prehit` (ctx binds the task label); `onAttempt(target, result, contested)` after every
 attempt (contested: an enemy hero within `contestRadius` 1000). Scans for the next creep every `scanEvery` (0.1 s), never beyond the leash. Never ends ok by itself. `pick` is asked on every scan, also when laneTargets offers nothing, so it may answer a target of its own: one of kind `prehit` (laneTargets never offers it) is carried out as one `attackAndConfirm` on the creep (findFor 0, confirmFor walk + own hit time + 0.5 s, `aggroConfirms: false`), its attack order cancelled afterwards (a move to the bot's own location: an attack order outlives the one attack, prhchk5), and a `prehit` on the creep an attempt waits for replaces that attempt. With `retarget` (default false) it keeps scanning while an attempt waits for its creep, before the swing: every scan `pick(offered, current)` is asked whether to stay on the creep (while it is still offered, `current` is its fresh facts) or go for another; when it returns another creep, or the creep is no longer offered and `pick(offered)` chooses another, the attempt ends `interrupted` (message ending `sw=1`) and the verb goes straight for the new creep. Whether a switch is worth the attack cooldown is the caller's rule (the bot's `lane_pick.Choose`: only for a creep killable now while the current one is at least an attack cycle away, or a last hit over a deny). `radius` (default laneTargets' own) is passed to laneTargets on every scan. With `dropLost` as well (default false; a function is asked with the waited-on creep's target each time, so a caller may release some attempts and keep others), an attempt whose creep is no longer offered ends `interrupted` (message ending `sw=0`) even when `pick` chooses nothing, and so does one whose creep is still offered when `pick(offered, current)` answers undefined (the caller released it); the verb goes back to holding.
 
-**When to swing.** The verb walks into attack range, then each frame computes the own hit time
+**When to swing.** The verb walks into attack reach (`attackReach`: range and both hulls; the message says `why=range d=<distance left to the reach>`), then each frame computes the own hit time
 `t = attackPoint / attackSpeed (+ cooldown left, with attackClock) (+ max(0, dist - 39) / projectileSpeed for
 ranged bots)` and fires once `HP + regen * t - incoming(t) <= ownDamage` while `HP + regen * t - incoming(t) >
 0` (no swing at a creep someone else kills first). `incoming(t)` counts, after armour
@@ -188,7 +201,7 @@ inside the relied horizon (hits the belief counts as certain, so a cancelled one
 point>`, placed before `end=` (`oc > ec`: we commit after them and could still see a cancel). The set is the belief's own: enemy
 heroes in the attacker index, wind-ups inside the horizon the belief used (a negative skill shift shortens it). `ec` reads the
 wind-up left as `windupLanding` does and `oc` as `GetAttackPoint() / GetAttackSpeed()` seconds: both the same measured reading
-(slice oha-engine-windup). Every message, swung or not, ends with the enemy-hero watch over each frame the verb watched the creep: `hf=<frames an enemy hero's attack target was the creep> hwf=<of those, frames windupLeft read it winding up>` and, when `hf > 0`, `ha=<GetAnimActivity> hc=<GetAnimCycle> hpt=<GetAttackPoint>` of the last such hero (of the last wind-up frame once one was seen). It checks the wind-up reading on enemy heroes in game (verified on our own, below): `hf > 0` with `hwf = 0` across many attempts says the reader never sees a hero's wind-up; `hwf > 0` on `denied`/`taken_by_other` attempts with no swing are the enemy wind-ups a creep was lost to (no `ew`, which only a fired swing carries). After it comes the creep-attacker watch (slice lh-unphased, 20/11/2026): `cf=<readings of the creep's attackers that are not heroes, one per attacker per frame> cwf=<of those, read winding up>` and, when `cf > 0`, `ca=<GetAnimActivity> cc=<GetAnimCycle> cpt=<GetAttackPoint> cs=<GetSecondsPerAttack>` of the last reading. A working reader reads about a lane creep's attack-point share of its cycle (0.47) as wind-up; a share near 0 says the reader misses creep wind-ups in game. Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
+(slice oha-engine-windup). Every message, swung or not, ends with the enemy-hero watch over each frame the verb watched the creep: `hf=<frames an enemy hero's attack target was the creep> hwf=<of those, frames windupLeft read it winding up>` and, when `hf > 0`, `ha=<GetAnimActivity> hc=<GetAnimCycle> hpt=<GetAttackPoint>` of the last such hero (of the last wind-up frame once one was seen). It checks the wind-up reading on enemy heroes in game (verified on our own, below): `hf > 0` with `hwf = 0` across many attempts says the reader never sees a hero's wind-up; `hwf > 0` on `denied`/`taken_by_other` attempts with no swing are the enemy wind-ups a creep was lost to (no `ew`, which only a fired swing carries). After it comes the creep-attacker watch (slice lh-unphased, 20/11/2026): `cf=<readings of the creep's attackers that are not heroes, one per attacker per frame> cwf=<of those, read winding up>` and, when `cf > 0`, `ca=<GetAnimActivity> cc=<GetAnimCycle> cpt=<GetAttackPoint> cs=<GetSecondsPerAttack>` of the last reading. A working reader reads about a lane creep's attack-point share of its cycle (0.47) as wind-up; a share near 0 says the reader misses creep wind-ups in game. Ok before any swing (slice oha-creep-reach): the creep was gone and the bot's last-hit (deny) count had risen above its value at the verb's start, so a swing the host ordered earlier took it; the message is `hit=other w=<s> why=<held>` and the rest as an ended-before-swing one, and no `end=`. Ended before any swing: `w=<s> why=<held>`, what held the swing back on the last frame:
 `range d=<units still to walk>`, `cd c=<s of attack cooldown left>`, `hp50` (a deny above half HP), `wait hp= pred= mine=`
 (the kill belief not due yet), `start` (ended on the first frame). Every message, swung or not (`dead` after a swing included),
 also carries the kill window over the frames before the swing, placed before `hf=` (bug-hunt mark 27, 06/11/2026; attribution only, no

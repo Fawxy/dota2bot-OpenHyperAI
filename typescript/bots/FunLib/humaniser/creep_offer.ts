@@ -1,8 +1,10 @@
 /**
- * The lane creep offer as a shadow (no-creep-unpaid proposal s4a; slice oha-creep-offer). No row, no switch, no order: for
- * each hero `states/trip_table` lets act on a `creep` row it keeps one opportunity per lane creep the engine's `laneTargets`
+ * The lane creep offer (no-creep-unpaid proposal s4a; slice oha-creep-offer), the read behind the creep row. Orders nothing:
+ * for each hero `states/trip_table` lets act on a `creep` row it keeps one opportunity per lane creep the engine's `laneTargets`
  * offers (last hits and denies, every kind), answers the offer's three questions on it (`offer.ts`) and writes one
- * `ev=choice kind=creep src=shadow go=0 why=off` line when the creep leaves the hero's nearby lane creep lists.
+ * `ev=choice kind=creep` line when the creep leaves the hero's nearby lane creep lists: `src=shadow go=0 why=off` unless the
+ * row (`creep_row.ts`, handed in by index.ts through SetRow so this read imports no row) noted a decision on it, then
+ * `src=own` with the row's `go` and `why`.
  *
  * The answers are kept as they stood when `Arrive` first said ok, else at the largest slack seen (`want` says which).
  * Everything the line needs is stored while the creep is listed: a handle that is not in this tick's lists is only a table
@@ -40,6 +42,28 @@ export const SETTINGS = {
 type Timed = Unit & { GetSecondsPerAttack?(): number };
 
 /**
+ * Where the hero's attack on the creep starts without a move: the engine's `attackReach` (attack range and both hulls), the one
+ * fact the engine's walk and last-hit verb, this read and the row all use (ARCHITECTURE.md rule 1).
+ */
+export function Reach(bot: Unit, creep: Unit): number {
+    return Tasks.Verbs()!.attackReach(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep);
+}
+
+/** The unit's attack cycle (s, `GetSecondsPerAttack`); 1 where the handle has none. */
+export function AttackCycle(u: Unit): number {
+    return (u as Timed).GetSecondsPerAttack?.() ?? 1;
+}
+
+/**
+ * laneTargets' `within` for the hero: the engine's default 1 s, or one own attack cycle when longer, so a creep is offered by
+ * the time the creep row may go on it (it goes once due within the walk plus one cycle, creep_row.ts `Due`). For a hero the row acts
+ * on, also the row's own lead when that is longer (`SetRow`'s `lead`, creep_row.ts `EarlyLead`); a hero it is off for asks as before.
+ */
+export function Within(bot: Unit): number {
+    return math.max(1, AttackCycle(bot), rowLead === undefined ? 0 : rowLead(bot));
+}
+
+/**
  * The read's parts, timed as `CO:<part>` rows when the perf probe is on (kind `step`; PerfStep returns the function itself with the
  * probe off). Made on first use: the probe's clock is chosen at the first PerfStep.
  */
@@ -69,6 +93,11 @@ interface Snap {
     /** The highest hit among visible enemy heroes within their own range of the creep, and how many are. */
     ed: number;
     ein: number;
+    /** Enemy heroes whose hit is at least ours that can be in their own range of the creep before it comes due, and the soonest (s). */
+    erc: number;
+    ert?: number;
+    /** The creep is inside one of our towers' attack range. */
+    otw: boolean;
     /** `GetHeightLevel` of the hero, the stand spot and the creep (undefined when the API gives none), the hero's attack range, and each listed enemy's `pid:level` in `en`'s order. */
     hh?: number;
     sh?: number;
@@ -87,6 +116,49 @@ interface Opp {
     okTo?: number;
     snap: Snap;
     atk: boolean;
+    /** Set by the row (Candidate.note): it started an attempt on this creep, the seconds from `first` to that start, and the walk then. */
+    go?: boolean;
+    gat?: number;
+    gw?: number;
+    /** The attempt id the row allocated at the go (Telemetry.NextAid), on the go line. */
+    aid?: number;
+    /**
+     * The row's reason for not going: the first it gave once the creep was about to come due (`early` is replaced by the next
+     * reason; any other stays, so a creep refused for the race and later unreachable reads `race`, not `late`). Undefined
+     * while the row has said nothing (the line then reads `off`).
+     */
+    why?: string;
+    /** The row's latest reason for not going, as given at its last read of the creep (`early` and `kind` included); the line's `lw`. */
+    last?: string;
+}
+
+/**
+ * One creep offered to the hero at this read, handed to the row. `creep` is listed this read, so its handle may be called
+ * now. `facts` reads the offer's answers afresh (once a read); `note` records the row's decision for the line.
+ */
+export interface Candidate {
+    t: Lib.Verbs.LaneTarget;
+    creep: Unit;
+    cid: number;
+    ck: string;
+    arrive: Offer.Arrival;
+    facts(this: void): Snap;
+    note(this: void, go: boolean, why?: string, aid?: number): void;
+}
+
+export type RowHook = (this: void, bot: Unit, cands: Candidate[]) => void;
+let rowHook: RowHook | undefined;
+/** Whether the row wants the read for this hero with telemetry off (the read itself writes lines only with telemetry on). */
+let rowWants: ((this: void, bot: Unit) => boolean) | undefined;
+
+/** The seconds the row wants a creep offered ahead of (0: none), asked of a hero whose row is on; heroes it is off for keep `Within`'s own. */
+let rowLead: ((this: void, bot: Unit) => number) | undefined;
+
+/** index.ts: the row's decision, asked at every read with the hero's candidates, and how far ahead it wants creeps offered. */
+export function SetRow(hook: RowHook | undefined, wants?: (this: void, bot: Unit) => boolean, lead?: (this: void, bot: Unit) => number): void {
+    rowHook = hook;
+    rowWants = wants;
+    rowLead = lead;
 }
 
 /** pid -> the read interval the hero last read in. */
@@ -139,10 +211,12 @@ function line(bot: Unit, o: Opp): void {
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "creep"],
-        ["go", 0],
+        ["aid", o.go === true ? o.aid : undefined],
+        ["go", o.go === true ? 1 : 0],
         ["want", want ? 1 : 0],
-        ["why", "off"],
-        ["src", "shadow"],
+        ["why", o.go === true ? undefined : o.why ?? "off"],
+        ["lw", o.go === true ? undefined : o.last],
+        ["src", o.go === true || o.why !== undefined ? "own" : "shadow"],
         ["lane", o.lane],
         ["slot", o.first],
         ["cid", Telemetry.CreepId(o.creep)],
@@ -171,6 +245,11 @@ function line(bot: Unit, o: Opp): void {
         ["ed", math.floor(s.ed)],
         ["ein", s.ein],
         ["atk", o.atk ? 1 : 0],
+        ["erc", s.erc],
+        ["ert", s.ert !== undefined ? r2(s.ert) : undefined],
+        ["otw", s.otw ? 1 : 0],
+        ["gat", o.gat !== undefined ? r1(o.gat) : undefined],
+        ["gw", o.gw !== undefined ? r2(o.gw) : undefined],
         ["hh", s.hh],
         ["sh", s.sh],
         ["ch", s.ch],
@@ -216,9 +295,10 @@ interface Frame {
     hero: { x: number; y: number };
     speed: number;
     hull: number;
-    reach: number;
     enemyCreeps: Unit[];
     towers?: Offer.PathTower[];
+    /** Our towers, `reach` their attack range plus the tower's hull (the creep's hull is added per creep). */
+    ownTowers?: Offer.PathTower[];
     creeps?: Offer.PathCreep[];
     enemies?: Offer.PathEnemy[];
     /** `pid:level` of each entry of `enemies`, in its order. */
@@ -240,6 +320,18 @@ function towersOf(bot: Unit, f: Frame): Offer.PathTower[] {
         out.push({ x: at.x, y: at.y, reach: t.GetAttackRange() + t.GetBoundingRadius() + f.hull });
     }
     f.towers = out;
+    return out;
+}
+
+function ownTowersOf(bot: Unit, f: Frame): Offer.PathTower[] {
+    if (f.ownTowers !== undefined) return f.ownTowers;
+    const out: Offer.PathTower[] = [];
+    for (const t of bot.GetNearbyTowers(SETTINGS.TowerRadius, false)) {
+        const at = t.GetLocation();
+        if (at === null || at === undefined) continue;
+        out.push({ x: at.x, y: at.y, reach: t.GetAttackRange() + t.GetBoundingRadius() });
+    }
+    f.ownTowers = out;
     return out;
 }
 
@@ -265,7 +357,7 @@ function enemiesOf(f: Frame): Offer.PathEnemy[] {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
-        out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1 });
+        out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1, speed: e.GetCurrentMovementSpeed() });
         hs.push(`${e.GetPlayerID()}:${heightAt(at.x, at.y) ?? "-"}`);
     }
     f.enemies = out;
@@ -289,17 +381,35 @@ function race(bot: Unit, creep: Unit): [string, number | undefined] {
 function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, others: Offer.Other[]): Snap {
     const creep = t.creep as unknown as Unit;
     const at = creep.GetLocation();
-    const spot = Offer.StandSpot(f.hero, at, f.reach + creep.GetBoundingRadius());
+    const spot = Offer.StandSpot(f.hero, at, Reach(bot, creep));
     const path = Offer.PathCost({ from: f.hero, spot, speed: f.speed, hull: f.hull, creeps: creepsOf(f), towers: towersOf(bot, f), enemies: enemiesOf(f) });
     let ed = 0;
     let ein = 0;
+    let erc = 0;
+    let ert: number | undefined;
+    const md = bot.GetAttackDamage();
     const hull = creep.GetBoundingRadius();
     for (const e of enemiesOf(f)) {
-        if (dist(e, at) > e.range + e.hull + hull) continue;
+        const gap = dist(e, at) - (e.range + e.hull + hull);
+        // The race: an enemy hero whose hit is at least ours and who can stand in its own range of the creep before it comes
+        // due for us (the enemy walking straight at its speed).
+        const reach = math.max(0, gap) / math.max(100, e.speed ?? 300);
+        if (e.dmg >= md && reach <= t.due) {
+            erc++;
+            if (ert === undefined || reach < ert) ert = reach;
+        }
+        if (gap > 0) continue;
         ein++;
         if (e.dmg > ed) ed = e.dmg;
     }
     const [kb, kt] = parts!.race(bot, creep);
+    let otw = false;
+    for (const tw of ownTowersOf(bot, f)) {
+        if (dist(tw, at) <= tw.reach + hull) {
+            otw = true;
+            break;
+        }
+    }
     const hs = f.enemyHeights ?? [];
     return {
         walk: t.walk,
@@ -313,9 +423,12 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
         path,
         kb,
         kt,
-        md: bot.GetAttackDamage(),
+        md,
         ed,
         ein,
+        erc,
+        ert,
+        otw,
         hh: heightAt(f.hero.x, f.hero.y),
         sh: heightAt(spot.x, spot.y),
         ch: heightAt(at.x, at.y),
@@ -327,7 +440,7 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
 function partsOf(): Parts {
     if (parts !== undefined) return parts;
     parts = {
-        targets: Telemetry.PerfStep("CO:targets", (bot: Lib.TaskUnit) => Tasks.Verbs()!.laneTargets(bot, { radius: LaneHits.READER_RADIUS, within: 1 })),
+        targets: Telemetry.PerfStep("CO:targets", (bot: Lib.TaskUnit) => Tasks.Verbs()!.laneTargets(bot, { radius: LaneHits.READER_RADIUS, within: Within(bot as unknown as Unit) })),
         lists: Telemetry.PerfStep("CO:lists", (bot: Unit) => {
             const listed = new LuaTable<Unit, boolean>();
             const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
@@ -347,11 +460,12 @@ function partsOf(): Parts {
  * ordered.
  */
 export function Shadow(bot: Unit): void {
-    if (!Telemetry.IsEnabled()) return;
+    if (!Telemetry.IsEnabled() && (rowWants === undefined || !rowWants(bot))) return;
     const pid = bot.GetPlayerID();
     if (!due(pid, DotaTime()) || !MayOffer(bot)) return;
     if (!bot.IsAlive() || Drill.Held(bot) || !LaneConfig.InLaningPhase()) {
         closeAll(bot, pid);
+        if (rowHook !== undefined) rowHook(bot, []);
         return;
     }
     if (Tasks.Verbs() === undefined) return;
@@ -370,16 +484,20 @@ export function Shadow(bot: Unit): void {
             m[cid] = undefined;
         }
     }
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+        if (rowHook !== undefined) rowHook(bot, []);
+        return;
+    }
     if (m === undefined) {
         m = {};
         opps[pid] = m;
     }
 
     const loc = bot.GetLocation();
-    const f: Frame = { hero: { x: loc.x, y: loc.y }, speed: math.max(100, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), reach: bot.GetAttackRange() + bot.GetBoundingRadius(), enemyCreeps: theirs };
+    const f: Frame = { hero: { x: loc.x, y: loc.y }, speed: math.max(100, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), enemyCreeps: theirs };
     const atkTarget = bot.GetAttackTarget();
     const slot = math.floor(now * 10) / 10;
+    const cands: Candidate[] = [];
 
     for (const t of targets) {
         const creep = t.creep as unknown as Unit;
@@ -412,5 +530,39 @@ export function Shadow(bot: Unit): void {
             o.okTo = now;
         }
         if (atkTarget !== null && atkTarget !== undefined && atkTarget === creep) o.atk = true;
+        if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
+    if (rowHook !== undefined) rowHook(bot, cands);
+}
+
+function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.Verbs.LaneTarget, creep: Unit, cid: number, o: Opp, a: Offer.Arrival, now: number): Candidate {
+    let fresh: Snap | undefined;
+    return {
+        t,
+        creep,
+        cid,
+        ck: o.ck,
+        arrive: a,
+        facts: () => {
+            if (fresh === undefined) {
+                const others: Offer.Other[] = [];
+                for (const x of targets) if (x !== t && x.walk <= 0) others.push({ due: x.due, ranged: x.ranged });
+                fresh = partsOf().snapshot(bot, f, t, a.slack, others);
+            }
+            return fresh;
+        },
+        note: (go: boolean, why?: string, aid?: number) => {
+            if (o.go === true) return;
+            if (go) {
+                o.go = true;
+                o.aid = aid;
+                o.gat = now - o.first;
+                o.gw = t.walk;
+                o.why = undefined;
+            } else {
+                if (o.why === undefined || o.why === "early") o.why = why;
+                o.last = why;
+            }
+        },
+    };
 }
