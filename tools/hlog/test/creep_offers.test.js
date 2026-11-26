@@ -26,7 +26,11 @@ const taker = (t, team, cid, by, kind, tw = 0) => line(t, `creep_death team=${te
 const snap = (t, pid, x) => line(t, `snap pid=${pid} x=${x} y=0 alive=1 hp=90 ar=550`);
 const offer = (t, pid, o) => line(t, `choice pid=${pid} kind=creep go=0 want=${o.want ?? 1} why=off src=shadow lane=2 slot=${o.slot ?? 0} cid=${o.cid} ck=${o.ck} who=${o.who}` +
     `${o.want === 0 ? '' : ` wo=${o.wo} wl=1`} walk=${o.walk} due=${o.due ?? 1} dies=${o.dies ?? 2} slk=1 hpp=1 mode=laning crhp=100 g2=0 g2r=0 pc=3 pd=63 ptw=0 ` +
-    `eh=${o.eh ?? 0} exs=0 en=2:800:550:52:1.27:0 kb=${o.kb} md=${o.md ?? 60} ed=${o.ed ?? 0} ein=${o.ein ?? 0} atk=1${o.ra === undefined ? '' : ` ra=${o.ra}`}${o.h ? ` hh=${o.h[0]} sh=${o.h[1]} ch=${o.h[2]} enh=2:3` : ''}`);
+    `eh=${o.eh ?? 0} exs=0 en=2:800:550:52:1.27:0 kb=${o.kb} md=${o.md ?? 60} ed=${o.ed ?? 0} ein=${o.ein ?? 0} atk=1${o.ra === undefined ? '' : ` ra=${o.ra}`}${o.h ? ` hh=${o.h[0]} sh=${o.h[1]} ch=${o.h[2]} enh=2:3` : ''}` +
+    `${o.sp ? ` sp=${o.sp[0]} sx=${o.sp[1]} sy=${o.sp[2]} sk=${o.sp[3]}${o.sp[3] ? ' sa=0.4 sw=0.2' : ''} sg=${o.sp[4]} sl=0.8 sd=90 sf=${o.sp[5]} sm=100 sr=${o.sp[6]} sc=6 sz=${o.sp[7]} sn=2` : ''}`);
+// The spell read (sp to sn) on L2, L3, L4, L5 and L6: spell, shape, class, kill, gap, forecast HP, reserve, also hit.
+const SP = { 41: ['luna_lucent_beam', 'u', 'd', 1, -200, 60, 20, 0], 77: ['luna_lucent_beam', 'u', 'd', 1, -100, 50, -10, 0],
+    78: ['luna_lucent_beam', 'u', 'k', 1, -50, 80, 5, 1], 5: ['luna_lucent_beam', 'u', 'd', 1, -300, 40, 30, 0], 9: ['zuus_arc_lightning', 'u', 'd', 0, 120, 200, 40, 0] };
 
 const melee = (team) => `creep_${team === 2 ? 'goodguys' : 'badguys'}_melee`;
 const ranged = (team) => `creep_${team === 2 ? 'goodguys' : 'badguys'}_ranged`;
@@ -39,15 +43,15 @@ function gameLines() {
         seen(60, 3, 2, melee(3)), seen(60, 3, 3, melee(3), 100), seen(60, 3, 41, melee(3)), seen(60, 3, 1, melee(3)), seen(60, 3, 4, melee(3)), seen(60, 3, 8, melee(3)), seen(60, 3, 10, melee(3)),
         gone(100.25, 3, 1), gone(100.2, 3, 4), taker(100.2, 2, 1, 'none', 'melee'),
         gone(100, 2, 1, 0), offer(100.3, 0, { cid: 1, ck: 'm', who: 'o', walk: 0, want: 0, kb: 'none' }),
-        offer(130.3, 0, { cid: 5, ck: 'm', who: 'o', walk: 2.5, want: 0, kb: 'tower' }), gone(150, 2, 5),
+        offer(130.3, 0, { sp: SP[5], cid: 5, ck: 'm', who: 'o', walk: 2.5, want: 0, kb: 'tower' }), gone(150, 2, 5),
         gone(200, 3, 2), taker(200, 2, 41, 0, 'melee'),
-        offer(200.3, 0, { cid: 41, ck: 'm', who: 't', walk: 0, slot: 197.5, wo: 0.1, dies: 2, kb: 'me', eh: 1, ra: 550, h: [1, 1, 2] }),
+        offer(200.3, 0, { sp: SP[41], cid: 41, ck: 'm', who: 't', walk: 0, slot: 197.5, wo: 0.1, dies: 2, kb: 'me', eh: 1, ra: 550, h: [1, 1, 2] }),
         snap(249.5, 0, -200), gone(250, 3, 3, 'none', 100),
-        offer(250.3, 0, { cid: 77, ck: 'm', who: 't', walk: 0.6, slot: 248, wo: 0.2, dies: 1, due: 1.9, kb: 'foe', ein: 2, ed: 70, md: 60, ra: 550, h: [1, 1, 2] }),
+        offer(250.3, 0, { sp: SP[77], cid: 77, ck: 'm', who: 't', walk: 0.6, slot: 248, wo: 0.2, dies: 1, due: 1.9, kb: 'foe', ein: 2, ed: 70, md: 60, ra: 550, h: [1, 1, 2] }),
         gone(300, 3, 41),
-        offer(300.3, 0, { cid: 78, ck: 'r', who: 't', walk: 1.4, want: 0, kb: 'none', ra: 550, h: [2, 2, 2] }),
+        offer(300.3, 0, { sp: SP[78], cid: 78, ck: 'r', who: 't', walk: 1.4, want: 0, kb: 'none', ra: 550, h: [2, 2, 2] }),
         gone(400, 2, 33), taker(400, 3, 9, 5, 'ranged'),
-        offer(400.3, 5, { cid: 9, ck: 'r', who: 't', walk: 0, slot: 398, wo: 0.2, dies: 1.5, due: 2.5, kb: 'creep', ra: 600, h: [2, 2, 2] }),
+        offer(400.3, 5, { sp: SP[9], cid: 9, ck: 'r', who: 't', walk: 0, slot: 398, wo: 0.2, dies: 1.5, due: 2.5, kb: 'creep', ra: 600, h: [2, 2, 2] }),
         gone(500, 2, 6), taker(500, 3, 99, 5, 'melee'),
         offer(500.3, 0, { cid: 6, ck: 'm', who: 'o', walk: 0, want: 0, kb: 'foe' }),
         snap(549.5, 0, -200), gone(550, 3, 8, 5), offer(550.3, 0, { cid: 88, ck: 'm', who: 't', walk: 0, want: 0, kb: 'none', ra: 550 }),
@@ -150,4 +154,18 @@ test('creep_offer_height: their creeps by projectile and by the stand spot again
     ]);
     const cols = store.query(sqlOf('creep_offers'), { like }).map(r => ({ ...r })).find(r => r.cid === 41);
     assert.deepStrictEqual([cols.hh, cols.sh, cols.ch, cols.ra, cols.enh, cols.up, cols.proj], [1, 1, 2, 550, '2:3', 1, 1]);
+});
+
+test('creep_offers and creep_spell_cells: the spell read passes through, and a cell counts their creeps a cast would have taken with the reserve met', () => {
+    const store = load();
+    const row = store.query(sqlOf('creep_offers'), { like }).map(r => ({ ...r })).find(r => r.cid === 78);
+    assert.deepStrictEqual([row.sp, row.sx, row.sy, row.sk, row.sa, row.sw, row.sg, row.sl, row.sd, row.sf, row.sm, row.sr, row.sc, row.sz, row.sn],
+        ['luna_lucent_beam', 'u', 'k', 1, 0.4, 0.2, -50, 0.8, 90, 80, 100, 5, 6, 1, 2]);
+    const cells = store.query(sqlOf('creep_spell_cells'), { like }).map(r => [r.hero, r.sp, r.ck, r.games, r.n, r.kill, r.res, r.us,
+        r.nobody, r.unm, r.lost, r.near, r.foe, r.key]);
+    assert.deepStrictEqual(cells, [
+        ['sniper', 'luna_lucent_beam', 'r', 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1],
+        ['sniper', 'luna_lucent_beam', 'm', 1, 2, 2, 1, 1, 0, 0, 0, 0, 0, 0],
+        ['zuus', 'zuus_arc_lightning', 'r', 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ], 'their creep taken by us is not lost, a kill under the reserve is not res, our own creep (cid 5) is not counted');
 });
