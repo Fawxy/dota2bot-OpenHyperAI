@@ -262,6 +262,7 @@ local B_POINT = ABILITY_BEHAVIOR_POINT or 16
 local B_CHANNELLED = ABILITY_BEHAVIOR_CHANNELLED or 128
 local B_TOGGLE = ABILITY_BEHAVIOR_TOGGLE or 512
 local T_CREEP = ABILITY_TARGET_TYPE_CREEP or 2
+local T_ENEMY = ABILITY_TARGET_TEAM_ENEMY or 2
 --- Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators).
 local function has(bits, flag)
     return flag > 0 and math.floor(bits / flag) % 2 == 1
@@ -344,6 +345,12 @@ function ____exports.CreepSpellsOf(bot)
                     local ____opt_4 = a.GetTargetType
                     local tt = ____opt_4 and ____opt_4(a)
                     if tt ~= nil and tt > 0 and not has(tt, T_CREEP) then
+                        __continue50 = true
+                        break
+                    end
+                    local ____opt_6 = a.GetTargetTeam
+                    local team = ____opt_6 and ____opt_6(a)
+                    if team ~= nil and team > 0 and not has(team, T_ENEMY) then
                         __continue50 = true
                         break
                     end
@@ -461,21 +468,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue75
+                local __continue76
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue75 = true
+                        __continue76 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue75 = true
+                        __continue76 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue75 = true
+                    __continue76 = true
                 until true
-                if not __continue75 then
+                if not __continue76 then
                     break
                 end
             end

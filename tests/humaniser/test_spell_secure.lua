@@ -62,4 +62,29 @@ do -- the best answer of a read
 	check("nothing to weigh: none", S.Best({}) == nil)
 end
 
+do -- the cast the creep row may order (slice oha-creep-spells)
+	local function ans(o)
+		return { spell = spell({ name = o.name, mana = o.mana, key = o.key, shape = o.shape }), timing = { gap = o.gap or -100, walk = 0, land = 0.5 }, taken = 75,
+			hp = o.hp or 50, kill = S.Kills(o.hp or 50, 75), over = o.over or 10, also = o.also or 0 }
+	end
+	local function pick(as) local r = S.CastPick(as) return r.pick and r.pick.spell.name, r.why end
+	check("a damage spell that kills in range with the reserve kept is cast", pick({ ans({ name = "beam" }) }) == "beam")
+	check("a damage spell before a key spell, whatever the price", pick({ ans({ name = "stun", key = true, also = 1, mana = 50 }), ans({ name = "beam", mana = 120 }) }) == "beam")
+	check("of two damage spells, the cheaper", pick({ ans({ name = "dear", mana = 120 }), ans({ name = "cheap", mana = 60 }) }) == "cheap")
+	check("a key spell that also hits an enemy hero is cast", pick({ ans({ name = "spike", key = true, also = 1 }) }) == "spike")
+	local _, why = pick({ ans({ name = "spike", key = true, also = 0 }) })
+	check("a key spell hitting no enemy hero is not: key", why == "key")
+	_, why = pick({ ans({ name = "torrent", shape = "p" }) })
+	check("a spell cast on a place is not this group's: shape", why == "shape")
+	_, why = pick({ ans({ hp = 90 }) })
+	check("no kill: nokill", why == "nokill")
+	_, why = pick({ ans({ gap = 20 }) })
+	check("out of cast range by 20: walk", why == "walk")
+	_, why = pick({ ans({ over = -1 }) })
+	check("the reserve not kept: reserve", why == "reserve")
+	_, why = pick({ ans({ name = "a", hp = 90 }), ans({ name = "b", over = -1 }), ans({ name = "c", shape = "p" }) })
+	check("the reason is the furthest any answer got", why == "reserve")
+	check("nothing to weigh: no pick and no reason", S.CastPick({}).pick == nil and S.CastPick({}).why == nil)
+end
+
 finish()

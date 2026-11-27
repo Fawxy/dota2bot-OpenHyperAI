@@ -149,7 +149,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local creepsAttack, lastHits, underTower, yieldsTo, enterPhase, refuse, towerGone, yieldNow, onPhase, running
+local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, STILL_GOING, CAST_OVER, running, lastCid, pending
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -165,6 +165,135 @@ local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local SpellSecure = require(GetScriptDirectory().."/FunLib/humaniser/spell_secure")
+--- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (neither kind this hero acts on: `KindOf`),
+-- `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
+-- with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
+-- an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on and the hero is not `out`), `etower`
+-- (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
+-- `mate` (a teammate's hit kills it first). A deny skips `tower` (our tower is no hazard to our own creep) and `given` (a support's
+-- other targets are the ranking, a later slice's).
+function ____exports.Claim(f)
+    if f.k == nil then
+        return "kind"
+    end
+    if f.slk <= 0 then
+        return "late"
+    end
+    if f.ein > 0 and f.ed > f.md then
+        return "outdmg"
+    end
+    if f.walk > 0 and f.erc > 0 then
+        return "race"
+    end
+    if f.walk > ____exports.SETTINGS.NearWalk and f.eh > 0 then
+        return "covered"
+    end
+    if f.otw and f.k == "lh" and (f.out == true or not Ours.On("TowerCreeps")) then
+        return "tower"
+    end
+    if f.ptw then
+        return "etower"
+    end
+    if f.walk > 0 and f.g2 > 0 and f.k == "lh" then
+        return "given"
+    end
+    if f.kb == "mate" then
+        return "mate"
+    end
+    return nil
+end
+--- Seconds until the hero can order its swing from inside the verb's own range: the walk to the engine's `attackReach` of the creep
+-- (lastHit's `why=range` test, which the offer's `walk` also reads) at the hero's current move speed. No wind-up, flight or turn: `due`
+-- already counts them between the order and the hit (the engine's `ownHit`), so it is the time to the order.
+function ____exports.Need(bot, creep)
+    local at = creep:GetLocation()
+    local me = bot:GetLocation()
+    local dx = at.x - me.x
+    local dy = at.y - me.y
+    return math.max(
+        0,
+        math.sqrt(dx * dx + dy * dy) - CreepOffer.Reach(bot, creep)
+    ) / math.max(
+        100,
+        bot:GetCurrentMovementSpeed()
+    )
+end
+--- The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`).
+function ____exports.OnTime(need, due)
+    return due >= need
+end
+--- The hero's hit cannot land before the creep dies to the others' hits: its swing is ordered no sooner than the creep comes due, the
+-- hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit - cd` after the order (`hit` the
+-- engine's `ownHitTime`, which counts the cooldown left already).
+function ____exports.AttackLate(due, need, cd, hit, dies)
+    return math.max(due, need, cd) + (hit - cd) > dies
+end
+function mateGoing(bot, cid, now)
+    local pid = bot:GetPlayerID()
+    local mine = TripTable.RankOf(
+        "creep",
+        LaneConfig.PositionOf(bot)
+    )
+    if mine == nil then
+        return false
+    end
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue18
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m:GetPlayerID() == pid or not m:IsBot() then
+                        __continue18 = true
+                        break
+                    end
+                    local cell = TripTable.RankOf(
+                        "creep",
+                        LaneConfig.PositionOf(m)
+                    )
+                    if cell == nil or cell >= mine then
+                        __continue18 = true
+                        break
+                    end
+                    local a = CreepClaim.AnswerOf(
+                        m:GetPlayerID(),
+                        cid
+                    )
+                    if a ~= nil and a.why ~= nil and STILL_GOING[a.why] and now - a.at <= CreepClaim.ANSWER_FRESH then
+                        return true
+                    end
+                    __continue18 = true
+                until true
+                if not __continue18 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return false
+end
+--- Why the attack cannot take the creep, for the cast; undefined when it can, or when the row held back for a reason the cast shares (the hero
+-- acting, another task, retreat, a claim, a teammate's hit). `why` the row's refusal this read. For a creep the row does not attack (`kind`)
+-- or not yet about to come due (`early`): the cell rule on it as a last hit (`claim`, Claim's answer), the on-time check, then `late`
+-- (`AttackLate`), so the cast waits while the attack may still take it.
+function ____exports.AttackCannot(why, claim, onTime, late)
+    if CAST_OVER[why] then
+        return why
+    end
+    if why ~= "kind" and why ~= "early" then
+        return nil
+    end
+    if claim ~= nil then
+        return CAST_OVER[claim] and claim or nil
+    end
+    if not onTime then
+        return "notime"
+    end
+    return late and "late" or nil
+end
 function creepsAttack(bot, creep)
     local row = LaneHits.Of(
         bot:GetTeam(),
@@ -185,11 +314,101 @@ function creepsAttack(bot, creep)
     end
     return false
 end
+--- The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, or with
+-- Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on;
+-- a hero whose cell is above the lowest (a support, with Ours.SupportCreeps) takes their ranged creep only, the case its widening was audited on.
+-- A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
+function ____exports.KindOf(bot, kind, ck, otw)
+    local pos = LaneConfig.PositionOf(bot)
+    if kind == "lasthit" and lastHits(pos) and (ck == "r" or otw and underTower(pos)) then
+        return "lh"
+    end
+    if kind == "deny" and TripTable.Does("deny", pos) and Ours.On("CreepDeny") then
+        return "dn"
+    end
+    return nil
+end
 function lastHits(pos)
     return TripTable.Does("creep", pos) and Ours.On("LaneCreeps") and (not TripTable.Outranked("creep", pos) or Ours.On("SupportCreeps"))
 end
 function underTower(pos)
     return Ours.On("TowerCreeps") and not TripTable.Outranked("creep", pos)
+end
+function kindOf(bot, c)
+    local needsOtw = c.t.kind == "lasthit" and c.ck ~= "r" and underTower(LaneConfig.PositionOf(bot))
+    return ____exports.KindOf(
+        bot,
+        c.t.kind,
+        c.ck,
+        needsOtw and c.facts().otw
+    )
+end
+function casts()
+    return Ours.On("CreepSpells")
+end
+--- Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
+-- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+-- then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
+-- creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
+-- `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
+-- gives `tried`, so a stale `why` from before a go is overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
+function ____exports.FreeFor(bot, cid, now)
+    local pid = bot:GetPlayerID()
+    local pos = LaneConfig.PositionOf(bot)
+    local mine = TripTable.RankOf("creep", pos)
+    if mine == nil or not TripTable.Outranked("creep", pos) then
+        return nil
+    end
+    for ____, c in ipairs(CreepClaim.ClaimsOn(cid)) do
+        if c.pid ~= pid and c.k == "lh" and c.rank < mine then
+            return "claimed"
+        end
+    end
+    local lane = bot:GetAssignedLane()
+    local wait = false
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue77
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m:GetPlayerID() == pid then
+                        __continue77 = true
+                        break
+                    end
+                    local cell = TripTable.RankOf(
+                        "creep",
+                        LaneConfig.PositionOf(m)
+                    )
+                    if cell == nil or cell >= mine then
+                        __continue77 = true
+                        break
+                    end
+                    if not m:IsBot() then
+                        if m:GetAssignedLane() == lane then
+                            return "human"
+                        end
+                        __continue77 = true
+                        break
+                    end
+                    local a = CreepClaim.AnswerOf(
+                        m:GetPlayerID(),
+                        cid
+                    )
+                    if a ~= nil and a.why == nil and now - a.at <= CreepClaim.ANSWER_FRESH then
+                        wait = true
+                    end
+                    __continue77 = true
+                until true
+                if not __continue77 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return wait and "wait" or nil
 end
 function yieldsTo(pid, cid)
     local mine = __TS__ArrayFind(
@@ -214,6 +433,140 @@ function enterPhase(a, p, t)
     if p == "swing" and a.so == nil then
         a.so = t - a.t0
     end
+end
+function factsOf(bot, c)
+    local s = c.facts()
+    return {
+        k = kindOf(bot, c),
+        walk = c.t.walk,
+        slk = c.arrive.slack,
+        eh = s.path.covering,
+        md = s.md,
+        ed = s.ed,
+        ein = s.ein,
+        erc = s.erc,
+        ptw = s.path.tower,
+        otw = s.otw,
+        g2 = s.given.due,
+        kb = s.kb,
+        out = TripTable.Outranked(
+            "creep",
+            LaneConfig.PositionOf(bot)
+        )
+    }
+end
+function castPass(bot, cands, whys, recs, now, gate, shadow)
+    local pid = bot:GetPlayerID()
+    local verbs = Tasks.Verbs()
+    local cd
+    local best
+    local pick
+    for ____, c in ipairs(cands) do
+        do
+            local __continue138
+            repeat
+                local why = whys[c.cid]
+                if c.t.kind ~= "lasthit" or why == nil then
+                    __continue138 = true
+                    break
+                end
+                local as = c.spells()
+                if #as == 0 then
+                    __continue138 = true
+                    break
+                end
+                local claim
+                local onTime = true
+                local late = false
+                if why == "kind" or why == "early" then
+                    claim = ____exports.Claim(__TS__ObjectAssign(
+                        {},
+                        factsOf(bot, c),
+                        {k = "lh"}
+                    ))
+                    if claim == nil then
+                        local need = ____exports.Need(bot, c.creep)
+                        onTime = ____exports.OnTime(need, c.t.due)
+                        if onTime then
+                            if cd == nil then
+                                cd = verbs.cooldownLeft(bot)
+                            end
+                            late = ____exports.AttackLate(
+                                c.t.due,
+                                need,
+                                cd,
+                                verbs.ownHitTime(bot, c.t.creep),
+                                c.t.dies
+                            )
+                        end
+                    end
+                end
+                if ____exports.AttackCannot(why, claim, onTime, late) == nil then
+                    __continue138 = true
+                    break
+                end
+                local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
+                if no ~= nil then
+                    c.noteCast(false, no)
+                    __continue138 = true
+                    break
+                end
+                if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #CreepClaim.ClaimsOn(c.cid) > 0 then
+                    no = "claimed"
+                elseif c.facts().kb == "mate" then
+                    no = "mate"
+                end
+                local p
+                if no == nil then
+                    local r = SpellSecure.CastPick(as)
+                    p = r.pick
+                    if p == nil then
+                        no = r.why
+                    end
+                end
+                if p == nil then
+                    c.noteCast(false, no)
+                    __continue138 = true
+                    break
+                end
+                if best == nil or c.t.dies < best.t.dies then
+                    if best ~= nil then
+                        best.noteCast(false, "other")
+                    end
+                    best = c
+                    pick = p
+                else
+                    c.noteCast(false, "other")
+                end
+                __continue138 = true
+            until true
+            if not __continue138 then
+                break
+            end
+        end
+    end
+    if best == nil then
+        return
+    end
+    if shadow then
+        best.noteCast(false, "off")
+        return
+    end
+    pending[pid] = {
+        best = best,
+        k = "sp",
+        cast = pick,
+        need = 0,
+        lead = 0,
+        now = now,
+        seen = recs[best.cid]
+    }
+    Decider.Offer(bot, ____exports.ROW)
+    if pending[pid] == nil then
+        return
+    end
+    pending[pid] = nil
+    best.noteCast(false, "refused")
 end
 function refuse(bot, a, why)
     if a.tl == nil then
@@ -254,43 +607,6 @@ ____exports.SETTINGS = {
 }
 --- The mode the decider hosts its rows in: the engine steps the attempt's task under it.
 local HOST = BotMode.Farm
---- The cell rule: undefined when the creep is in a claimed cell, else why not. In order: `kind` (neither kind this hero acts on: `KindOf`),
--- `late` (cannot arrive), `outdmg` (an enemy hero in range of the creep hits harder), `race` (a walk-in: an enemy hero
--- with a hit at least ours can be in range of the creep before it comes due), `covered` (a walk past NearWalk to a spot
--- an enemy hero's range covers), `tower` (a last hit inside our tower's range, unless Ours.TowerCreeps is on and the hero is not `out`), `etower`
--- (the stand spot is inside their tower's), `given` (a walk-in: another target comes due where the hero stands before it is back),
--- `mate` (a teammate's hit kills it first). A deny skips `tower` (our tower is no hazard to our own creep) and `given` (a support's
--- other targets are the ranking, a later slice's).
-function ____exports.Claim(f)
-    if f.k == nil then
-        return "kind"
-    end
-    if f.slk <= 0 then
-        return "late"
-    end
-    if f.ein > 0 and f.ed > f.md then
-        return "outdmg"
-    end
-    if f.walk > 0 and f.erc > 0 then
-        return "race"
-    end
-    if f.walk > ____exports.SETTINGS.NearWalk and f.eh > 0 then
-        return "covered"
-    end
-    if f.otw and f.k == "lh" and (f.out == true or not Ours.On("TowerCreeps")) then
-        return "tower"
-    end
-    if f.ptw then
-        return "etower"
-    end
-    if f.walk > 0 and f.g2 > 0 and f.k == "lh" then
-        return "given"
-    end
-    if f.kb == "mate" then
-        return "mate"
-    end
-    return nil
-end
 --- About to come due: due within the walk plus `lead` (`Lead`: the longer of one own attack cycle, `GetSecondsPerAttack`, and `EarlyLead`), so the hero is in range and
 -- facing with a full cycle to spare whatever its cooldown. Round 0 of oha-creep-ranged went at walk + 0.4 s and lost 48 of
 -- 122 uncut attempts with no swing on the creep (re-read 25/11/2026). The creep offer asks laneTargets for creeps due within
@@ -298,26 +614,19 @@ end
 function ____exports.Due(walk, due, lead)
     return due <= walk + lead
 end
---- Seconds until the hero can order its swing from inside the verb's own range: the walk to the engine's `attackReach` of the creep
--- (lastHit's `why=range` test, which the offer's `walk` also reads) at the hero's current move speed. No wind-up, flight or turn: `due`
--- already counts them between the order and the hit (the engine's `ownHit`), so it is the time to the order.
-function ____exports.Need(bot, creep)
-    local at = creep:GetLocation()
-    local me = bot:GetLocation()
-    local dx = at.x - me.x
-    local dy = at.y - me.y
-    return math.max(
-        0,
-        math.sqrt(dx * dx + dy * dy) - CreepOffer.Reach(bot, creep)
-    ) / math.max(
-        100,
-        bot:GetCurrentMovementSpeed()
-    )
-end
---- The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`).
-function ____exports.OnTime(need, due)
-    return due >= need
-end
+STILL_GOING = {acting = true, row = true, refused = true}
+CAST_OVER = {
+    late = true,
+    outdmg = true,
+    race = true,
+    covered = true,
+    etower = true,
+    tower = true,
+    notime = true,
+    notime_new = true,
+    notime_held = true,
+    notime_acting = true
+}
 --- The leftover rule, pure. `hp` the creep's HP, `towerHit` the tower's damage on it after armour, `lo` and `hi` the hero's lowest and highest hit on it
 -- after armour, `period` the tower's seconds per attack, `walk` the seconds before the hero's first attack can start, `cycle` the hero's attack cycle.
 -- `wait`: the creep is killable by the hero's hit just before the killing shot (leftover within `hi`: from `lo` up the verb swings only on a high roll
@@ -410,31 +719,6 @@ local function noTime(r, first)
     end
     return (r.ok == "held" or r.ok == "acting" or r.ok == "row") and "notime_" .. r.ok or "notime"
 end
---- The one predicate per kind, asked by Consider, Claim (through the facts) and dueNow alike. A last hit: their ranged creep, or with
--- Ours.TowerCreeps one of any kind inside our tower's range (`otw`), for a hero whose position does `creep` with Ours.LaneCreeps on;
--- a hero whose cell is above the lowest (a support, with Ours.SupportCreeps) takes their ranged creep only, the case its widening was audited on.
--- A deny: any of our creeps, for a hero whose position does `deny` with Ours.CreepDeny on.
-function ____exports.KindOf(bot, kind, ck, otw)
-    local pos = LaneConfig.PositionOf(bot)
-    if kind == "lasthit" and lastHits(pos) and (ck == "r" or otw and underTower(pos)) then
-        return "lh"
-    end
-    if kind == "deny" and TripTable.Does("deny", pos) and Ours.On("CreepDeny") then
-        return "dn"
-    end
-    return nil
-end
---- `KindOf` for a candidate. Its `otw` is read from the read's fresh facts (cached for the read), and only for a last hit of a non-ranged
--- creep by a hero the under-tower hit is for (`underTower`), the one case the answer depends on it: the facts' snapshot costs more than the rest of the check.
-local function kindOf(bot, c)
-    local needsOtw = c.t.kind == "lasthit" and c.ck ~= "r" and underTower(LaneConfig.PositionOf(bot))
-    return ____exports.KindOf(
-        bot,
-        c.t.kind,
-        c.ck,
-        needsOtw and c.facts().otw
-    )
-end
 --- The creep is of a kind this hero acts on and about to come due at this read (the first such read is kept).
 local function dueNow(bot, c, r, lead, now)
     if kindOf(bot, c) == nil or not ____exports.Due(c.t.walk, c.t.due, lead) then
@@ -446,9 +730,8 @@ local function dueNow(bot, c, r, lead, now)
     return true
 end
 running = {}
---- pid -> the creep of the hero's last attempt: one attempt a creep.
-local lastCid = {}
-local pending = {}
+lastCid = {}
+pending = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({running, lastCid, pending}) do
         for k in pairs(t) do
@@ -461,7 +744,7 @@ function ____exports.On(bot)
     local pos = LaneConfig.PositionOf(bot)
     local lh = lastHits(pos)
     local dn = TripTable.Does("deny", pos) and Ours.On("CreepDeny")
-    return (lh or dn) and bot:IsBot() and not Drill.Held(bot)
+    return (lh or dn or casts()) and bot:IsBot() and not Drill.Held(bot)
 end
 --- OHA's own action holds the hero (the deny and pull rows' check: a queued order, a cast or channel).
 local function acting(bot)
@@ -484,70 +767,6 @@ local function mateTakes(bot, creep)
     local a = k.attacker
     return a ~= bot and a:GetTeam() == bot:GetTeam()
 end
---- Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
--- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
--- then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
--- creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
--- `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
--- gives `tried`, so a stale `why` from before a go is overtaken by the claim, then by `tried`); no answer, or a stale one, is not on offer.
-function ____exports.FreeFor(bot, cid, now)
-    local pid = bot:GetPlayerID()
-    local pos = LaneConfig.PositionOf(bot)
-    local mine = TripTable.RankOf("creep", pos)
-    if mine == nil or not TripTable.Outranked("creep", pos) then
-        return nil
-    end
-    for ____, c in ipairs(CreepClaim.ClaimsOn(cid)) do
-        if c.pid ~= pid and c.k == "lh" and c.rank < mine then
-            return "claimed"
-        end
-    end
-    local lane = bot:GetAssignedLane()
-    local wait = false
-    do
-        local i = 1
-        while i <= 5 do
-            do
-                local __continue64
-                repeat
-                    local m = GetTeamMember(i)
-                    if m == nil or m == nil or m:GetPlayerID() == pid then
-                        __continue64 = true
-                        break
-                    end
-                    local cell = TripTable.RankOf(
-                        "creep",
-                        LaneConfig.PositionOf(m)
-                    )
-                    if cell == nil or cell >= mine then
-                        __continue64 = true
-                        break
-                    end
-                    if not m:IsBot() then
-                        if m:GetAssignedLane() == lane then
-                            return "human"
-                        end
-                        __continue64 = true
-                        break
-                    end
-                    local a = CreepClaim.AnswerOf(
-                        m:GetPlayerID(),
-                        cid
-                    )
-                    if a ~= nil and a.why == nil and now - a.at <= CreepClaim.ANSWER_FRESH then
-                        wait = true
-                    end
-                    __continue64 = true
-                until true
-                if not __continue64 then
-                    break
-                end
-            end
-            i = i + 1
-        end
-    end
-    return wait and "wait" or nil
-end
 local function r2(x)
     return math.floor(x * 100 + 0.5) / 100
 end
@@ -559,8 +778,8 @@ end
 -- cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take); with Ours.TowerCreeps and a tower attacking the
 -- creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
 local function startLine(bot, cid, aid, t, g)
-    local ____Telemetry_Event_15 = Telemetry.Event
-    local ____array_14 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_21 = Telemetry.Event
+    local ____array_20 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -616,21 +835,39 @@ local function startLine(bot, cid, aid, t, g)
     else
         ____temp_8 = r2(g.tr.v.leftover)
     end
-    __TS__SparseArrayPush(____array_14, {"lf", ____temp_8})
+    __TS__SparseArrayPush(____array_20, {"lf", ____temp_8})
     local ____temp_9
     if g.tr == nil then
         ____temp_9 = nil
     else
         ____temp_9 = r2(g.tr.hit)
     end
-    __TS__SparseArrayPush(____array_14, {"tT", ____temp_9})
+    __TS__SparseArrayPush(____array_20, {"tT", ____temp_9})
     local ____opt_10 = g.tr
-    __TS__SparseArrayPush(____array_14, {"ts", ____opt_10 and ____opt_10.v.shots})
+    __TS__SparseArrayPush(____array_20, {"ts", ____opt_10 and ____opt_10.v.shots})
     local ____opt_12 = g.tr
-    __TS__SparseArrayPush(____array_14, {"vd", ____opt_12 and ____opt_12.v.vd})
-    ____Telemetry_Event_15(
+    __TS__SparseArrayPush(____array_20, {"vd", ____opt_12 and ____opt_12.v.vd})
+    local ____opt_14 = g.cast
+    __TS__SparseArrayPush(____array_20, {"ab", ____opt_14 and ____opt_14.spell.name})
+    local ____temp_16
+    if g.cast == nil then
+        ____temp_16 = nil
+    else
+        ____temp_16 = r2(g.cast.timing.land)
+    end
+    __TS__SparseArrayPush(____array_20, {"al", ____temp_16})
+    local ____opt_17 = g.cast
+    __TS__SparseArrayPush(____array_20, {"az", ____opt_17 and ____opt_17.also})
+    local ____temp_19
+    if g.cast == nil then
+        ____temp_19 = nil
+    else
+        ____temp_19 = math.floor(g.cast.over + 0.5)
+    end
+    __TS__SparseArrayPush(____array_20, {"am", ____temp_19})
+    ____Telemetry_Event_21(
         "job",
-        {__TS__SparseArraySpread(____array_14)}
+        {__TS__SparseArraySpread(____array_20)}
     )
 end
 --- The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
@@ -646,8 +883,8 @@ local function endLine(bot, a, r, cut, claimed)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_47 = Telemetry.Event
-    local ____array_46 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_53 = Telemetry.Event
+    local ____array_52 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -663,78 +900,78 @@ local function endLine(bot, a, r, cut, claimed)
         {"yd", (a and a.yielded) == true and 1 or nil},
         {"cid", a and a.cid}
     )
-    local ____temp_26
+    local ____temp_32
     if (a and a.tower) == nil then
-        ____temp_26 = nil
+        ____temp_32 = nil
     else
-        ____temp_26 = a.ph
+        ____temp_32 = a.ph
     end
-    __TS__SparseArrayPush(____array_46, {"ph", ____temp_26}, {"tl", a and a.tl})
-    local ____temp_31
+    __TS__SparseArrayPush(____array_52, {"ph", ____temp_32}, {"tl", a and a.tl})
+    local ____temp_37
     if (a and a.tlt) == nil then
-        ____temp_31 = nil
+        ____temp_37 = nil
     else
-        ____temp_31 = r2(a.tlt)
+        ____temp_37 = r2(a.tlt)
     end
-    __TS__SparseArrayPush(____array_46, {"tlt", ____temp_31})
-    local ____temp_34
-    if (a and a.tlc) == nil then
-        ____temp_34 = nil
-    else
-        ____temp_34 = a.tlc and 1 or 0
-    end
-    __TS__SparseArrayPush(____array_46, {"tlc", ____temp_34})
-    local ____temp_35
-    if a == nil then
-        ____temp_35 = nil
-    else
-        ____temp_35 = a.so ~= nil and r2(a.so) or -1
-    end
-    __TS__SparseArrayPush(____array_46, {"so", ____temp_35}, {"tk", a and a.tk})
-    local ____temp_38
-    if a == nil then
-        ____temp_38 = nil
-    else
-        ____temp_38 = r2(a.tks)
-    end
-    __TS__SparseArrayPush(____array_46, {"tks", ____temp_38})
-    local ____temp_39
-    if a == nil then
-        ____temp_39 = nil
-    else
-        ____temp_39 = r2(a.spent.walk)
-    end
-    __TS__SparseArrayPush(____array_46, {"pw", ____temp_39})
+    __TS__SparseArrayPush(____array_52, {"tlt", ____temp_37})
     local ____temp_40
-    if a == nil then
+    if (a and a.tlc) == nil then
         ____temp_40 = nil
     else
-        ____temp_40 = r2(a.spent.wait)
+        ____temp_40 = a.tlc and 1 or 0
     end
-    __TS__SparseArrayPush(____array_46, {"pq", ____temp_40})
+    __TS__SparseArrayPush(____array_52, {"tlc", ____temp_40})
     local ____temp_41
     if a == nil then
         ____temp_41 = nil
     else
-        ____temp_41 = r2(a.spent.swing)
+        ____temp_41 = a.so ~= nil and r2(a.so) or -1
     end
-    __TS__SparseArrayPush(____array_46, {"ps", ____temp_41})
-    local ____temp_42
+    __TS__SparseArrayPush(____array_52, {"so", ____temp_41}, {"tk", a and a.tk})
+    local ____temp_44
     if a == nil then
-        ____temp_42 = nil
+        ____temp_44 = nil
     else
-        ____temp_42 = a.wt ~= nil and r2(a.wt) or -1
+        ____temp_44 = r2(a.tks)
     end
-    __TS__SparseArrayPush(____array_46, {"wt", ____temp_42})
-    local ____temp_43
+    __TS__SparseArrayPush(____array_52, {"tks", ____temp_44})
+    local ____temp_45
     if a == nil then
-        ____temp_43 = nil
+        ____temp_45 = nil
     else
-        ____temp_43 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_45 = r2(a.spent.walk)
+    end
+    __TS__SparseArrayPush(____array_52, {"pw", ____temp_45})
+    local ____temp_46
+    if a == nil then
+        ____temp_46 = nil
+    else
+        ____temp_46 = r2(a.spent.wait)
+    end
+    __TS__SparseArrayPush(____array_52, {"pq", ____temp_46})
+    local ____temp_47
+    if a == nil then
+        ____temp_47 = nil
+    else
+        ____temp_47 = r2(a.spent.swing)
+    end
+    __TS__SparseArrayPush(____array_52, {"ps", ____temp_47})
+    local ____temp_48
+    if a == nil then
+        ____temp_48 = nil
+    else
+        ____temp_48 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_52, {"wt", ____temp_48})
+    local ____temp_49
+    if a == nil then
+        ____temp_49 = nil
+    else
+        ____temp_49 = a.tin ~= nil and r2(a.tin) or -1
     end
     __TS__SparseArrayPush(
-        ____array_46,
-        {"tin", ____temp_43},
+        ____array_52,
+        {"tin", ____temp_49},
         {"sw", sw},
         {"hp0", a and a.hp0},
         {
@@ -743,9 +980,9 @@ local function endLine(bot, a, r, cut, claimed)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_47(
+    ____Telemetry_Event_53(
         "job",
-        {__TS__SparseArraySpread(____array_46)}
+        {__TS__SparseArraySpread(____array_52)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -766,8 +1003,8 @@ local function finish(bot, r)
     local now = DotaTime()
     if a ~= nil then
         if a.phase ~= nil then
-            local ____a_spent_48, ____a_phase_49 = a.spent, a.phase
-            ____a_spent_48[____a_phase_49] = ____a_spent_48[____a_phase_49] + (now - a.phaseAt)
+            local ____a_spent_54, ____a_phase_55 = a.spent, a.phase
+            ____a_spent_54[____a_phase_55] = ____a_spent_54[____a_phase_55] + (now - a.phaseAt)
         end
         if a.lastStep ~= nil and now - a.lastStep > ____exports.SETTINGS.Round then
             a.tk = a.tk + 1
@@ -781,27 +1018,6 @@ local function finish(bot, r)
         cutBy(bot, r),
         claimed
     )
-end
-local function factsOf(bot, c)
-    local s = c.facts()
-    return {
-        k = kindOf(bot, c),
-        walk = c.t.walk,
-        slk = c.arrive.slack,
-        eh = s.path.covering,
-        md = s.md,
-        ed = s.ed,
-        ein = s.ein,
-        erc = s.erc,
-        ptw = s.path.tower,
-        otw = s.otw,
-        g2 = s.given.due,
-        kb = s.kb,
-        out = TripTable.Outranked(
-            "creep",
-            LaneConfig.PositionOf(bot)
-        )
-    }
 end
 --- The lead (s) the row goes on: a creep due within the walk plus this is about to come due (`Due`). One own attack cycle, or `EarlyLead` when
 -- that is longer.
@@ -863,6 +1079,7 @@ function ____exports.Consider(bot, cands)
     local tower = underTower(LaneConfig.PositionOf(bot))
     local towers
     local reads = {}
+    local whys = {}
     for ____, c in ipairs(cands) do
         local why
         local r = recs[c.cid]
@@ -875,13 +1092,13 @@ function ____exports.Consider(bot, cands)
                 towers = ownTowers(bot)
             end
             local tw = attackerOf(towers, c.creep)
-            local ____temp_50
+            local ____temp_56
             if tw == nil then
-                ____temp_50 = nil
+                ____temp_56 = nil
             else
-                ____temp_50 = towerRead(bot, c.creep, tw, 0)
+                ____temp_56 = towerRead(bot, c.creep, tw, 0)
             end
-            tr = ____temp_50
+            tr = ____temp_56
             reads[c.cid] = tr
             notarget = tr == nil and c.ck ~= "r"
         end
@@ -917,13 +1134,13 @@ function ____exports.Consider(bot, cands)
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else
-            local ____temp_55
+            local ____temp_61
             if k == "lh" then
-                ____temp_55 = ____exports.FreeFor(bot, c.cid, now)
+                ____temp_61 = ____exports.FreeFor(bot, c.cid, now)
             else
-                ____temp_55 = nil
+                ____temp_61 = nil
             end
-            why = ____temp_55
+            why = ____temp_61
             if why == nil then
                 why = ____exports.Claim(factsOf(bot, c))
             end
@@ -935,6 +1152,7 @@ function ____exports.Consider(bot, cands)
             end
             r.mode = why == "held" and HDebug.ModeName(mode) or nil
         end
+        whys[c.cid] = why
         if why ~= nil then
             c.note(false, why)
         elseif best == nil or c.t.eta < best.t.eta then
@@ -942,22 +1160,31 @@ function ____exports.Consider(bot, cands)
         end
     end
     if best == nil then
+        castPass(
+            bot,
+            cands,
+            whys,
+            recs,
+            now,
+            busy and "acting" or (other and "row" or (held and "held" or nil)),
+            not casts()
+        )
         return
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue120
+            local __continue133
             repeat
                 if c == best or kindOf(bot, c) == nil then
-                    __continue120 = true
+                    __continue133 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue120 = true
+                __continue133 = true
             until true
-            if not __continue120 then
+            if not __continue133 then
                 break
             end
         end
@@ -1069,8 +1296,20 @@ local function rowBegin(bot)
     local lead = pd.lead
     local now = pd.now
     local tr = pd.tr
+    local cast = pd.cast
     local t = best.t
     local creep = t.creep
+    local ____temp_62
+    if cast == nil then
+        ____temp_62 = nil
+    else
+        ____temp_62 = bot:GetAbilityByName(cast.spell.name)
+    end
+    local ability = ____temp_62
+    if k == "sp" and (ability == nil or ability == nil) then
+        best.noteCast(false, "refused")
+        return false
+    end
     local ok = Tasks.Start(
         bot,
         {
@@ -1081,6 +1320,9 @@ local function rowBegin(bot)
             onEnd = function(r) return finish(bot, r) end
         },
         function(ctx)
+            if k == "sp" then
+                return ctx.cast(ability, {target = creep, timeout = cast.timing.land + 1})
+            end
             local opts = {
                 target = creep,
                 maxWait = t.eta + ____exports.SETTINGS.WaitSlack,
@@ -1103,12 +1345,20 @@ local function rowBegin(bot)
         end
     )
     if not ok then
-        best.note(false, "refused")
-        pd.seen.why = "refused"
+        if k == "sp" then
+            best.noteCast(false, "refused")
+        else
+            best.note(false, "refused")
+            pd.seen.why = "refused"
+        end
         return false
     end
     local aid = Telemetry.NextAid(pid)
-    best.note(true, nil, aid)
+    if k == "sp" then
+        best.noteCast(true, nil, aid)
+    else
+        best.note(true, nil, aid)
+    end
     local t0 = DotaTime()
     local a = {
         cid = best.cid,
@@ -1130,7 +1380,10 @@ local function rowBegin(bot)
         k == "dn" and "deny" or "creep",
         LaneConfig.PositionOf(bot)
     )
-    local others = CreepClaim.Take(best.cid, {pid = pid, rank = rank, k = k, due = pd.now + t.due})
+    local others = CreepClaim.Take(best.cid, {pid = pid, rank = rank, k = k == "dn" and "dn" or "lh", due = pd.now + (k == "sp" and cast.timing.land or t.due)})
+    if k == "sp" then
+        CreepClaim.Phase(pid, "swing")
+    end
     local sa = bot:GetAttackTarget()
     startLine(
         bot,
@@ -1146,7 +1399,8 @@ local function rowBegin(bot)
             lead = lead,
             k = k,
             oc = #others,
-            tr = tr
+            tr = tr,
+            cast = cast
         }
     )
     return true
@@ -1169,7 +1423,7 @@ local function rowWants(bot, _reads)
     end
     return {
         tgt = "creep:" .. tostring(pd.best.cid),
-        by = pd.now + pd.best.t.due - pd.need
+        by = pd.k == "sp" and pd.now or pd.now + pd.best.t.due - pd.need
     }
 end
 --- The row's verb: one frame of the attempt; true once it has ended.

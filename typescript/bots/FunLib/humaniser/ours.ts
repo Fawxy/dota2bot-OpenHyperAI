@@ -4,7 +4,7 @@
  * Every default is off (plan s7, agreed 23/11/2026): none of these has beaten the reference arm, so the default build is
  * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
  * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
- * RuneDetour. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
+ * RuneDetour, TowerStay, CreepSpells. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
  * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -51,6 +51,12 @@ export const DEFAULTS = {
      *  Needs LaneCreeps. Off: a support takes no last hit and stock plays. On: provisional (plan s5's widening, merged after its firing
      *  audit scraudit1; deleted at the next checkpoint batch if the line or guards fall). */
     SupportCreeps: true,
+    /** The lane's creeps, the cast, on the creep row (creep_row.ts, slice oha-creep-spells; no-creep-unpaid proposal s6): a hero of ours at any
+     *  position casts a unit-target spell on their lane creep of any kind that the attack cannot take, when the cast kills it now with no walk,
+     *  the mana of the hero's dearest other key spell is kept, and a key spell also hits an enemy hero (SpellSecure.CastPick); the creep free of
+     *  our claims and of a teammate's hit. Off: the cast pass runs as a shadow (`cw=off`) and stock plays. On: provisional (plan s5's small
+     *  row, merged after its audit creep-spells_audit_A to _C); read at the next checkpoint batch and deleted there if not above zero. */
+    CreepSpells: true,
     /** Slice oha-tower-fallthrough, a flag between two versions of our code: on, the leftover rule decides only whether to pre-hit, and
      *  a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the rule ends the
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at

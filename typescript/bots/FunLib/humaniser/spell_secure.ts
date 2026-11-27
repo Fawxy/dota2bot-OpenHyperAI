@@ -2,7 +2,7 @@
  * CANDIDATE(spell-secure): whether a castable spell could take a lane creep, and at what price (slice oha-creep-spell-shadow;
  * no-creep-unpaid proposal s6, "a ranged ability as a second verb"). Pure answers on facts passed in, so the tests need no game:
  * creep_offer.ts reads the facts (SpellReady.CreepSpellsOf, the engine's forecast and turn time) and logs the best answer on
- * the creep offer's line. Nothing decides on it yet; a row that casts will read the same answers.
+ * the creep offer's line; the creep row casts on `CastPick` of the same answers (Ours.CreepSpells).
  */
 import type { CreepSpell } from "bots/FunLib/humaniser/spell_ready";
 
@@ -124,4 +124,40 @@ export function Best(this: void, as: Answer[]): Answer | undefined {
         } else if (short(a) < short(best)) best = a;
     }
     return best;
+}
+
+/** Why an answer is not a cast the creep row may order, in the order asked; undefined when it is (`CastPick`). */
+export type CastWhy = "shape" | "nokill" | "walk" | "reserve" | "key";
+
+const CAST_STAGES: CastWhy[] = ["shape", "nokill", "walk", "reserve", "key"];
+
+function castWhyOf(a: Answer): CastWhy | undefined {
+    if (a.spell.shape !== "u") return "shape";
+    if (!a.kill) return "nokill";
+    if (a.timing.gap > 0) return "walk";
+    if (a.over < 0) return "reserve";
+    // User 27/11/2026: a disable secures a creep only when the same cast also hits an enemy hero.
+    if (a.spell.key && a.also <= 0) return "key";
+    return undefined;
+}
+
+/**
+ * The cast the creep row may order (slice oha-creep-spells): a unit-target spell that kills now, needs no walk, meets the reserve,
+ * and is a damage spell or also hits an enemy hero. Of those a damage spell before a key spell, then the cheaper. With none, `why`
+ * is the furthest any answer got (`CAST_STAGES`' order), so the line says what came closest.
+ */
+export function CastPick(this: void, as: Answer[]): { pick?: Answer; why?: CastWhy } {
+    let pick: Answer | undefined;
+    let far = -1;
+    for (const a of as) {
+        const why = castWhyOf(a);
+        if (why === undefined) {
+            if (pick === undefined || (pick.spell.key && !a.spell.key) || (pick.spell.key === a.spell.key && a.spell.mana < pick.spell.mana)) pick = a;
+            continue;
+        }
+        const at = CAST_STAGES.indexOf(why);
+        if (at > far) far = at;
+    }
+    if (pick !== undefined) return { pick };
+    return { why: far >= 0 ? CAST_STAGES[far] : undefined };
 }

@@ -33,6 +33,7 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepDeny = o.deny == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.SupportCreeps = o.support == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.CreepSpells = o.spells == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerStay = o.stay == true
 	CURRENT_TEAM = 2
 	T = 100
@@ -51,6 +52,10 @@ local function world(o)
 				for _, h in ipairs(f.hits) do if h.t <= t then hp = hp - h.damage end end
 				return hp
 			end,
+			turnTime = function() return 0 end,
+			cooldownLeft = function() return w.cd or 0 end,
+			-- The engine's ownHitTime counts the cooldown left (ownCommitTime): 0.3 s of wind-up and turn after it.
+			ownHitTime = function() return 0.3 + (w.cd or 0) end,
 		}
 	end
 	F.Jobs = function() return {} end
@@ -1177,6 +1182,156 @@ do -- the yield: a lower-cell claim before the swing ends the attempt, with yd=1
 	Claim.Take(cid, { pid = 5, rank = 70, k = "lh", due = 1 })
 	Claim.Take(cid, { pid = 4, rank = 60, k = "lh", due = 1 })
 	check("yield: a core never yields to a support, a hero of its own cell never yields to its mate", copts.interruptIf() == false)
+end
+
+-- The cast (Ours.CreepSpells, slice oha-creep-spells). A unit-target spell, 75 damage, range 800, cast point 0.3, landing at once; `special`
+-- answers a table spell's damage key and the radius keys.
+local function spell(o)
+	o = o or {}
+	return {
+		IsNull = function() return false end, GetName = function() return o.name or "test_nuke" end, GetLevel = function() return 1 end,
+		IsHidden = function() return false end, IsPassive = function() return false end, IsUltimate = function() return false end,
+		IsFullyCastable = function() return true end, GetAbilityDamage = function() return o.dmg or 75 end,
+		GetSpecialValueFloat = function(_, k) return (o.special or {})[k] or 0 end, GetBehavior = function() return 8 end,
+		GetCastRange = function() return o.range or 800 end, GetCastPoint = function() return 0.3 end, GetManaCost = function() return o.mana or 100 end,
+		GetCooldown = function() return 8 end,
+	}
+end
+
+-- Their melee creep 300 away with 60 HP (one cast kills it), which a core's attack does not take (the row's kind is their ranged creep):
+-- the attack ready in `cd` s and landing 0.3 s after its swing, the creep dying to the others' hits at `dies` s.
+local function castWorld(o)
+	o = o or {}
+	local w = world({ spells = o.spells ~= false })
+	w.cd = o.cd or 0.4
+	w.core.mana = o.mana or 300
+	w.core.abilities = o.abilities or { [0] = spell() }
+	local c = MakeCreep({ team = 3, x = o.x or 300, y = -5000, hp = o.hp or 60 })
+	w.targets = { target(c, { walk = o.walk or 0, due = 0, dies = o.dies or 0.5 }) }
+	return w, c
+end
+
+local function castRead(w, c)
+	return capture(function()
+		w.CO.Shadow(w.core)
+		T = T + 0.1
+		kill(c)
+		w.targets = {}
+		w.CO.Shadow(w.core)
+	end)
+end
+
+do -- the attack's hit lands after the creep dies (on cooldown): the cast goes on the creep, and the lines say so
+	local w, c = castWorld()
+	local out = castRead(w, c)
+	local ch, jobs = lines(out, "kind=creep"), lines(out, "job=creep")
+	check("cast: one task started, the row's decision", w.starts == 1, tostring(w.starts))
+	local got
+	w.body({ cast = function(a, opts) got = { a = a, opts = opts } end })
+	check("cast: the engine's cast of that spell on the creep", got ~= nil and got.a:GetName() == "test_nuke" and got.opts.target == c, table.concat(out, " | "))
+	check("cast: the creep's line reads cg=1 with the cast's attempt id, the attack's refusal kept", #ch == 1 and field(ch[1], "cg") == "1" and field(ch[1], "cw") == nil
+		and field(ch[1], "aid") ~= nil and field(ch[1], "go") == "0", table.concat(ch, " | "))
+	check("cast: the job start reads k=sp with the spell, its landing and its mana over the reserve", #jobs >= 1 and field(jobs[1], "k") == "sp" and field(jobs[1], "ab") == "test_nuke"
+		and field(jobs[1], "al") == "0.300" and field(jobs[1], "am") == "200", table.concat(jobs, " | "))
+	local claims = package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cidOf(c))
+	check("cast: the claim is held as committed (phase swing, so no lower-cell start makes it yield)", #claims == 1 and claims[1].phase == "swing", #claims)
+end
+
+do -- controls: the cast waits while the attack can still take the creep, and keeps to its own rules
+	local w, c = castWorld({ cd = 0, dies = 3 })
+	local out = castRead(w, c)
+	check("control: the attack is ready and the creep lives 3 s: no cast, the cast never weighed", w.starts == 0 and field(lines(out, "kind=creep")[1], "cg") == nil, table.concat(out, " | "))
+
+	w, c = castWorld({ spells = false })
+	out = castRead(w, c)
+	check("switch off: no cast; the shadow marks the creep it would have cast on (cg=0 cw=off)", w.starts == 0 and field(lines(out, "kind=creep")[1], "cg") == "0"
+		and field(lines(out, "kind=creep")[1], "cw") == "off", table.concat(out, " | "))
+
+	w, c = castWorld({ hp = 90 })
+	out = castRead(w, c)
+	check("control: 90 HP against 75 damage: no cast, cw=nokill", w.starts == 0 and field(lines(out, "kind=creep")[1], "cg") == "0"
+		and field(lines(out, "kind=creep")[1], "cw") == "nokill", table.concat(out, " | "))
+
+	w, c = castWorld({ x = 1000 })
+	out = castRead(w, c)
+	check("control: the creep 1,000 away, range 800: no walk-in, cw=walk", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "walk", table.concat(out, " | "))
+
+	w, c = castWorld({ mana = 180, abilities = { [0] = spell(), [1] = spell({ name = "sven_storm_bolt", mana = 110, special = { AbilityDamage = 100 } }) } })
+	w.core.abilities[1].IsFullyCastable = function() return false end
+	out = castRead(w, c)
+	check("control: 180 mana less 100 leaves under the stun's 110: cw=reserve", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "reserve", table.concat(out, " | "))
+
+	w, c = castWorld({ abilities = { [0] = spell({ name = "sven_storm_bolt", special = { AbilityDamage = 100 } }) } })
+	out = castRead(w, c)
+	check("control: a key spell with no enemy hero to hit: cw=key", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "key", table.concat(out, " | "))
+
+	w, c = castWorld()
+	w.core.IsCastingAbility = function() return true end
+	out = castRead(w, c)
+	check("control: the hero is already casting (OHA's own): no cast, cw=acting", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "acting", table.concat(out, " | "))
+
+	w, c = castWorld()
+	out = capture(function()
+		w.CO.Shadow(w.core)
+		w.onEnd({ success = false, reason = "timeout" })
+		T = T + 0.1
+		w.CO.Shadow(w.core)
+	end)
+	check("control: one attempt a creep: the cast timed out and the next read on the same creep casts again no more", w.starts == 1, tostring(w.starts))
+
+	w, c = castWorld()
+	w.core.mode = 4
+	out = castRead(w, c)
+	check("control: stock's retreat holds the hero: no cast, cw=held", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "held", table.concat(out, " | "))
+
+	w, c = castWorld()
+	w.running = { name = "pull" }
+	out = castRead(w, c)
+	check("control: another task runs for the hero (a pull): no cast, cw=row", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "row", table.concat(out, " | "))
+
+	-- A support's cast and the core of its lane (pid 1) that has the creep on offer: still going for it, or refusing it for the creep's sake.
+	for _, case in ipairs({ { why = "acting", casts = false }, { why = "covered", casts = true }, { why = "held", casts = true } }) do
+		w, c = castWorld()
+		local sup = addSupport({ pos = 4 })
+		sup.mana, sup.abilities = 300, { [0] = spell() }
+		package.loaded["bots/FunLib/humaniser/creep_claim"].Touch(1, { cidOf(c) }, T)[cidOf(c)].why = case.why
+		out = capture(function() w.CO.Shadow(sup) end)
+		local ch = lines(out, "job=creep")
+		if case.casts then
+			check("support: the core cannot take the creep (" .. case.why .. "): the support casts", w.starts == 1 and field(ch[1], "k") == "sp", table.concat(out, " | "))
+		else
+			check("support: the core is still going for the creep (" .. case.why .. "): no cast", w.starts == 0, table.concat(out, " | "))
+		end
+	end
+
+	w, c = castWorld()
+	package.loaded["bots/FunLib/humaniser/creep_claim"].Take(cidOf(c), { pid = 2, rank = 60, k = "lh", due = 1 })
+	out = castRead(w, c)
+	check("control: a teammate holds a claim on the creep: cw=claimed", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "claimed", table.concat(out, " | "))
+end
+
+do -- the attack first: a ranged creep the row attacks this read, and a melee creep the cast could take
+	local w, c = castWorld()
+	local r = ranged(320)
+	table.insert(w.targets, target(r, { walk = 0, due = 0.5, dies = 3 }))
+	local out = capture(function() w.CO.Shadow(w.core) end)
+	local job = lines(out, "job=creep")[1]
+	check("attack first: the row's attempt is the last hit of the ranged creep", w.starts == 1 and field(job, "k") == "lh" and field(job, "cid") == tostring(cidOf(r)), table.concat(out, " | "))
+end
+
+do -- the go rule's parts, pure
+	local CR = world().CR
+	check("AttackLate: ready at 0.4, landing 0.3 later (the engine's 0.7 counts the cooldown), after a death at 0.5", CR.AttackLate(0, 0, 0.4, 0.7, 0.5) == true)
+	check("AttackLate: the cooldown is counted once: ready at 0.6, landing at 0.9, before a death at 1.0", CR.AttackLate(0, 0, 0.6, 0.9, 1.0) == false)
+	check("AttackLate: due at 1, the hit at 1.3 beats a death at 2", CR.AttackLate(1, 0, 0, 0.3, 2) == false)
+	check("AttackLate: a walk of 1.5 s sets the swing", CR.AttackLate(0, 1.5, 0, 0.3, 1.7) == true)
+	check("AttackCannot: the row's covered refusal leaves the creep to the cast", CR.AttackCannot("covered", nil, true, false) == "covered")
+	check("AttackCannot: the hero acting, a teammate's hit, a tried creep: not the cast's", CR.AttackCannot("acting", nil, true, true) == nil
+		and CR.AttackCannot("mate", nil, true, true) == nil and CR.AttackCannot("tried", nil, true, true) == nil)
+	check("AttackCannot: a creep the row does not hit, the cell rule refusing it as unsafe", CR.AttackCannot("kind", "race", true, false) == "race")
+	check("AttackCannot: a creep the row does not hit, refused for another target (given): not the cast's", CR.AttackCannot("kind", "given", true, true) == nil)
+	check("AttackCannot: not yet due and the hero cannot be in range in time", CR.AttackCannot("early", nil, false, false) == "notime")
+	check("AttackCannot: not yet due, the attack can still take it", CR.AttackCannot("early", nil, true, false) == nil)
 end
 
 finish()

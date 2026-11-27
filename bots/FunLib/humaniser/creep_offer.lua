@@ -26,7 +26,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local r1, r2, dist, spellFields, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, spellRead, partsOf, candidate, parts, rowLead, LANES
+local r1, r2, dist, spellFields, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, spellAnswers, spellsOf, answersOf, partsOf, candidate, parts, rowLead, LANES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local UnitType = ____dota.UnitType
@@ -231,10 +231,10 @@ function creepsOf(f)
                     __continue47 = true
                     break
                 end
-                local ____this_8
-                ____this_8 = c
-                local ____opt_7 = ____this_8.GetSecondsPerAttack
-                local spa = ____opt_7 and ____opt_7(____this_8) or 1
+                local ____this_10
+                ____this_10 = c
+                local ____opt_9 = ____this_10.GetSecondsPerAttack
+                local spa = ____opt_9 and ____opt_9(____this_10) or 1
                 out[#out + 1] = {
                     x = at.x,
                     y = at.y,
@@ -270,23 +270,23 @@ function enemiesOf(f)
                     __continue52 = true
                     break
                 end
-                local ____at_x_11 = at.x
-                local ____at_y_12 = at.y
-                local ____temp_13 = e:GetPlayerID()
-                local ____temp_14 = e:GetAttackRange()
-                local ____temp_15 = e:GetBoundingRadius()
-                local ____temp_16 = e:GetAttackDamage()
-                local ____this_10
-                ____this_10 = e
-                local ____opt_9 = ____this_10.GetSecondsPerAttack
+                local ____at_x_13 = at.x
+                local ____at_y_14 = at.y
+                local ____temp_15 = e:GetPlayerID()
+                local ____temp_16 = e:GetAttackRange()
+                local ____temp_17 = e:GetBoundingRadius()
+                local ____temp_18 = e:GetAttackDamage()
+                local ____this_12
+                ____this_12 = e
+                local ____opt_11 = ____this_12.GetSecondsPerAttack
                 out[#out + 1] = {
-                    x = ____at_x_11,
-                    y = ____at_y_12,
-                    pid = ____temp_13,
-                    range = ____temp_14,
-                    hull = ____temp_15,
-                    dmg = ____temp_16,
-                    spa = ____opt_9 and ____opt_9(____this_10) or 1,
+                    x = ____at_x_13,
+                    y = ____at_y_14,
+                    pid = ____temp_15,
+                    range = ____temp_16,
+                    hull = ____temp_17,
+                    dmg = ____temp_18,
+                    spa = ____opt_11 and ____opt_11(____this_12) or 1,
                     speed = e:GetCurrentMovementSpeed()
                 }
                 hs[#hs + 1] = (tostring(e:GetPlayerID()) .. ":") .. tostring(heightAt(at.x, at.y) or "-")
@@ -412,8 +412,12 @@ function snapshot(bot, f, t, slack, others)
         enh = #hs > 0 and table.concat(hs, ";") or nil
     }
 end
-function spellRead(bot, f, creep, o, now)
+function spellAnswers(bot, f, creep)
     local cs = f.spells
+    local answers = {}
+    if #cs.spells == 0 then
+        return answers
+    end
     local verbs = Tasks.Verbs()
     local at = creep:GetLocation()
     local d = dist(f.hero, at)
@@ -442,7 +446,6 @@ function spellRead(bot, f, creep, o, now)
         end
     end
     local forecast = band and verbs.hpForecast(bot, creep, horizon) or nil
-    local answers = {}
     do
         local i = 0
         while i < #cs.spells do
@@ -462,38 +465,25 @@ function spellRead(bot, f, creep, o, now)
             i = i + 1
         end
     end
-    local best = SpellSecure.Best(answers)
-    if best == nil then
-        return
+    return answers
+end
+function spellsOf(bot, f)
+    if f.spells == nil then
+        f.spells = SpellReady.CreepSpellsOf(bot)
     end
-    if o.spFrom ~= nil then
-        if best.kill then
-            o.spTo = now
-        end
-        return
+    return f.spells
+end
+function answersOf(bot, f, creep)
+    if f.answers == nil then
+        f.answers = {}
     end
-    local closer = o.sp == nil or best.hp > 0 and (o.sp.hp <= 0 or best.hp - best.taken < o.sp.hp - o.sp.taken)
-    if not best.kill and not closer then
-        return
+    local as = f.answers[creep]
+    if as == nil then
+        spellsOf(bot, f)
+        as = partsOf().spell(bot, f, creep)
+        f.answers[creep] = as
     end
-    o.sp = {
-        name = best.spell.name,
-        shape = best.spell.shape,
-        key = best.spell.key,
-        gap = best.timing.gap,
-        land = best.timing.land,
-        taken = best.taken,
-        hp = best.hp,
-        over = best.over,
-        also = best.also,
-        mana = best.spell.mana,
-        cd = best.spell.cd,
-        n = #cs.spells
-    }
-    if best.kill then
-        o.spFrom = now
-        o.spTo = now
-    end
+    return as
 end
 function partsOf()
     if parts ~= nil then
@@ -527,7 +517,7 @@ function partsOf()
         ),
         snapshot = Telemetry.PerfStep("CO:snapshot", snapshot),
         race = Telemetry.PerfStep("CO:race", race),
-        spell = Telemetry.PerfStep("CO:spell", spellRead)
+        spell = Telemetry.PerfStep("CO:spell", spellAnswers)
     }
     return parts
 end
@@ -556,6 +546,19 @@ function candidate(bot, f, targets, t, creep, cid, o, a, now)
                 )
             end
             return fresh
+        end,
+        spells = function() return t.kind == "lasthit" and answersOf(bot, f, creep) or ({}) end,
+        noteCast = function(go, why, aid)
+            if o.cgo == true then
+                return
+            end
+            if go then
+                o.cgo = true
+                o.caid = aid
+                o.cwhy = nil
+            else
+                o.cwhy = why
+            end
         end,
         note = function(go, why, aid)
             if o.go == true then
@@ -632,37 +635,43 @@ end
 local function line(bot, o)
     local s = o.snap
     local want = o.okFrom ~= nil
-    local ____Telemetry_Event_6 = Telemetry.Event
-    local ____array_5 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_8 = Telemetry.Event
+    local ____array_7 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
         },
         {"kind", "creep"}
     )
-    local ____temp_2
-    if o.go == true then
-        ____temp_2 = o.aid
-    else
-        ____temp_2 = nil
-    end
-    __TS__SparseArrayPush(____array_5, {"aid", ____temp_2}, {"go", o.go == true and 1 or 0}, {"want", want and 1 or 0})
     local ____temp_3
     if o.go == true then
-        ____temp_3 = nil
+        ____temp_3 = o.aid
     else
-        ____temp_3 = o.why or "off"
+        local ____temp_2
+        if o.cgo == true then
+            ____temp_2 = o.caid
+        else
+            ____temp_2 = nil
+        end
+        ____temp_3 = ____temp_2
     end
-    __TS__SparseArrayPush(____array_5, {"why", ____temp_3})
+    __TS__SparseArrayPush(____array_7, {"aid", ____temp_3}, {"go", o.go == true and 1 or 0}, {"want", want and 1 or 0})
     local ____temp_4
     if o.go == true then
         ____temp_4 = nil
     else
-        ____temp_4 = o.last
+        ____temp_4 = o.why or "off"
+    end
+    __TS__SparseArrayPush(____array_7, {"why", ____temp_4})
+    local ____temp_5
+    if o.go == true then
+        ____temp_5 = nil
+    else
+        ____temp_5 = o.last
     end
     __TS__SparseArrayPush(
-        ____array_5,
-        {"lw", ____temp_4},
+        ____array_7,
+        {"lw", ____temp_5},
         {"src", (o.go == true or o.why ~= nil) and "own" or "shadow"},
         {"lane", o.lane},
         {"slot", o.first},
@@ -761,9 +770,17 @@ local function line(bot, o)
         {"enh", s.enh},
         unpack(spellFields(o))
     )
-    ____Telemetry_Event_6(
+    __TS__SparseArrayPush(____array_7, {"cg", o.cgo == true and 1 or (o.cwhy ~= nil and 0 or nil)})
+    local ____temp_6
+    if o.cgo == true then
+        ____temp_6 = nil
+    else
+        ____temp_6 = o.cwhy
+    end
+    __TS__SparseArrayPush(____array_7, {"cw", ____temp_6})
+    ____Telemetry_Event_8(
         "choice",
-        {__TS__SparseArraySpread(____array_5)}
+        {__TS__SparseArraySpread(____array_7)}
     )
 end
 local function hasOpen(pid)
@@ -787,6 +804,41 @@ local function closeAll(bot, pid)
     end
 end
 LANES = {Lane.Top, Lane.Mid, Lane.Bot}
+--- The best of the read's answers kept on the opportunity as `Opp.sp` says.
+local function spellRecord(o, answers, n, now)
+    local best = SpellSecure.Best(answers)
+    if best == nil then
+        return
+    end
+    if o.spFrom ~= nil then
+        if best.kill then
+            o.spTo = now
+        end
+        return
+    end
+    local closer = o.sp == nil or best.hp > 0 and (o.sp.hp <= 0 or best.hp - best.taken < o.sp.hp - o.sp.taken)
+    if not best.kill and not closer then
+        return
+    end
+    o.sp = {
+        name = best.spell.name,
+        shape = best.spell.shape,
+        key = best.spell.key,
+        gap = best.timing.gap,
+        land = best.timing.land,
+        taken = best.taken,
+        hp = best.hp,
+        over = best.over,
+        also = best.also,
+        mana = best.spell.mana,
+        cd = best.spell.cd,
+        n = n
+    }
+    if best.kill then
+        o.spFrom = now
+        o.spTo = now
+    end
+end
 --- One call per hero (the tick's ten a second): opens, updates and closes the hero's opportunities. Reads and logs; nothing is
 -- ordered.
 function ____exports.Shadow(bot)
@@ -816,24 +868,24 @@ function ____exports.Shadow(bot)
     if #targets == 0 and not hasOpen(pid) then
         return
     end
-    local ____P_lists_result_17 = P.lists(bot)
-    local listed = ____P_lists_result_17.listed
-    local theirs = ____P_lists_result_17.theirs
+    local ____P_lists_result_19 = P.lists(bot)
+    local listed = ____P_lists_result_19.listed
+    local theirs = ____P_lists_result_19.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue101
+                local __continue106
                 repeat
                     if listed[o.creep] == true then
-                        __continue101 = true
+                        __continue106 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue101 = true
+                    __continue106 = true
                 until true
-                if not __continue101 then
+                if not __continue106 then
                     break
                 end
             end
@@ -865,12 +917,12 @@ function ____exports.Shadow(bot)
     local spellTargets = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue106
+            local __continue111
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue106 = true
+                    __continue111 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -935,9 +987,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue106 = true
+                __continue111 = true
             until true
-            if not __continue106 then
+            if not __continue111 then
                 break
             end
         end
@@ -948,18 +1000,17 @@ function ____exports.Shadow(bot)
     if #spellTargets == 0 then
         return
     end
-    f.spells = SpellReady.CreepSpellsOf(bot)
-    if #f.spells.spells == 0 then
+    local cs = spellsOf(bot, f)
+    if #cs.spells == 0 then
         return
     end
     for ____, ____value in ipairs(spellTargets) do
         local creep = ____value[1]
         local o = ____value[2]
-        P.spell(
-            bot,
-            f,
-            creep,
+        spellRecord(
             o,
+            answersOf(bot, f, creep),
+            #cs.spells,
             now
         )
     end
