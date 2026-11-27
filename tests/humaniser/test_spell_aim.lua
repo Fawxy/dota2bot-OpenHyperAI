@@ -83,6 +83,16 @@ do -- Aimed: the cast is timed on its delay, and aimed where a walking creep wil
 	check("a hero the centre would miss is caught by the aim, and `centre` says it would not have been", still.aim.also == 1 and still.centre == 0)
 end
 
+do -- slice oha-aimed-flight: a circle around the hero whose damage flies out (Death Pulse) lands after the flight, on units picked at the cast
+	local pulse = { name = "pulse", shape = "n", geom = "s", range = 500, cp = 0, dmg = 150, dtype = 2, mana = 100, cd = 8, key = false,
+		radius = 500, half = 0, speed = 400, length = 0, delay = 0, offset = 0 }
+	local still = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 0, vy = 0 }, {}, {})
+	check("it lands after the flight to the creep, 400 at 400 a second, and no turn", near(still.timing.land, 1.0), still.timing.land)
+	-- Walking away at 300, the creep is 700 off a second on: placed at the landing it would be outside the circle.
+	local away = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 300, vy = 0 }, { { x = -450, y = 0, hull = 24, vx = -300, vy = 0 } }, {})
+	check("the creep and the foe are placed at the cast: no walk, and the foe walking out is hit", away.timing.gap == 0 and away.aim.also == 1, away.timing.gap)
+end
+
 do -- the line's best answer: of two equal-cost kills, the one that needs no walk (Raze 2 at 450 before Raze 1)
 	local function ans(name, gap)
 		return { spell = { name = name, mana = 75 }, timing = { gap = gap, walk = 0, land = 0.6 }, taken = 90, hp = 60, kill = true, over = 10, also = 0 }

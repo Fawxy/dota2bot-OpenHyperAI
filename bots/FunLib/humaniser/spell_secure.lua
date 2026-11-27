@@ -126,14 +126,17 @@ local function movedBy(u, t)
         vy = u.vy
     }
 end
---- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay.
+--- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
+-- where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
+-- homes on them, so they are placed `flight` before the landing.
 local function aimedTiming(s, g, aim, creep, heroSpeed, turn)
     local walk = aim.gap / math.max(100, heroSpeed)
-    local flight = 0
-    if s.speed > 0 and (g.k == "l" or g.k == "a") then
-        flight = dist(aim.from, g.k == "l" and creep or aim.at) / s.speed
-    end
-    return {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}
+    local flight = s.speed > 0 and dist(aim.from, (g.k == "l" or g.k == "s") and creep or aim.at) / s.speed or 0
+    return {timing = {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}, flight = flight}
+end
+--- Seconds from now until the spell's units are placed: at the landing, or at the cast for a homing `s` spell.
+local function placedAt(g, t)
+    return g.k == "s" and t.timing.land - t.flight or t.timing.land
 end
 --- A `p` or `n` spell aimed at the creep (spell_aim.ts): aimed at the creep and the foes where they are, then again where their
 -- velocities put them when that cast lands, and timed on the second aim. `others` (their other creeps) are counted where they are.
@@ -148,14 +151,17 @@ function ____exports.Aimed(s, hero, heroSpeed, turn, creep, foes, others)
         foes,
         others
     )
-    local t = aimedTiming(
-        s,
+    local t = placedAt(
         g,
-        first,
-        creep,
-        heroSpeed,
-        turn
-    ).land
+        aimedTiming(
+            s,
+            g,
+            first,
+            creep,
+            heroSpeed,
+            turn
+        )
+    )
     local c2 = movedBy(creep, t)
     local f2 = {}
     for ____, f in ipairs(foes) do
@@ -184,7 +190,7 @@ function ____exports.Aimed(s, hero, heroSpeed, turn, creep, foes, others)
             c2,
             heroSpeed,
             turn
-        ),
+        ).timing,
         centre = centre
     }
 end
