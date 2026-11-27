@@ -1418,6 +1418,8 @@ export const EVENTS = {
         ha: "num",
         /** `job=aggro` end, with an order: drawn creeps that closed on the hero by 150 or more since the order, or came within 200 of it (they chased it, whatever their attack target read). */
         ac: "num",
+        /** `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. */
+        aw: "num",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {

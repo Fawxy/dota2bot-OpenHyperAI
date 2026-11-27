@@ -4,6 +4,7 @@ dofile(HARNESS_DIR .. "/lane_world.lua")
 -- body is driven frame by frame with a stub ctx. Its execution in game is the rig's.
 
 local dota = require("bots/ts_libs/dota/index")
+BOT_ACTION_TYPE_ATTACK = BOT_ACTION_TYPE_ATTACK or 4
 local Lane, BotMode = dota.Lane, dota.BotMode
 
 local function capture(fn)
@@ -60,6 +61,7 @@ local function world(o)
 	w.AR.ResetCache()
 	w.core = MakeUnit({ pid = 1, team = 2, bot = true, loc = Vector(0, -5000), hp = 600, maxhp = 600 })
 	w.core.pos, w.core.lane, w.core.mode = o.pos or 2, Lane.Bot, BotMode.Laning
+	w.core.action = BOT_ACTION_TYPE_ATTACK
 	w.ours = MakeCreep({ team = 2, x = -300, y = -5000, name = "npc_dota_creep_goodguys_ranged" })
 	w.melee = MakeCreep({ team = 2, x = 100, y = -5000 })
 	w.m1 = MakeCreep({ team = 3, x = 300, y = -5000, target = w.melee })

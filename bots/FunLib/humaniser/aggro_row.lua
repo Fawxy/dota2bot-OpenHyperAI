@@ -111,6 +111,7 @@ local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 ____exports.SETTINGS = {
     OrderGap = 0.1,
+    OrderCap = 0.3,
     Switch = 1,
     Backstop = 3.5,
     Tolerance = 50,
@@ -271,6 +272,13 @@ end
 --- The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone.
 local back = __TS__Generator(function(ctx, bot, a)
     local orderAt = a.orderAt
+    while a.took == nil and ctx.now() < orderAt + ____exports.SETTINGS.OrderCap do
+        watch(bot, a)
+        if bot:GetCurrentActionType() == BOT_ACTION_TYPE_ATTACK then
+            a.took = ctx.now() - orderAt
+        end
+        coroutine.yield()
+    end
     while ctx.now() < orderAt + ____exports.SETTINGS.OrderGap do
         watch(bot, a)
         coroutine.yield()
@@ -387,6 +395,10 @@ local function finish(bot, res)
             {
                 "ac",
                 a.orderAt ~= nil and closed(a) or nil
+            },
+            {
+                "aw",
+                a.orderAt ~= nil and (a.took ~= nil and math.floor(a.took * 100 + 0.5) / 100 or -1) or nil
             },
             {"hp0", a.hp0},
             {

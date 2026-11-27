@@ -38,6 +38,8 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 export const SETTINGS = {
     /** Seconds from the order to the walk back's first move: the probe walked off 0.1 s after and drew as with none (8 of 8). */
     OrderGap: 0.1,
+    /** The most seconds the walk back waits for the attack to be the hero's current action (judgement: two or three bot thinks at 8x). */
+    OrderCap: 0.3,
     /** Seconds after the order before "no drawn creep on the hero" ends the draw: they switch 0.4 to 0.8 s after it (measured, about 70). */
     Switch: 1.0,
     /** The logged backstop (s from the order): the draw lets go at about 2.3 s (melee) and 2.85 (ranged), measured; s6b's 3.5. */
@@ -54,6 +56,8 @@ export const SETTINGS = {
 
 /** The task's host: the decider's (farm). */
 const HOST = BotMode.Farm;
+
+declare const BOT_ACTION_TYPE_ATTACK: number;
 
 /** The modes a draw may start from: a hero laning, farming or idle (judgement: any other is a higher rule's, as the rune detour's). */
 const FROM: Record<number, boolean> = { [BotMode.None]: true, [BotMode.Laning]: true, [BotMode.Farm]: true };
@@ -75,6 +79,8 @@ interface Attempt {
     hp0: number;
     /** Diagnosis (round 0's nodraw): the hero's attack target read as the order's target at a step after it; each drawn creep's distance to the hero at the order and its least since. */
     heroOn?: boolean;
+    /** Seconds from the order to the first step where the hero's current action was the attack; undefined until then. */
+    took?: number;
     d0?: number[];
     dmin?: number[];
 }
@@ -171,6 +177,13 @@ function closed(a: Attempt): number {
 /** The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone. */
 function* back(ctx: Lib.Ctx, bot: Unit, a: Attempt): Lib.TaskBody {
     const orderAt = a.orderAt!;
+    // A bot-API order goes through the hero's action queue: nothing new is ordered until the attack is the hero's current action
+    // (round 0: walking off 0.1 s after drew nothing in 65 of 102; the probe's 0.1 s was a server order, applied at once), or OrderCap.
+    while (a.took === undefined && ctx.now() < orderAt + SETTINGS.OrderCap) {
+        watch(bot, a);
+        if ((bot as unknown as { GetCurrentActionType(): number }).GetCurrentActionType() === BOT_ACTION_TYPE_ATTACK) a.took = ctx.now() - orderAt;
+        yield;
+    }
     while (ctx.now() < orderAt + SETTINGS.OrderGap) {
         watch(bot, a);
         yield;
@@ -240,6 +253,7 @@ function finish(bot: Unit, res: Lib.Result): void {
         ["rs", a.resumes],
         ["ha", a.orderAt !== undefined ? (a.heroOn === true ? 1 : 0) : undefined],
         ["ac", a.orderAt !== undefined ? closed(a) : undefined],
+        ["aw", a.orderAt !== undefined ? (a.took !== undefined ? math.floor(a.took * 100 + 0.5) / 100 : -1) : undefined],
         ["hp0", a.hp0],
         ["hp1", math.floor(bot.GetHealth())],
     ]);
