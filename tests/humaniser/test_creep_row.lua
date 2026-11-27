@@ -1408,6 +1408,9 @@ do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and st
 	local w = reserveWorld()
 	check("reserve: a creep due in 2.5 s is not started at its go, but its claim is the hero's", w.starts == 0 and claimApi().HeldBy(1) == w.cid,
 		w.starts .. " " .. tostring(claimApi().HeldBy(1)))
+	local rl = lines(w.out, "job=creep")
+	check("reserve: the go writes one reserve line with the due and need, the denominator the reference arm's start gives", #rl == 1
+		and field(rl[1], "phase") == "reserve" and field(rl[1], "cid") == tostring(w.cid) and field(rl[1], "gd") == "2.500" and field(rl[1], "gn") == "0", table.concat(rl, " | "))
 	check("reserve: at a round with 2.5 s spare the decider does not hold the hero", host(w) == 0.123 and w.starts == 0)
 	T = T + 1.5
 	check("reserve: 1.0 s spare, more than a round plus the margin: still not held", host(w) == 0.123 and w.starts == 0)

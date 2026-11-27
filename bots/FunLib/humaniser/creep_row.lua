@@ -469,16 +469,16 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
     local pick
     for ____, c in ipairs(cands) do
         do
-            local __continue167
+            local __continue168
             repeat
                 local why = whys[c.cid]
                 if c.t.kind ~= "lasthit" or why == nil then
-                    __continue167 = true
+                    __continue168 = true
                     break
                 end
                 local as = c.spells()
                 if #as == 0 then
-                    __continue167 = true
+                    __continue168 = true
                     break
                 end
                 local claim
@@ -508,13 +508,13 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                     end
                 end
                 if ____exports.AttackCannot(why, claim, onTime, late) == nil then
-                    __continue167 = true
+                    __continue168 = true
                     break
                 end
                 local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
                 if no ~= nil then
                     c.noteCast(false, no)
-                    __continue167 = true
+                    __continue168 = true
                     break
                 end
                 if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #Claims.ClaimsOn(Claims.CreepTarget(c.cid)) > 0 then
@@ -532,7 +532,7 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 end
                 if p == nil then
                     c.noteCast(false, no)
-                    __continue167 = true
+                    __continue168 = true
                     break
                 end
                 if best == nil or c.t.dies < best.t.dies then
@@ -544,9 +544,9 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 else
                     c.noteCast(false, "other")
                 end
-                __continue167 = true
+                __continue168 = true
             until true
-            if not __continue167 then
+            if not __continue168 then
                 break
             end
         end
@@ -1402,6 +1402,27 @@ function ____exports.Consider(bot, cands)
         ) then
             reserved[pid] = {cid = best.cid, pd = pd, at = now}
             best.note(false, "reserved")
+            if Telemetry.IsEnabled() then
+                Telemetry.Event(
+                    "job",
+                    {
+                        {"pid", pid},
+                        {"job", "creep"},
+                        {"k", pd.k},
+                        {"phase", "reserve"},
+                        {"host", HOST},
+                        {"cid", best.cid},
+                        {
+                            "gd",
+                            r2(best.t.due)
+                        },
+                        {
+                            "gn",
+                            r2(pd.need)
+                        }
+                    }
+                )
+            end
             return
         end
     else

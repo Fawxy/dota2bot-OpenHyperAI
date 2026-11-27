@@ -851,6 +851,19 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         if (Decider.Reserve(bot, ROW, offerOf(bot, pd))) {
             reserved[pid] = { cid: best.cid, pd, at: now };
             best.note(false, "reserved");
+            // The go as the reference arm's start line counts it (a start), so a rate per creep gone on reads the same in both arms.
+            if (Telemetry.IsEnabled()) {
+                Telemetry.Event("job", [
+                    ["pid", pid],
+                    ["job", "creep"],
+                    ["k", pd.k],
+                    ["phase", "reserve"],
+                    ["host", HOST],
+                    ["cid", best.cid],
+                    ["gd", r2(best.t.due)],
+                    ["gn", r2(pd.need)],
+                ]);
+            }
             return;
         }
     } else {

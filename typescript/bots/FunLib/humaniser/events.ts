@@ -1317,9 +1317,9 @@ export const EVENTS = {
         tgt: "str",
         /** `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason). */
         job: "str",
-        /** `start` (`why=trigger`) or `end`; `drop` (`job=creep`, Ours.CreepReserve): a reservation ended with no start. */
+        /** `start` (`why=trigger`) or `end`; `reserve` and `drop` (`job=creep`, Ours.CreepReserve): the creep reserved at the go, and a reservation ended with no start. */
         phase: "str",
-        /** On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`. On `job=creep phase=drop`: `gone` (the creep left the read or died), `early` (no longer about to come due), `late` (not reachable before it comes due), `row` (another task runs for the hero), `tower` (our tower now attacks it), `refused` (the runner refused the start), or the creep row's refusal kept from the last read (`Claim`'s, `claimed`, `wait`, `human`). */
+        /** On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`. On `job=creep phase=drop`: `gone` (the creep left the read or died), `early` (no longer about to come due), `late` (not reachable before it dies), `row` (another task runs for the hero), `tower` (our tower now attacks it), `refused` (the runner refused the start), or the creep row's refusal kept from the last read (`Claim`'s, `claimed`, `wait`, `human`). */
         why: "str",
         /** The hosting mode's number. */
         host: "num",
