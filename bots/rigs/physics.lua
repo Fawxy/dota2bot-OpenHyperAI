@@ -51,6 +51,9 @@
 -- Round 3e:
 --   clash   before 5:00, a real Dire wave stopped by a bait at a spot within 1,500 of their T1, ours, both or neither,
 --           and drawn there (kills the real Radiant lane creeps within 2,500 of the spot while it waits)
+-- Round 3f (3g: our creep passive, so a chaser's HP drop is the hero's hit; the hero traced every 0.1 s from the swing):
+--   swingdraw the hand-over walk with one attack on the nearest chaser at 1.3 s (a landed hit, or a last hit at 40 HP),
+--           against no attack: whether the draw lasts longer and who the chasers take at its end
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
 -- Round 3 also kills real lane creeps within 1800 of the top T1 sites (-6336,600) and (-6300,5300), and moves real Dire
 -- wave creeps to the main site (release, restrict).
@@ -1540,10 +1543,12 @@ end
 -- The draw: logs each creep's distance at the order and whether (and how soon) it took the hero.
 local function drawCheck(c, t)
 	for _, cr in ipairs(c.crs) do
-		local k = cr:entindex()
-		if c.drawn[k] == nil and on(cr, c.h) then
-			c.drawn[k] = t - c.tord
-			say(string.format("%s drawn %s after=%.2f", c.tag, L(cr), t - c.tord))
+		if not cr:IsNull() and cr:IsAlive() then
+			local k = cr:entindex()
+			if c.drawn[k] == nil and on(cr, c.h) then
+				c.drawn[k] = t - c.tord
+				say(string.format("%s drawn %s after=%.2f", c.tag, L(cr), t - c.tord))
+			end
 		end
 	end
 end
@@ -2018,7 +2023,7 @@ end
 local function nearestOf(c, onHero)
 	local best, bd
 	for _, cr in ipairs(c.crs) do
-		if cr:IsAlive() and (not onHero or on(cr, c.h)) then
+		if not cr:IsNull() and cr:IsAlive() and (not onHero or on(cr, c.h)) then
 			local d = d2(cr, c.h)
 			if bd == nil or d < bd then best, bd = cr, d end
 		end
@@ -2361,6 +2366,94 @@ for _, n in ipairs({ "npc_dota_hero_axe", "npc_dota_hero_sniper" }) do
 	pcall(function() PrecacheUnitByNameAsync(n, function() say("precached " .. n) end) end)
 end
 -- The site's trees (east of the creep, probe 1: they hid the hero until 250): cleared now, regrow in about 5 min.
+-- Round 3f (the hand-over to the creep row, no-creep-unpaid s6b): as release3 `level` with no release order, the hero walks
+-- back from 0.8 s to 250 behind our ranged creep; at 1.3 s after the order it attacks the nearest creep on it once, then walks
+-- on (`hit`: a landed hit; `kill`: the creep set to 40 HP so the hit is a last hit), or does not (`none`, the control). Read:
+-- whether the other chasers stay on the hero longer than the control, and who they take at the draw's end.
+local function swingDrawTrial(mode, rep)
+	return {
+		tag = string.format("swingdraw_%s_%d", mode, rep),
+		timeout = 15,
+		setup = function(c)
+			c.cx, c.cy = -4400, Y
+			c.crs = wave(c, V(-4400, Y), false)
+			c.own = creep("ranged", R, V(-4900, Y), "own")
+			tank(c.own)
+			-- Passive (round 3g): our creep must not hit the chasers, so a Dire creep's HP drop is the hero's hit.
+			passive(c.own)
+			c.step = 0
+		end,
+		tick = function(c, t)
+			if c.step == 0 and t > 1.5 then
+				c.step = 1
+				c.h = hero("npc_dota_hero_axe", R, V(-4700, Y), "hero", true)
+				pcall(function() c.h:SetBaseMoveSpeed(310) end)
+				c.tg = hero("npc_dota_hero_sniper", D, V(-4700, Y - 300), "dtgt")
+				watchAll(c, { c.own, c.b1 })
+			elseif c.step == 1 and t > 2.5 then
+				c.step = 2
+				drawOrder(c, t)
+			elseif c.step == 2 then
+				watchTick(c, t)
+				drawCheck(c, t)
+				gaps(c, t)
+				if c.swing and not c.swing.done and t - (c.swing.lastH or -9) >= 0.1 then
+					c.swing.lastH = t
+					local att = false
+					pcall(function() att = c.h:IsAttacking() end)
+					local cr = c.swing.cr
+					say(string.format("%s hero rel=%.2f after_order=%.2f attack=%s attacking=%s d=%s tgt_hp=%s", c.tag, t, t - c.tord, L(c.h:GetAttackTarget()),
+						tostring(att), (not cr:IsNull() and cr:IsAlive()) and f0(d2(cr, c.h)) or "-", (not cr:IsNull() and cr:IsAlive()) and tostring(cr:GetHealth()) or "dead"))
+				end
+				if t - c.tord > 0.8 and not c.moved then
+					c.moved = true
+					moveOrder(c.h, V(-5150, Y))
+				end
+				if mode ~= "none" and not c.swing and t - c.tord >= 1.3 then
+					local cr = nearestOf(c, true)
+					if cr then
+						pcall(function() cr:SetBaseHealthRegen(0) end)
+						if mode == "kill" then pcall(function() cr:SetHealth(40) end) end
+						c.swing = { cr = cr, hp = cr:GetHealth(), t = t }
+						local parts = {}
+						for _, x in ipairs(c.crs) do
+							if not x:IsNull() and x:IsAlive() then table.insert(parts, L(x) .. "=" .. L(x:GetAttackTarget())) end
+						end
+						say(string.format("%s swing rel=%.2f after_order=%.2f at=%s d=%s %s", c.tag, t, t - c.tord, L(cr), f0(d2(cr, c.h)), table.concat(parts, " ")))
+						attackOrder(c.h, cr)
+					end
+				end
+				local s = c.swing
+				if s and not s.done then
+					local dead = s.cr:IsNull() or not s.cr:IsAlive()
+					if dead or s.cr:GetHealth() < s.hp or t - s.t > 3 then
+						s.done = true
+						local parts = {}
+						for _, x in ipairs(c.crs) do
+							if not x:IsNull() and x:IsAlive() then table.insert(parts, L(x) .. "=" .. L(x:GetAttackTarget())) end
+						end
+						say(string.format("%s %s rel=%.2f after_order=%.2f %s", c.tag, dead and "killed" or (t - s.t > 2 and "no_hit" or "landed"), t, t - c.tord,
+							table.concat(parts, " ")))
+						moveOrder(c.h, V(-5150, Y))
+					end
+				end
+				if t - c.tord > 8 then
+					local parts = {}
+					for _, cr in ipairs(c.crs) do
+						if not cr:IsNull() and cr:IsAlive() then table.insert(parts, L(cr) .. "=" .. L(cr:GetAttackTarget())) end
+					end
+					say(string.format("%s final %s", c.tag, table.concat(parts, " ")))
+					return true
+				end
+			end
+		end,
+	}
+end
+S.swingdraw = {}
+for rep = 1, 3 do
+	for _, mode in ipairs({ "none", "hit", "kill" }) do table.insert(S.swingdraw, swingDrawTrial(mode, rep)) end
+end
+
 local function clearTrees()
 	pcall(function() GridNav:DestroyTreesAroundPoint(V(-5100, Y), 1300, true) end)
 	say("trees cleared")

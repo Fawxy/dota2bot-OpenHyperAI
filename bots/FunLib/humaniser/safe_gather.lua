@@ -256,14 +256,17 @@ function ____exports.Landing(bot, now)
     out.tower = out.tower / ____exports.SETTINGS.Window
     return out
 end
-function lanerRows(bot, r)
+function lanerRows(bot, r, remember)
+    if remember == nil then
+        remember = true
+    end
     local pid = bot:GetPlayerID()
     local mine = laners[pid] or ({})
     laners[pid] = mine
     local now = DotaTime()
     local visible = {}
     local here = bot:GetLocation()
-    local own = dist(r.from, here) <= ____exports.SETTINGS.OwnPlace and dist(r.place, here) <= ____exports.SETTINGS.OwnPlace
+    local own = remember and dist(r.from, here) <= ____exports.SETTINGS.OwnPlace and dist(r.place, here) <= ____exports.SETTINGS.OwnPlace
     for ____, row in ipairs(r.rows) do
         visible[row.pid] = true
         if own then
@@ -554,7 +557,7 @@ function ____exports.FromRead(bot, r, opts)
             ) or row.dmg
         }
     end
-    for ____, l in ipairs(lanerRows(bot, r)) do
+    for ____, l in ipairs(lanerRows(bot, r, opts.remember ~= false)) do
         reach[#reach + 1] = l
     end
     local ____temp_5 = bot:GetHealth()
@@ -768,8 +771,8 @@ function ask(bot, place, opts)
         ____temp_27 = true
     end
     local r = ____frameReader_31(____bot_30, horizon, ____temp_27, opts and opts.exclude)(from, place)
-    local ____exports_FromRead_42 = ____exports.FromRead
-    local ____bot_41 = bot
+    local ____exports_FromRead_44 = ____exports.FromRead
+    local ____bot_43 = bot
     local ____temp_34 = opts and opts.away
     if ____temp_34 == nil then
         ____temp_34 = false
@@ -782,7 +785,7 @@ function ask(bot, place, opts)
     if ____temp_40 == nil then
         ____temp_40 = false
     end
-    local i = ____exports_FromRead_42(____bot_41, r, {away = ____temp_34, held = ____temp_37, hold = ____temp_40})
+    local i = ____exports_FromRead_44(____bot_43, r, {away = ____temp_34, held = ____temp_37, hold = ____temp_40, remember = opts and opts.remember})
     local a = Safe.Decide(i)
     local who = opts and opts.who
     if who ~= nil and cutOn() and bot:IsAlive() then
@@ -947,13 +950,13 @@ function ____exports.Note(bot, who, place, i, a)
 end
 --- `At` asked once for both bars of one place: without a hold (`who` logs this one) and with one, from one read.
 function ____exports.AtBoth(bot, place, opts)
-    local ____ask_result_47 = ask(
+    local ____ask_result_49 = ask(
         bot,
         place,
         __TS__ObjectAssign({}, opts, {hold = false})
     )
-    local a = ____ask_result_47.a
-    local i = ____ask_result_47.i
+    local a = ____ask_result_49.a
+    local i = ____ask_result_49.i
     return {
         plain = a,
         hold = Safe.Decide(__TS__ObjectAssign({}, i, {hold = true}))
@@ -993,7 +996,7 @@ end
 -- `place`, 4 s, `away`, not held, and no hold. Held on `deadly`, with the answer's reason (`kill`, `tower`, `unknown`). The read and its
 -- decision are logged as ev=threat for `consumer` (with the gate's cut for the fixtures), and as ev=cut kind=safe under the same name.
 function ____exports.TripGate(bot, place, consumer, from)
-    local ____ask_result_48 = ask(bot, place, {
+    local ____ask_result_50 = ask(bot, place, {
         from = from,
         horizon = ____exports.WalkHorizon,
         away = true,
@@ -1001,8 +1004,8 @@ function ____exports.TripGate(bot, place, consumer, from)
         hold = false,
         who = consumer
     })
-    local a = ____ask_result_48.a
-    local r = ____ask_result_48.r
+    local a = ____ask_result_50.a
+    local r = ____ask_result_50.r
     local why = a.level == "deadly" and a.reason or nil
     if Threat.Log(bot, consumer, r, why or "go") then
         Threat.NoteGateCut(bot, r.from, r.place, consumer)

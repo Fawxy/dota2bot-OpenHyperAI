@@ -102,6 +102,11 @@ do
 		unseenAfter(function(Threat, G, bot) G.FromRead(bot, stay(Threat, bot), OPTS) end) ~= nil)
 	check("a hero that reached only a far place read is not remembered",
 		unseenAfter(function(Threat, G, bot) G.FromRead(bot, Threat.Read(bot, HERE, FAR, 4), OPTS) end) == nil)
+	local ro = {}
+	for k, v in pairs(OPTS) do ro[k] = v end
+	ro.remember = false
+	check("a read-only own-place read (a shadow's, remember=false) is not remembered",
+		unseenAfter(function(Threat, G, bot) G.FromRead(bot, stay(Threat, bot), ro) end) == nil)
 	local Threat, G, bot = world()
 	local e = enemy(10, -1700, 100)
 	G.FromRead(bot, stay(Threat, bot), OPTS)

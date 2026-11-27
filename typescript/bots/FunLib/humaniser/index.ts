@@ -26,6 +26,7 @@ import * as PullJob from "bots/FunLib/humaniser/pull_job";
 import * as CampRead from "bots/FunLib/humaniser/camp_read";
 import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
+import * as AggroOffer from "bots/FunLib/humaniser/aggro_offer";
 import * as CreepRow from "bots/FunLib/humaniser/creep_row";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
@@ -73,6 +74,7 @@ const steps = {
     stackShadow: StackJob.Shadow,
     runeDetourShadow: RuneDetour.Shadow,
     creepOfferShadow: CreepOffer.Shadow,
+    aggroShadow: AggroOffer.Shadow,
     probe: ApiProbe.Tick,
     tasks: Tasks.Tick,
 };
@@ -152,6 +154,8 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.runeDetourShadow, bot);
     // The lane creep offers of the cores (ev=choice kind=creep src=shadow): the offer's answers, one line a creep when it leaves the lists; reads and logs, no order.
     pcall(steps.creepOfferShadow, bot);
+    // The draw's chance for the cores (ev=choice kind=aggro src=shadow, no-creep-unpaid s6b): reads and logs, no order.
+    pcall(steps.aggroShadow, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);
@@ -182,6 +186,7 @@ if (Telemetry.GuardsEnabled()) {
 if (Telemetry.GuardsEnabled()) {
     // The creep offer shadow's own error is logged (ev=lua_error where=CreepOffer.Shadow) and the step does nothing that call.
     steps.creepOfferShadow = Telemetry.Guard("CreepOffer.Shadow", steps.creepOfferShadow);
+    steps.aggroShadow = Telemetry.Guard("AggroOffer.Shadow", steps.aggroShadow);
 }
 if (Telemetry.GuardsEnabled()) {
     for (const [k, fn] of pairs(steps as Record<string, (this: void, ...args: any[]) => any>)) (steps as any)[k] = Telemetry.PerfStep(`Tick:${k}`, fn);

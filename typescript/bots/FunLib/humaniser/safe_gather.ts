@@ -61,6 +61,8 @@ export interface Opts {
     held: boolean;
     /** The caller has a hold (a hit back or a join). A function is asked only when the shadow runs, for a hold that costs a read. */
     hold: boolean | ((this: void) => boolean);
+    /** False: a read-only ask (a shadow's): an own-place read does not write the lane memory (`lanerRows`). Default true. */
+    remember?: boolean;
 }
 
 const r1 = (v: number): number => math.floor(v * 10 + 0.5) / 10;
@@ -161,7 +163,7 @@ const laners: Record<number, Record<number, { dmg: number; at: number } | undefi
  * Records the reachers of a read of our own position (see `OwnPlace`) and returns the lane opponents that reached us within `LanerSeen`, are not visible now and could
  * have run to the walk since their last sighting (the missing belief's run: the speed the read last saw, capped, plus its margin).
  */
-function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
+function lanerRows(bot: Unit, r: Threat.Read, remember = true): Safe.Reacher[] {
     const pid = bot.GetPlayerID();
     const mine = laners[pid] ?? {};
     laners[pid] = mine;
@@ -169,7 +171,7 @@ function lanerRows(bot: Unit, r: Threat.Read): Safe.Reacher[] {
     const visible: Record<number, boolean> = {};
     // Only a read of the hero's own position writes the memory: a hero that reaches a far camp or a kill walk has not reached us.
     const here = bot.GetLocation();
-    const own = dist(r.from, here) <= SETTINGS.OwnPlace && dist(r.place, here) <= SETTINGS.OwnPlace;
+    const own = remember && dist(r.from, here) <= SETTINGS.OwnPlace && dist(r.place, here) <= SETTINGS.OwnPlace;
     for (const row of r.rows) {
         visible[row.pid] = true;
         if (own) mine[row.pid] = { dmg: row.dmg, at: now };
@@ -380,7 +382,7 @@ export function FromRead(bot: Unit, r: Threat.Read, opts: Opts): Safe.Inputs {
         const capped = !row.eng && row.u !== undefined && w < SETTINGS.KillWindow && !pressedBy(bot, row.u, now);
         reach.push({ pid: row.pid, hitting: row.eng, dmg: capped ? math.min(row.dmg, exitDamage(bot, row.u!, w, now)) : row.dmg });
     }
-    for (const l of lanerRows(bot, r)) reach.push(l);
+    for (const l of lanerRows(bot, r, opts.remember !== false)) reach.push(l);
     return {
         hp: bot.GetHealth(),
         hpMax: bot.GetMaxHealth(),
@@ -505,6 +507,8 @@ export interface AtOpts {
     exclude?: number;
     /** When given and cut logging is on, the answer is logged as `ev=cut kind=safe who=<who>` like a shadow, so the call replays offline. */
     who?: string;
+    /** False: a read-only ask that leaves the lane memory as it was (a shadow's ask, which must not change another reader's answer). */
+    remember?: boolean;
     /** With `who`: this asker asks many places a frame (a creep pick's walk-ins, the lane spot's candidates), so its lines are a sample, one per level each `CutEvery`, not one per place. */
     sampled?: boolean;
 }
@@ -549,7 +553,7 @@ function ask(bot: Unit, place: Vector, opts?: AtOpts): { a: Safe.Answer; r: Thre
     const horizon = opts?.horizon ?? (opts?.held === true || opts?.hold === true ? Threat.SETTINGS.StayHorizon : SETTINGS.FreshHorizon);
     const from = opts?.from ?? bot.GetLocation();
     const r = frameReader(bot, horizon, opts?.engaged ?? true, opts?.exclude)(from, place);
-    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false });
+    const i = FromRead(bot, r, { away: opts?.away ?? false, held: opts?.held ?? false, hold: opts?.hold ?? false, remember: opts?.remember });
     const a = Safe.Decide(i);
     const who = opts?.who;
     if (who !== undefined && cutOn() && bot.IsAlive()) {
