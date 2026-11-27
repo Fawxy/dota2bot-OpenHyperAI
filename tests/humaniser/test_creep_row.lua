@@ -1290,7 +1290,7 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 	check("control: another task runs for the hero (a pull): no cast, cw=row", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "row", table.concat(out, " | "))
 
 	-- A support's cast and the core of its lane (pid 1) that has the creep on offer: still going for it, or refusing it for the creep's sake.
-	for _, case in ipairs({ { why = "acting", casts = false }, { why = "covered", casts = true } }) do
+	for _, case in ipairs({ { why = "acting", casts = false }, { why = "covered", casts = true }, { why = "held", casts = true } }) do
 		w, c = castWorld()
 		local sup = addSupport({ pos = 4 })
 		sup.mana, sup.abilities = 300, { [0] = spell() }
@@ -1298,7 +1298,7 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 		out = capture(function() w.CO.Shadow(sup) end)
 		local ch = lines(out, "job=creep")
 		if case.casts then
-			check("support: the core refused the creep as covered: the support casts", w.starts == 1 and field(ch[1], "k") == "sp", table.concat(out, " | "))
+			check("support: the core cannot take the creep (" .. case.why .. "): the support casts", w.starts == 1 and field(ch[1], "k") == "sp", table.concat(out, " | "))
 		else
 			check("support: the core is still going for the creep (" .. case.why .. "): no cast", w.starts == 0, table.concat(out, " | "))
 		end

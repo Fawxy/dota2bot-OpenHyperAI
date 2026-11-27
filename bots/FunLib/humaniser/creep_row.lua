@@ -614,13 +614,7 @@ local HOST = BotMode.Farm
 function ____exports.Due(walk, due, lead)
     return due <= walk + lead
 end
-STILL_GOING = {
-    busy = true,
-    acting = true,
-    row = true,
-    held = true,
-    refused = true
-}
+STILL_GOING = {acting = true, row = true, refused = true}
 CAST_OVER = {
     late = true,
     outdmg = true,

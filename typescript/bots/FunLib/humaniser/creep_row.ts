@@ -166,8 +166,11 @@ export function AttackLate(this: void, due: number, need: number, cd: number, hi
     return math.max(due, need, cd) + (hit - cd) > dies;
 }
 
-/** A lower-cell hero's answer that says it is still going for the creep: its attempt runs, or it held back for itself, not for the creep. */
-const STILL_GOING: Record<string, boolean> = { busy: true, acting: true, row: true, held: true, refused: true };
+/**
+ * A lower-cell hero's answer that says it is still going for the creep: it held back for its own cast, another task or the runner, not for
+ * the creep. Not `held` (stock's retreat has it) or `busy` (its attempt on another creep runs): that hero cannot take this creep now.
+ */
+const STILL_GOING: Record<string, boolean> = { acting: true, row: true, refused: true };
 
 /**
  * For the cast: a hero with a lower `creep` cell has the creep on offer and its latest fresh answer says it is still going for it
