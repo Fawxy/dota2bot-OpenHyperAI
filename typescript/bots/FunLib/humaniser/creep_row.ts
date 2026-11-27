@@ -438,9 +438,9 @@ function reserves(k: Pending["k"], tr: TowerRead | undefined): boolean {
     return k !== "sp" && tr === undefined && Ours.On("CreepReserve");
 }
 
-/** The spare (s) left now past the hero's walk to the reserved creep, from the latest read's due and need. */
-function slackOf(pd: Pending, now: number): number {
-    return pd.best.t.due - pd.need - (now - pd.now);
+/** The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death). */
+function slackOf(pd: Pending, now: number, at: number = pd.best.t.due): number {
+    return at - pd.need - (now - pd.now);
 }
 
 /** The reservation ends without a start: the claim goes, the creep's try is not spent, and the line says why. */
@@ -463,7 +463,8 @@ function drop(bot: Unit, pid: number, rv: Reservation, why: string): void {
 
 /**
  * A read with a reservation: the creep is read again as any candidate (`whys`), and the reservation drops when the creep is gone
- * from the read (`gone`), no longer about to come due (`early`), not reachable before it comes due (`late`), another task runs for
+ * from the read (`gone`), no longer about to come due (`early`), not reachable before it dies (`late`: Consider's on-time test reads
+ * the reserved creep's death, not its due), another task runs for
  * the hero (`row`), or our tower now attacks it (`tower`: the leftover rule starts at once, so the next read offers it). Any other
  * refusal is kept for the start round. Else the read's view replaces the reservation's. True while it stands.
  */
@@ -488,7 +489,9 @@ function keep(bot: Unit, pid: number, rv: Reservation, cands: CreepOffer.Candida
 
 /**
  * The decider's round with a reservation: the start is offered (as `pending`, which `rowBegin` takes) once one more round would
- * leave less than `Margin`, unless a waiting refusal stands. Late, gone, or a claim's refusal kept from the last read: dropped.
+ * leave less than `Margin`, unless a waiting refusal stands; past its due it is still offered until the hero's walk would end after
+ * the creep dies (rig ladder-support dire, 27/11/2026: 9 of 14 `late` drops with no other mode were started by the same hero within 2 s, most
+ * already in range, a start refused at its round having let the due pass). Late, gone, or a claim's refusal kept from the last read: dropped.
  * The creep's handle is read only through `IsNull` and `IsAlive`: the read that listed it may be a round old.
  */
 function startDue(bot: Unit, pid: number, rv: Reservation): Decider.Offer | undefined {
@@ -500,12 +503,11 @@ function startDue(bot: Unit, pid: number, rv: Reservation): Decider.Offer | unde
         drop(bot, pid, rv, "gone");
         return undefined;
     }
-    const slack = slackOf(rv.pd, now);
-    if (slack < 0) {
+    if (slackOf(rv.pd, now, rv.pd.best.t.dies) < 0) {
         drop(bot, pid, rv, "late");
         return undefined;
     }
-    if (slack > SETTINGS.DeciderRound + SETTINGS.Margin) return undefined;
+    if (slackOf(rv.pd, now) > SETTINGS.DeciderRound + SETTINGS.Margin) return undefined;
     if (rv.why !== undefined) {
         if (WAITS[rv.why] !== true) drop(bot, pid, rv, rv.why);
         return undefined;
@@ -804,7 +806,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (notarget) why = "notarget";
         else if (tr?.why !== undefined) why = tr.why;
         else if (!pre && !dueNow(bot, c, r, lead, now)) why = "early";
-        else if (!pre && !OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
+        else if (!pre && !OnTime(Need(bot, c.creep), reserved[pid]?.cid === c.cid ? c.t.dies : c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
         else if (other) why = "row";
         else if (held) why = "held";

@@ -1458,12 +1458,42 @@ do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and st
 	end)
 	check("drop: another task running for the hero drops it (row)", #dropped == 1 and field(dropped[1], "why") == "row", table.concat(dropped, " | "))
 
+	-- The creep dies at 3 s (target's default).
 	w = reserveWorld()
-	dropped = jobLines(function()
+	capture(function()
 		T = T + 2.6
 		host(w)
 	end)
-	check("drop: a round past the spare drops it late and starts nothing", #dropped == 1 and field(dropped[1], "why") == "late" and w.starts == 0 and claimApi().HeldBy(1) == nil,
+	check("late: a round past its due but before it dies still starts it", w.starts == 1 and claimApi().HeldBy(1) == w.cid, w.starts)
+
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 3.1
+		host(w)
+	end)
+	check("drop: a round past its death drops it late and starts nothing", #dropped == 1 and field(dropped[1], "why") == "late" and w.starts == 0 and claimApi().HeldBy(1) == nil,
+		table.concat(dropped, " | "))
+
+	-- The creep now 400 away: past the reach (190) at speed 300, a need of 0.7 s.
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 0.2
+		w.c.loc = Vector(400, -5000)
+		w.targets = { target(w.c, { walk = 0.7, due = 0.3, dies = 2 }) }
+		w.CO.Shadow(w.core)
+		host(w)
+	end)
+	check("read: a reserved creep the hero reaches after its due but before it dies is kept, and the round starts it", #dropped == 1
+		and field(dropped[1], "phase") == "start" and w.starts == 1, table.concat(dropped, " | "))
+
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 0.2
+		w.c.loc = Vector(400, -5000)
+		w.targets = { target(w.c, { walk = 0.7, due = 0.3, dies = 0.5 }) }
+		w.CO.Shadow(w.core)
+	end)
+	check("read: a reserved creep the hero cannot reach before it dies drops late", #dropped == 1 and field(dropped[1], "why") == "late" and w.starts == 0,
 		table.concat(dropped, " | "))
 
 	w = reserveWorld()

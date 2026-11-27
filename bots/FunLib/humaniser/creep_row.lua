@@ -606,9 +606,9 @@ function onPhase(pid, p, t)
     Claims.Phase(pid, p)
 end
 function offerOf(bot, pd)
-    local ____pd_75 = pd
-    local best = ____pd_75.best
-    local k = ____pd_75.k
+    local ____pd_80 = pd
+    local best = ____pd_80.best
+    local k = ____pd_80.k
     local rank = TripTable.RankOf(
         k == "dn" and "deny" or "creep",
         LaneConfig.PositionOf(bot)
@@ -766,9 +766,12 @@ local WAITS = {acting = true, held = true, fight = true}
 local function reserves(k, tr)
     return k ~= "sp" and tr == nil and Ours.On("CreepReserve")
 end
---- The spare (s) left now past the hero's walk to the reserved creep, from the latest read's due and need.
-local function slackOf(pd, now)
-    return pd.best.t.due - pd.need - (now - pd.now)
+--- The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death).
+local function slackOf(pd, now, at)
+    if at == nil then
+        at = pd.best.t.due
+    end
+    return at - pd.need - (now - pd.now)
 end
 --- The reservation ends without a start: the claim goes, the creep's try is not spent, and the line says why.
 local function drop(bot, pid, rv, why)
@@ -799,7 +802,8 @@ local function drop(bot, pid, rv, why)
     )
 end
 --- A read with a reservation: the creep is read again as any candidate (`whys`), and the reservation drops when the creep is gone
--- from the read (`gone`), no longer about to come due (`early`), not reachable before it comes due (`late`), another task runs for
+-- from the read (`gone`), no longer about to come due (`early`), not reachable before it dies (`late`: Consider's on-time test reads
+-- the reserved creep's death, not its due), another task runs for
 -- the hero (`row`), or our tower now attacks it (`tower`: the leftover rule starts at once, so the next read offers it). Any other
 -- refusal is kept for the start round. Else the read's view replaces the reservation's. True while it stands.
 local function keep(bot, pid, rv, cands, whys, reads, recs, lead, now)
@@ -842,7 +846,9 @@ local function keep(bot, pid, rv, cands, whys, reads, recs, lead, now)
     return true
 end
 --- The decider's round with a reservation: the start is offered (as `pending`, which `rowBegin` takes) once one more round would
--- leave less than `Margin`, unless a waiting refusal stands. Late, gone, or a claim's refusal kept from the last read: dropped.
+-- leave less than `Margin`, unless a waiting refusal stands; past its due it is still offered until the hero's walk would end after
+-- the creep dies (rig ladder-support dire, 27/11/2026: 9 of 14 `late` drops with no other mode were started by the same hero within 2 s, most
+-- already in range, a start refused at its round having let the due pass). Late, gone, or a claim's refusal kept from the last read: dropped.
 -- The creep's handle is read only through `IsNull` and `IsAlive`: the read that listed it may be a round old.
 local function startDue(bot, pid, rv)
     Decider.Refusal(bot, ____exports.ROW.name)
@@ -857,12 +863,11 @@ local function startDue(bot, pid, rv)
         drop(bot, pid, rv, "gone")
         return nil
     end
-    local slack = slackOf(rv.pd, now)
-    if slack < 0 then
+    if slackOf(rv.pd, now, rv.pd.best.t.dies) < 0 then
         drop(bot, pid, rv, "late")
         return nil
     end
-    if slack > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
+    if slackOf(rv.pd, now) > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
         return nil
     end
     if rv.why ~= nil then
@@ -1274,29 +1279,35 @@ function ____exports.Consider(bot, cands)
             now
         ) then
             why = "early"
-        elseif not pre and not ____exports.OnTime(
-            ____exports.Need(bot, c.creep),
-            c.t.due
-        ) then
-            why = noTime(r, first)
-        elseif busy then
-            why = "acting"
-        elseif other then
-            why = "row"
-        elseif held then
-            why = "held"
-        elseif lastCid[pid] == c.cid then
-            why = "tried"
         else
-            local ____temp_67
-            if k == "lh" then
-                ____temp_67 = ____exports.FreeFor(bot, c.cid, now)
-            else
-                ____temp_67 = nil
+            local ____temp_71 = not pre
+            if ____temp_71 then
+                local ____exports_OnTime_70 = ____exports.OnTime
+                local ____exports_Need_result_69 = ____exports.Need(bot, c.creep)
+                local ____opt_67 = reserved[pid]
+                ____temp_71 = not ____exports_OnTime_70(____exports_Need_result_69, (____opt_67 and ____opt_67.cid) == c.cid and c.t.dies or c.t.due)
             end
-            why = ____temp_67
-            if why == nil then
-                why = ____exports.Claim(factsOf(bot, c))
+            if ____temp_71 then
+                why = noTime(r, first)
+            elseif busy then
+                why = "acting"
+            elseif other then
+                why = "row"
+            elseif held then
+                why = "held"
+            elseif lastCid[pid] == c.cid then
+                why = "tried"
+            else
+                local ____temp_72
+                if k == "lh" then
+                    ____temp_72 = ____exports.FreeFor(bot, c.cid, now)
+                else
+                    ____temp_72 = nil
+                end
+                why = ____temp_72
+                if why == nil then
+                    why = ____exports.Claim(factsOf(bot, c))
+                end
             end
         end
         if why ~= nil and why ~= "kind" and why ~= "early" then
@@ -1503,23 +1514,23 @@ local function rowBegin(bot)
     local now = pd.now
     local tr = pd.tr
     local cast = pd.cast
-    local ____temp_68
+    local ____temp_73
     if pd.rvAt ~= nil then
-        ____temp_68 = reserved[pid]
+        ____temp_73 = reserved[pid]
     else
-        ____temp_68 = nil
+        ____temp_73 = nil
     end
-    local rv = ____temp_68
+    local rv = ____temp_73
     local t = best.t
     local creep = t.creep
     local age = DotaTime() - now
-    local ____temp_69
+    local ____temp_74
     if cast == nil then
-        ____temp_69 = nil
+        ____temp_74 = nil
     else
-        ____temp_69 = bot:GetAbilityByName(cast.spell.name)
+        ____temp_74 = bot:GetAbilityByName(cast.spell.name)
     end
-    local ability = ____temp_69
+    local ability = ____temp_74
     if k == "sp" and (ability == nil or ability == nil) then
         best.noteCast(false, "refused")
         return false
@@ -1603,18 +1614,18 @@ local function rowBegin(bot)
         end
     end
     local sa = bot:GetAttackTarget()
-    local ____startLine_74 = startLine
-    local ____array_73 = __TS__SparseArrayNew(bot, best.cid, aid, {walk = t.walk, due = t.due - age})
-    local ____temp_72
+    local ____startLine_79 = startLine
+    local ____array_78 = __TS__SparseArrayNew(bot, best.cid, aid, {walk = t.walk, due = t.due - age})
+    local ____temp_77
     if pd.rvAt == nil then
-        ____temp_72 = nil
+        ____temp_77 = nil
     else
-        ____temp_72 = t0 - pd.rvAt
+        ____temp_77 = t0 - pd.rvAt
     end
     __TS__SparseArrayPush(
-        ____array_73,
+        ____array_78,
         {
-            rv = ____temp_72,
+            rv = ____temp_77,
             need = need,
             reach = CreepOffer.Reach(bot, best.creep),
             seen = pd.seen,
@@ -1627,7 +1638,7 @@ local function rowBegin(bot)
             cast = cast
         }
     )
-    ____startLine_74(__TS__SparseArraySpread(____array_73))
+    ____startLine_79(__TS__SparseArraySpread(____array_78))
     return true
 end
 --- The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
