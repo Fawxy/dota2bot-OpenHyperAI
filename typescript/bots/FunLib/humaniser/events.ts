@@ -1406,7 +1406,7 @@ export const EVENTS = {
         ot: "num",
         /** `job=aggro` end: seconds from the order to the draw's end (no drawn creep on the hero any more), or to the attempt's end when it ended otherwise. */
         lt: "num",
-        /** `job=aggro`: on `start` the creeps the read would draw (within 500 of the draw spot), on `order` and `end` those of the read at the order. */
+        /** `job=aggro`: on `start` the creeps the read would draw (within AggroOffer Drawn of the draw spot), on `order` and `end` those of the read at the order. */
         an: "num",
         /** `job=aggro`: on `end` the most drawn creeps on the hero at one step; on `resume` those on it then. */
         ah: "num",

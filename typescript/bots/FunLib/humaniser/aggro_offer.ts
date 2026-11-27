@@ -32,10 +32,14 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 export const SETTINGS = {
     /** Seconds between a hero's reads, offset by player id as the creep offer's (judgement: a draw's chance lasts seconds). */
     Every: 0.2,
-    /** The draw spot is this far (centre) from their nearest fighting creep: the measured 500 reach less a margin (judgement). */
-    Reach: 450,
-    /** Creeps within this of the draw spot (centre) are drawn (measured: 490 melee 4 of 4, 500 ranged 1 of 1, none at 510). */
-    Drawn: 500,
+    /** The draw spot is this far (centre) from their nearest fighting creep: the Drawn reach less a margin (judgement). */
+    Reach: 300,
+    /**
+     * Creeps within this of the draw spot (centre) are drawn. Made idle creeps were drawn to 500 (probe 3: 490 melee 4 of 4, none at 510);
+     * fighting wave creeps much less far (oha-lane-aggro diag3, 27/11/2026: of 58 orders, the nearest drawn creep at 350 or less chased
+     * 26 of 31, over 350 chased 5 of 27). Measured on the bot API's order, which the probe did not use.
+     */
+    Drawn: 350,
     /** The hand-over spot is this far behind our ranged creep, away from the clash (measured: 2 of 2 handed over at 250). */
     Back: 250,
     /** Their creeps fighting within this of our ranged creep make the clash (judgement: about a wave's length). */

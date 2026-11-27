@@ -49,8 +49,8 @@ function noteHeroTarget(bot, now)
 end
 ____exports.SETTINGS = {
     Every = 0.2,
-    Reach = 450,
-    Drawn = 500,
+    Reach = 300,
+    Drawn = 350,
     Back = 250,
     Clash = 1200,
     Draw = 2.5,
