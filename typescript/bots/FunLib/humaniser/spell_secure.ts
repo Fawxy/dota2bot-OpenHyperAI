@@ -183,33 +183,72 @@ export function Best(this: void, as: Answer[]): Answer | undefined {
     return best;
 }
 
-/** Why an answer is not a cast the creep row may order, in the order asked; undefined when it is (`CastPick`). */
-export type CastWhy = "shape" | "nokill" | "walk" | "reserve" | "key";
+/**
+ * Whether the cast lands where the hero faces, so the hero turns before it (slice oha-aimed-cast): a no-target line or circle in front
+ * of the hero. A point spell turns the hero to its point in the game's own order; a spell around the hero needs no facing.
+ */
+export function Turns(this: void, s: CreepSpell): boolean {
+    if (s.shape !== "n") return false;
+    const k = GeomOf(s).k;
+    return k === "l" || k === "r";
+}
 
-const CAST_STAGES: CastWhy[] = ["shape", "nokill", "walk", "reserve", "key"];
+/** The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer. */
+export function FacingOf(this: void, a: Answer): number | undefined {
+    return a.aim?.th;
+}
 
-function castWhyOf(a: Answer): CastWhy | undefined {
-    if (a.spell.shape !== "u") return "shape";
+/**
+ * Why an answer is not a cast the creep row may order, in the order asked; undefined when it is (`CastPick`). `aim`: a cast that turns
+ * the hero whose aim has less slack than the pick's `slack`. `aimoff`: a point or no-target cast that passes every gate while
+ * Ours.AimedCasts is off (the shadow of that widening).
+ */
+export type CastWhy = "shape" | "nokill" | "walk" | "reserve" | "key" | "aim" | "aimoff";
+
+const CAST_STAGES: CastWhy[] = ["shape", "nokill", "walk", "reserve", "key", "aim", "aimoff"];
+
+export interface PickOpts {
+    /** Ours.AimedCasts: point and no-target answers may be cast. */
+    aimed: boolean;
+    /** The least slack (radians) a cast that turns the hero needs. */
+    slack: number;
+}
+
+function castWhyOf(a: Answer, o: PickOpts): CastWhy | undefined {
+    if (a.spell.shape !== "u" && a.aim === undefined) return "shape";
     if (!a.kill) return "nokill";
     if (a.timing.gap > 0) return "walk";
     if (a.over < 0) return "reserve";
     // User 27/11/2026: a disable secures a creep only when the same cast also hits an enemy hero.
     if (a.spell.key && a.also <= 0) return "key";
-    return undefined;
+    if (a.spell.shape === "u") return undefined;
+    if (Turns(a.spell) && (a.aim!.slack ?? 0) < o.slack) return "aim";
+    return o.aimed ? undefined : "aimoff";
 }
 
+/** Whether `a` is the better of two casts that both pass: a damage spell before a key spell, a unit-target one before an aimed one, then the cheaper. */
+function castBefore(a: Answer, b: Answer): boolean {
+    if (a.spell.key !== b.spell.key) return !a.spell.key;
+    const au = a.spell.shape === "u";
+    if (au !== (b.spell.shape === "u")) return au;
+    return a.spell.mana < b.spell.mana;
+}
+
+const UNIT_ONLY: PickOpts = { aimed: false, slack: 0 };
+
 /**
- * The cast the creep row may order (slice oha-creep-spells): a unit-target spell that kills now, needs no walk, meets the reserve,
- * and is a damage spell or also hits an enemy hero. Of those a damage spell before a key spell, then the cheaper. With none, `why`
- * is the furthest any answer got (`CAST_STAGES`' order), so the line says what came closest.
+ * The cast the creep row may order (slices oha-creep-spells, oha-aimed-cast): a spell that kills now, needs no walk, meets the reserve,
+ * and is a damage spell or also hits an enemy hero; a point or no-target one only aimed, with `o.aimed`, and with the slack to turn to
+ * when it turns the hero. Of those `castBefore`'s order. With none, `why` is the furthest any answer got (`CAST_STAGES`' order), so the
+ * line says what came closest.
  */
-export function CastPick(this: void, as: Answer[]): { pick?: Answer; why?: CastWhy } {
+export function CastPick(this: void, as: Answer[], o: PickOpts = UNIT_ONLY): { pick?: Answer; why?: CastWhy } {
     let pick: Answer | undefined;
     let far = -1;
     for (const a of as) {
-        const why = castWhyOf(a);
+        const why = castWhyOf(a, o);
         if (why === undefined) {
-            if (pick === undefined || (pick.spell.key && !a.spell.key) || (pick.spell.key === a.spell.key && a.spell.mana < pick.spell.mana)) pick = a;
+            if (pick === undefined || castBefore(a, pick)) pick = a;
             continue;
         }
         const at = CAST_STAGES.indexOf(why);

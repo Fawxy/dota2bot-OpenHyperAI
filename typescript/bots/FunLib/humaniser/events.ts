@@ -1344,10 +1344,18 @@ export const EVENTS = {
         ab: "str",
         /** `job=creep k=sp` start: seconds from the go until the damage was to land (turn, cast point, flight: `SpellSecure.TimingOf`). */
         al: "num",
-        /** `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`). */
+        /** `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`; an aimed cast's, its aim's). */
         az: "num",
         /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
         am: "num",
+        /** `job=creep k=sp` start (Ours.AimedCasts): where an aimed spell lands (`SpellAim.Geom`'s `k`: `a`, `l`, `r`, `s`); absent for a unit-target cast. */
+        ag: "str",
+        /** `job=creep k=sp` start, a cast that turns the hero first (`SpellSecure.Turns`): the aim's slack, radians either way (`SpellAim.Aim`'s `slack`). */
+        aw: "num",
+        /** `job=creep k=sp` end, a cast that turns the hero first: seconds from the go until the hero faced the aim within the tolerance (-1 never: `why=timeout`, `msg=turn`). */
+        aq: "num",
+        /** `job=creep k=sp` end, a cast that turns the hero first: the facing's error (radians) when the cast was ordered. */
+        ae: "num",
         /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt began (claims.ts; the decider then takes its own). */
         oc: "num",
         /** `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`. */
@@ -3141,7 +3149,9 @@ export const EVENTS = {
         cg: "num",
         /**
          * `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target
-         * spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero); a hero holding no creep spell
+         * spell nor an aimed one), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero), `aim` (a cast that
+         * turns the hero whose aim has less slack than AimSlack), `aimoff` (an aimed cast passed every gate with Ours.AimedCasts off: its
+         * shadow; before oha-aimed-cast every point and no-target answer read `shape`); a hero holding no creep spell
          * is not weighed (no field). The hero's, as the attack's: `acting`, `row`, `held`, `tried` (its last attempt was on this creep); the
          * creep's: `claimed` (a hero of ours holds a claim on it, or one with a lower `creep` cell is still going for it), `mate` (a teammate's
          * hit kills it first), `other` (another creep's cast went); `refused` (the runner);

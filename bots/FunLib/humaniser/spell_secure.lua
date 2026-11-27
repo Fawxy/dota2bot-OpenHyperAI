@@ -240,15 +240,31 @@ function ____exports.Best(as)
     end
     return best
 end
+--- Whether the cast lands where the hero faces, so the hero turns before it (slice oha-aimed-cast): a no-target line or circle in front
+-- of the hero. A point spell turns the hero to its point in the game's own order; a spell around the hero needs no facing.
+function ____exports.Turns(s)
+    if s.shape ~= "n" then
+        return false
+    end
+    local k = ____exports.GeomOf(s).k
+    return k == "l" or k == "r"
+end
+--- The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer.
+function ____exports.FacingOf(a)
+    local ____opt_0 = a.aim
+    return ____opt_0 and ____opt_0.th
+end
 local CAST_STAGES = {
     "shape",
     "nokill",
     "walk",
     "reserve",
-    "key"
+    "key",
+    "aim",
+    "aimoff"
 }
-local function castWhyOf(a)
-    if a.spell.shape ~= "u" then
+local function castWhyOf(a, o)
+    if a.spell.shape ~= "u" and a.aim == nil then
         return "shape"
     end
     if not a.kill then
@@ -263,33 +279,61 @@ local function castWhyOf(a)
     if a.spell.key and a.also <= 0 then
         return "key"
     end
-    return nil
+    if a.spell.shape == "u" then
+        return nil
+    end
+    if ____exports.Turns(a.spell) and (a.aim.slack or 0) < o.slack then
+        return "aim"
+    end
+    local ____o_aimed_2
+    if o.aimed then
+        ____o_aimed_2 = nil
+    else
+        ____o_aimed_2 = "aimoff"
+    end
+    return ____o_aimed_2
 end
---- The cast the creep row may order (slice oha-creep-spells): a unit-target spell that kills now, needs no walk, meets the reserve,
--- and is a damage spell or also hits an enemy hero. Of those a damage spell before a key spell, then the cheaper. With none, `why`
--- is the furthest any answer got (`CAST_STAGES`' order), so the line says what came closest.
-function ____exports.CastPick(as)
+--- Whether `a` is the better of two casts that both pass: a damage spell before a key spell, a unit-target one before an aimed one, then the cheaper.
+local function castBefore(a, b)
+    if a.spell.key ~= b.spell.key then
+        return not a.spell.key
+    end
+    local au = a.spell.shape == "u"
+    if au ~= (b.spell.shape == "u") then
+        return au
+    end
+    return a.spell.mana < b.spell.mana
+end
+local UNIT_ONLY = {aimed = false, slack = 0}
+--- The cast the creep row may order (slices oha-creep-spells, oha-aimed-cast): a spell that kills now, needs no walk, meets the reserve,
+-- and is a damage spell or also hits an enemy hero; a point or no-target one only aimed, with `o.aimed`, and with the slack to turn to
+-- when it turns the hero. Of those `castBefore`'s order. With none, `why` is the furthest any answer got (`CAST_STAGES`' order), so the
+-- line says what came closest.
+function ____exports.CastPick(as, o)
+    if o == nil then
+        o = UNIT_ONLY
+    end
     local pick
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue50
+            local __continue58
             repeat
-                local why = castWhyOf(a)
+                local why = castWhyOf(a, o)
                 if why == nil then
-                    if pick == nil or pick.spell.key and not a.spell.key or pick.spell.key == a.spell.key and a.spell.mana < pick.spell.mana then
+                    if pick == nil or castBefore(a, pick) then
                         pick = a
                     end
-                    __continue50 = true
+                    __continue58 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue50 = true
+                __continue58 = true
             until true
-            if not __continue50 then
+            if not __continue58 then
                 break
             end
         end
