@@ -88,6 +88,8 @@ interface Attempt {
     heroOn?: boolean;
     /** Seconds from the order to the first step where the hero's current action was the attack; undefined until then. */
     took?: number;
+    /** The draw's let-go (s from the order) for the kinds drawn, read at the order. */
+    letGoAt?: number;
     d0?: number[];
     dmin?: number[];
 }
@@ -183,10 +185,14 @@ function closed(a: Attempt): number {
     return n;
 }
 
-/** Seconds from the order at which the draw lets go of the kinds drawn: ranged when one is among them, else melee (measured). */
-function letGo(a: Attempt): number {
-    for (const c of a.drawn) if (LaneRead.CreepKind(c.GetUnitName()) === "r") return SETTINGS.LetGoRanged;
+/** Seconds from the order at which the draw lets go of the kinds drawn: ranged when one is among them, else melee (measured). Read at the order, while every drawn creep is alive. */
+function letGoOf(drawn: Unit[]): number {
+    for (const c of drawn) if (!c.IsNull() && c.IsAlive() && LaneRead.CreepKind(c.GetUnitName()) === "r") return SETTINGS.LetGoRanged;
     return SETTINGS.LetGoMelee;
+}
+
+function letGo(a: Attempt): number {
+    return a.letGoAt ?? SETTINGS.LetGoMelee;
 }
 
 /** The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone. */
@@ -243,6 +249,7 @@ function* draw(ctx: Lib.Ctx, bot: Unit, a: Attempt, spot: AggroOffer.Vec, walk: 
     a.target = s.target;
     a.drawn = s.drawnUnits;
     a.hand = s.hand;
+    a.letGoAt = letGoOf(s.drawnUnits);
     // Diagnosis (round 0's nodraw): the target's distance, whether it took this hero's damage within the cooldown, the nearest drawn creep.
     const me = bot.GetLocation();
     let nd = math.huge;

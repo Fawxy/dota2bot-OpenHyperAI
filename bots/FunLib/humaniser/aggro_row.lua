@@ -130,12 +130,7 @@ function closed(a)
     return n
 end
 function letGo(a)
-    for ____, c in ipairs(a.drawn) do
-        if LaneRead.CreepKind(c:GetUnitName()) == "r" then
-            return ____exports.SETTINGS.LetGoRanged
-        end
-    end
-    return ____exports.SETTINGS.LetGoMelee
+    return a.letGoAt or ____exports.SETTINGS.LetGoMelee
 end
 ____exports.SETTINGS = {
     OrderGap = 0.1,
@@ -283,6 +278,15 @@ local function watch(bot, a)
         end
     end
 end
+--- Seconds from the order at which the draw lets go of the kinds drawn: ranged when one is among them, else melee (measured). Read at the order, while every drawn creep is alive.
+local function letGoOf(drawn)
+    for ____, c in ipairs(drawn) do
+        if not c:IsNull() and c:IsAlive() and LaneRead.CreepKind(c:GetUnitName()) == "r" then
+            return ____exports.SETTINGS.LetGoRanged
+        end
+    end
+    return ____exports.SETTINGS.LetGoMelee
+end
 --- The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone.
 local back = __TS__Generator(function(ctx, bot, a)
     local orderAt = a.orderAt
@@ -357,6 +361,7 @@ local draw = __TS__Generator(function(ctx, bot, a, spot, walk)
     a.target = s.target
     a.drawn = s.drawnUnits
     a.hand = s.hand
+    a.letGoAt = letGoOf(s.drawnUnits)
     local me = bot:GetLocation()
     local nd = math.huge
     for ____, c in ipairs(s.drawnUnits) do
