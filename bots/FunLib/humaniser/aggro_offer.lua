@@ -353,7 +353,7 @@ local function read(bot, ranged, theirs, mine, now)
     end
     local tw
     local hull = bot:GetBoundingRadius()
-    for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
+    for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true) or ({})) do
         do
             local __continue63
             repeat
@@ -426,7 +426,8 @@ local function read(bot, ranged, theirs, mine, now)
     local g = ____exports.GivenUp(ts, window)
     local danger = SafeGather.At(
         bot,
-        Vector(spot.x, spot.y, 0)
+        Vector(spot.x, spot.y, 0),
+        {remember = false}
     ).level
     local pid = bot:GetPlayerID()
     local hit = heroHitAt[pid]
@@ -490,28 +491,38 @@ function ____exports.Shadow(bot)
     local rd = math.huge
     local loc = bot:GetLocation()
     local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
-    for ____, c in ipairs(mine) do
-        do
-            local __continue83
-            repeat
-                if not c:IsAlive() or LaneRead.CreepKind(c:GetUnitName()) ~= "r" then
-                    __continue83 = true
+    local open = opps[pid]
+    if open ~= nil then
+        for ____, c in ipairs(mine) do
+            if c == open.ranged and c:IsAlive() then
+                ranged = c
+            end
+        end
+    end
+    if ranged == nil then
+        for ____, c in ipairs(mine) do
+            do
+                local __continue88
+                repeat
+                    if not c:IsAlive() or LaneRead.CreepKind(c:GetUnitName()) ~= "r" then
+                        __continue88 = true
+                        break
+                    end
+                    local at = c:GetLocation()
+                    if at == nil or at == nil then
+                        __continue88 = true
+                        break
+                    end
+                    local d = dist(loc, at)
+                    if d < rd then
+                        rd = d
+                        ranged = c
+                    end
+                    __continue88 = true
+                until true
+                if not __continue88 then
                     break
                 end
-                local at = c:GetLocation()
-                if at == nil or at == nil then
-                    __continue83 = true
-                    break
-                end
-                local d = dist(loc, at)
-                if d < rd then
-                    rd = d
-                    ranged = c
-                end
-                __continue83 = true
-            until true
-            if not __continue83 then
-                break
             end
         end
     end

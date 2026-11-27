@@ -156,8 +156,6 @@ function tick(this: void, bot: Unit): void {
     pcall(steps.creepOfferShadow, bot);
     // The draw's chance for the cores (ev=choice kind=aggro src=shadow, no-creep-unpaid s6b): reads and logs, no order.
     pcall(steps.aggroShadow, bot);
-    // The draw's chance for the cores (ev=choice kind=aggro src=shadow, no-creep-unpaid s6b): reads and logs, no order.
-    pcall(steps.aggroShadow, bot);
     pcall(steps.probe, bot);
     // Overrides.VisionMap only: the map dump for the sight model (reads and logs).
     pcall(VisionMap.Tick, bot);

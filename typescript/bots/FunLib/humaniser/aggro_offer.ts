@@ -6,7 +6,9 @@
  * the hero's lists (dies or goes out of reach) or the laning phase ends. Orders nothing.
  *
  * The line keeps the read with the fewest failed checks (the first of a tie) and its list, so the funnel is countable check by
- * check, and `want` 1 when some read failed none. Facts measured in `docs/reference/specifics/engine-physics.md`, "The draw".
+ * check, and `want` 1 when some read failed none. The line also closes when the hero dies or a drill holds it. Our ranged creep's height
+ * stands in for the hand-over spot's (250 behind it; a place has no height in the bot API but a unit's location z). The danger
+ * read is asked read-only (`remember: false`). Facts measured in `docs/reference/specifics/engine-physics.md`, "The draw".
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { Unit, UnitType } from "bots/ts_libs/dota";
@@ -310,7 +312,7 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
     }
     let tw: number | undefined;
     const hull = bot.GetBoundingRadius();
-    for (const t of bot.GetNearbyTowers(SETTINGS.TowerRadius, true)) {
+    for (const t of bot.GetNearbyTowers(SETTINGS.TowerRadius, true) ?? []) {
         const at = t.GetLocation();
         if (at === null || at === undefined) continue;
         const gap = dist(spot, at) - (t.GetAttackRange() + t.GetBoundingRadius() + hull);
@@ -334,7 +336,8 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
         ts.push({ kind: t.kind, due: t.due, ranged: t.ranged, drawn: drawnSet.get(c) === true, undrawn, feed: c === ranged });
     }
     const g = GivenUp(ts, window);
-    const danger = SafeGather.At(bot, Vector(spot.x, spot.y, 0)).level;
+    // Read-only: the shadow must not write the lane memory an own-place read feeds (retreat and the chooser read it).
+    const danger = SafeGather.At(bot, Vector(spot.x, spot.y, 0), { remember: false }).level;
     const pid = bot.GetPlayerID();
     const hit = heroHitAt[pid];
     const f: Facts = { k, walk, onR, fh, rh, seen: enemies.length, tw, covering: path.covering, deadly: danger === "deadly", miss: g.miss, sinceHero: hit !== undefined ? now - hit : undefined };
@@ -362,12 +365,15 @@ export function Shadow(bot: Unit): void {
     const tg = bot.GetAttackTarget();
     if (tg !== null && tg !== undefined && tg.IsHero() && tg.GetTeam() !== bot.GetTeam()) heroHitAt[pid] = now;
 
-    // Our ranged creep nearest the hero within the reader's radius.
+    // The open opportunity's ranged creep while it is still listed; else our ranged creep nearest the hero. One line per
+    // creep: with two of ours in reach the nearest may swap, and the open one is kept until it dies or leaves the lists.
     let ranged: Unit | undefined;
     let rd = math.huge;
     const loc = bot.GetLocation();
     const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
-    for (const c of mine) {
+    const open = opps[pid];
+    if (open !== undefined) for (const c of mine) if (c === open.ranged && c.IsAlive()) ranged = c;
+    if (ranged === undefined) for (const c of mine) {
         if (!c.IsAlive() || LaneRead.CreepKind(c.GetUnitName()) !== "r") continue;
         const at = c.GetLocation();
         if (at === null || at === undefined) continue;
