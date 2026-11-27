@@ -182,7 +182,8 @@ Customize.Humaniser = {
 -- next checkpoint batch if the line or its guards fall.
 -- CreepSpells (the creep row's cast, slice oha-creep-spells; no-creep-unpaid proposal s6): any position casts a unit-target spell on their lane
 -- creep of any kind the attack cannot take, when the cast kills it now with no walk, keeps the mana of the hero's dearest other key spell, and as a
--- key spell also hits an enemy hero; the creep free of our claims and of a teammate's hit. Off: the spell answers are logged as a shadow, stock plays.
+-- key spell also hits an enemy hero; the creep free of our claims and of a teammate's hit. Off: the cast pass is logged as a shadow, stock plays.
+-- On by default: provisional (plan s5's small row, after its audit), read at the next checkpoint batch and deleted there if not above zero.
 -- TowerStay (slice oha-tower-fallthrough): the leftover rule only decides whether to pre-hit; its refusal mid-attempt falls through to the
 -- plain last hit. Off: the rule ends the attempt. On by default: provisional (plan s5's small row), read at the next checkpoint batch against
 -- an arm with it off and every other switch on; the flag is deleted there either way.
@@ -203,7 +204,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, CreepDeny = true, TowerCreeps = true, SupportCreeps = true, CreepSpells = false, TowerStay = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, CreepDeny = true, TowerCreeps = true, SupportCreeps = true, CreepSpells = true, TowerStay = true, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().
