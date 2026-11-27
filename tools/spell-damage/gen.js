@@ -196,6 +196,9 @@ function shapeOf(name, ab) {
             out.offset = `${prefix}range`;
         } else k = 's';
         if (r !== undefined) out.radius = r;
+        // A flight out to each unit in the circle (Death Pulse, Quill Spray's wave): only the exact key, as other speeds are a
+        // move's or a buff's; a projectile with its own `projectile_distance` (Power Cogs) flies a line, not to the circle's units.
+        if (k === 's' && valueOf(vals.projectile_speed) > 0 && vals.projectile_distance === undefined) out.speed = 'projectile_speed';
     } else return undefined;
     const delay = geomKey(vals, /delay/i, 'max');
     if (delay !== undefined && !/teleport|path|fade|formation|after/i.test(delay)) out.delay = delay;

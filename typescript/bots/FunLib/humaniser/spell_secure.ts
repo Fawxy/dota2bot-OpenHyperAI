@@ -22,6 +22,14 @@ export interface Moving extends Foe {
     vy: number;
 }
 
+export const SETTINGS = {
+    /**
+     * judgement: the least closing speed of a homing flight, as a share of the projectile's, so a unit walking off as fast as
+     * it reads a long flight rather than none (a lane creep walking straight off from Death Pulse reads 80, not 75).
+     */
+    ChaseFloor: 0.2,
+};
+
 function dist(a: Place, b: Place): number {
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
@@ -106,12 +114,26 @@ function movedBy(u: Moving, t: number): Moving {
     return { x: u.x + u.vx * t, y: u.y + u.vy * t, hull: u.hull, vx: u.vx, vy: u.vy };
 }
 
-/** A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay. */
-function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Place, heroSpeed: number, turn: number): Timing {
+/**
+ * A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
+ * where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
+ * homes on them, so they are placed `flight` before the landing, and its flight is a chase: the creep's speed away from where it
+ * casts slows the closing (a lane creep's 325 is 0.81 of Death Pulse's 400).
+ */
+function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Moving, heroSpeed: number, turn: number): { timing: Timing; flight: number } {
     const walk = aim.gap / math.max(100, heroSpeed);
     let flight = 0;
-    if (s.speed > 0 && (g.k === "l" || g.k === "a")) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
-    return { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay };
+    if (s.speed > 0 && g.k === "s") {
+        const d = dist(aim.from, creep);
+        const away = d > 0 ? ((creep.x - aim.from.x) * creep.vx + (creep.y - aim.from.y) * creep.vy) / d : 0;
+        flight = d / math.max(s.speed * SETTINGS.ChaseFloor, s.speed - away);
+    } else if (s.speed > 0) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
+    return { timing: { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay }, flight };
+}
+
+/** Seconds from now until the spell's units are placed: at the landing, or at the cast for a homing `s` spell. */
+function placedAt(g: SpellAim.Geom, t: { timing: Timing; flight: number }): number {
+    return g.k === "s" ? t.timing.land - t.flight : t.timing.land;
 }
 
 /**
@@ -123,14 +145,14 @@ function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: 
 export function Aimed(this: void, s: CreepSpell, hero: Place, heroSpeed: number, turn: number, creep: Moving, foes: Moving[], others: Foe[]): { aim: SpellAim.Aim; timing: Timing; centre: number } {
     const g = GeomOf(s);
     const first = SpellAim.AimAt(g, hero, creep, foes, others);
-    const t = aimedTiming(s, g, first, creep, heroSpeed, turn).land;
+    const t = placedAt(g, aimedTiming(s, g, first, creep, heroSpeed, turn));
     const c2 = movedBy(creep, t);
     const f2: Moving[] = [];
     for (const f of foes) f2.push(movedBy(f, t));
     const aim = SpellAim.AimAt(g, hero, c2, f2, others);
     // Aimed with nobody wanted, the cast goes straight at the creep; the foes passed as `others` are then those it hits anyway.
     const centre = SpellAim.AimAt(g, hero, c2, [], f2).others;
-    return { aim, timing: aimedTiming(s, g, aim, c2, heroSpeed, turn), centre };
+    return { aim, timing: aimedTiming(s, g, aim, c2, heroSpeed, turn).timing, centre };
 }
 
 /** One spell's answer on one creep at one read. */
