@@ -76,12 +76,12 @@ export const SETTINGS = {
     /** The decider's round (s) as the row meets it: a gap between the row's steps longer than it means another mode had the hero (`tk`). */
     Round: 0.4,
     /**
-     * Ours.CreepReserve: a decider round's length, farm's `GetDesire` for one hero (offers-and-the-decider s4, measured 27/11/2026:
+     * A decider round's length, farm's `GetDesire` for one hero (offers-and-the-decider s4, measured 27/11/2026:
      * median 0.316 s). A reserved start is offered at the round after which one more would leave less than `Margin`.
      */
     DeciderRound: 0.32,
     /**
-     * Ours.CreepReserve, judgement: the spare (s) a reserved start keeps past the walk. The walk's error once the wait between rounds is
+     * Judgement: the spare (s) a reserved start keeps past the walk. The walk's error once the wait between rounds is
      * taken out, 90th percentile 0.41 s (cores) and 0.51 s (supports), plus the start inside a round, about 0.1 s (`wt`'s 10th
      * percentile); read 27/11/2026 over the ckpt3 and ckpt3m on arms (2,157 attempts).
      */
@@ -430,14 +430,14 @@ interface Pending {
     now: number;
     seen: Seen;
     tr?: TowerRead;
-    /** A reserved attempt's start (Ours.CreepReserve): when the reservation was taken (the start line's `rv`). */
+    /** A reserved attempt's start: when the reservation was taken (the start line's `rv`). */
     rvAt?: number;
 }
 
 const pending: Record<number, Pending | undefined> = {};
 
 /**
- * Ours.CreepReserve: an attempt reserved at its go. `pd` is the latest read's view of the creep (each read refreshes it), `at` when
+ * An attempt reserved at its go. `pd` is the latest read's view of the creep (each read refreshes it), `at` when
  * it was reserved, `why` the latest read's refusal of the creep that waits for the start round (`acting`, `held`) or is asked again
  * there (a claim's refusal).
  */
@@ -453,9 +453,9 @@ const reserved: Record<number, Reservation | undefined> = {};
 /** A reservation's refusals that wait: the start is not offered while one stands, and it drops only once late. */
 const WAITS: Record<string, boolean> = { acting: true, held: true, fight: true };
 
-/** An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due), the switch on. */
+/** An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due). */
 function reserves(k: Pending["k"], tr: TowerRead | undefined): boolean {
-    return k !== "sp" && tr === undefined && Ours.On("CreepReserve");
+    return k !== "sp" && tr === undefined;
 }
 
 /** The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death). */
@@ -631,7 +631,7 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
  * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
  * creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
- * A reserved start (Ours.CreepReserve) carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
+ * A reserved start carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
  * read's, its due that read's less the time since.
  */
 function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { rv?: number; need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" | "sp"; oc: number; tr?: TowerRead; cast?: SpellSecure.Answer }): void {
@@ -1185,7 +1185,7 @@ function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
 
 /**
  * The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
- * row decides at the read (Consider); with a reservation (Ours.CreepReserve) the decider's round offers its start (`startDue`).
+ * row decides at the read (Consider); a reserved attempt's start is offered at the decider's round (`startDue`).
  */
 function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (!On(bot)) return undefined;

@@ -789,9 +789,9 @@ pending = {}
 local reserved = {}
 --- A reservation's refusals that wait: the start is not offered while one stands, and it drops only once late.
 local WAITS = {acting = true, held = true, fight = true}
---- An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due), the switch on.
+--- An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due).
 local function reserves(k, tr)
-    return k ~= "sp" and tr == nil and Ours.On("CreepReserve")
+    return k ~= "sp" and tr == nil
 end
 --- The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death).
 local function slackOf(pd, now, at)
@@ -950,7 +950,7 @@ end
 -- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
 -- cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
 -- creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
--- A reserved start (Ours.CreepReserve) carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
+-- A reserved start carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
 -- read's, its due that read's less the time since.
 local function startLine(bot, cid, aid, t, g)
     local ____Telemetry_Event_28 = Telemetry.Event
@@ -1799,7 +1799,7 @@ local function rowBegin(bot)
     return true
 end
 --- The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
--- row decides at the read (Consider); with a reservation (Ours.CreepReserve) the decider's round offers its start (`startDue`).
+-- row decides at the read (Consider); a reserved attempt's start is offered at the decider's round (`startDue`).
 local function rowWants(bot, _reads)
     if not ____exports.On(bot) then
         return nil

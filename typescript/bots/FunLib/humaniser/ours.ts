@@ -81,11 +81,6 @@ export const DEFAULTS = {
      *  reason). Off: a row begins from any mode. On: provisional (user 27/11/2026: the check before the batch could not read its
      *  line at 6 pairs); read at the next checkpoint batch against ckpt3, and the flag deleted there either way. */
     FightFirst: true,
-    /** Slice oha-creep-reserve, a flag between two versions of our code: on, the creep row reserves a right-click attempt's creep at its
-     *  go (the decider takes the claim, no hold) and offers the start at the decider round that leaves one more round plus the margin
-     *  before the hero must leave, holding hard from there; a reservation drops when the creep goes, leaves the lead, can no longer be
-     *  reached or another row takes the hero. Off: the hold runs from the go. The flag is deleted once judged. */
-    CreepReserve: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

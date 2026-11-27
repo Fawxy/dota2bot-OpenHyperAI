@@ -38,7 +38,8 @@ end
 
 local RANGED = "npc_dota_creep_badguys_ranged"
 
--- o.on: the switch; o.refuse: the runner refuses. w.targets: what laneTargets returns; w.starts, w.opts, w.body, w.onEnd: the
+-- o.on: the switch; o.refuse: the runner refuses; o.reserve: the reservation's real timing (otherwise its margin is unbounded, so
+-- every attempt starts at its go and the checks of the read and the attempt need no decider rounds). w.targets: what laneTargets returns; w.starts, w.opts, w.body, w.onEnd: the
 -- last Start's.
 local function world(o)
 	o = o or {}
@@ -49,7 +50,6 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepSpells = o.spells == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerStay = o.stay == true
-	package.loaded["bots/FunLib/custom_loader"].Ours.CreepReserve = o.reserve == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = o.fight == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.AimedCasts = o.aimed == true
 	CURRENT_TEAM = 2
@@ -104,6 +104,7 @@ local function world(o)
 	w.CO.ResetCache()
 	w.CR.ResetCache()
 	w.CO.SETTINGS.Every = 0.1
+	if o.reserve ~= true then w.CR.SETTINGS.Margin = math.huge end
 	w.core = MakeUnit({ pid = 1, team = 2, bot = true, loc = Vector(0, -5000), hp = 600, maxhp = 600 })
 	w.core.pos, w.core.lane = o.pos or 2, Lane.Bot
 	return w
@@ -1520,14 +1521,14 @@ do -- the go rule's parts, pure
 	check("AttackCannot: not yet due, the attack can still take it", CR.AttackCannot("early", nil, true, false) == nil)
 end
 
-do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and started at the decider round that leaves a round plus the margin
+do -- The reservation: the creep is reserved at the go (claim, no hold) and started at the decider round that leaves a round plus the margin
 	-- Looked up afresh: a world reloads the modules.
 	local function decider() return package.loaded["bots/FunLib/humaniser/decider"] end
 	local function host(w) return decider().Host(w.core, function() return 0.123 end)() end
 	-- In the verb's reach (range 150 and the hulls: 190), so the need is 0 and the spare is the due.
 	local function reserveWorld(o)
 		o = o or {}
-		local w = world({ reserve = o.reserve ~= false, fight = o.fight })
+		local w = world({ reserve = true, fight = o.fight })
 		w.core.range = 150
 		w.c = ranged(100)
 		w.targets = { target(w.c, { walk = 0, due = o.due or 2.5 }) }
@@ -1553,9 +1554,6 @@ do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and st
 	check("reserve: the start line carries rv (1.6 s) and the due aged to the start", field(st, "phase") == "start" and field(st, "rv") == "1.600" and field(st, "gd") == "0.900", tostring(st))
 	check("reserve: the verb's wait counts from the start: the eta aged plus the slack", near(lastHitOpts(w).maxWait, 0.9 + 1.5), tostring(lastHitOpts(w).maxWait))
 	check("reserve: the claim is the started attempt's", claimApi().HeldBy(1) == w.cid)
-
-	w = reserveWorld({ reserve = false })
-	check("reserve off: the same creep starts at its go", w.starts == 1)
 
 	w = reserveWorld({ due = 0.8 })
 	local first = lines(w.out, "job=creep")[1]
