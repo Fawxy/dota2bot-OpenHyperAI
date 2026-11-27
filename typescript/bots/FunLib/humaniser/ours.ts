@@ -68,6 +68,13 @@ export const DEFAULTS = {
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
      *  the next checkpoint batch against an arm with it off and every other switch on, and the flag deleted there either way. */
     TowerStay: true,
+    /** The draw (protective aggro), a decider row (aggro_row.ts, slice oha-lane-aggro; no-creep-unpaid proposal s6b): a core (pos 1 to 3)
+     *  beside our ranged creep while their lane creeps fight ours gives one attack order on the nearest enemy hero our team sees and walks
+     *  back past our ranged creep, so the drawn creeps take it when the draw lets go. Off: the read logs every chance as a shadow and
+     *  stock plays. On: provisional (user
+     *  27/11/2026, after batch lagg1 did not show its line at 6 pairs); read at the next checkpoint batch against an arm with it off
+     *  and every other switch on, and deleted there if its line is not above zero. */
+    LaneAggro: true,
     /** Slice oha-no-start-over-fight (offers-and-the-decider s10, slice A), a flag between two versions of our code: on, the decider
      *  refuses to begin any row while Valve has the hero in attack, roam or team roam (fights stay Valve's; a row already holding is not
      *  cut), and the row reads the refusal (`Decider.Refusal`: the creep row notes `fight`, the pull and stack take it as the slot's

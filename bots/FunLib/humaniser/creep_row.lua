@@ -610,9 +610,9 @@ function onPhase(pid, p, t)
     Claims.Phase(pid, p)
 end
 function offerOf(bot, pd)
-    local ____pd_74 = pd
-    local best = ____pd_74.best
-    local k = ____pd_74.k
+    local ____pd_76 = pd
+    local best = ____pd_76.best
+    local k = ____pd_76.k
     local rank = TripTable.RankOf(
         k == "dn" and "deny" or "creep",
         LaneConfig.PositionOf(bot)
@@ -1150,7 +1150,9 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
-    local other = Tasks.Running(bot) ~= nil
+    local ____opt_65 = Tasks.Running(bot)
+    local cur = ____opt_65 and ____opt_65.name
+    local other = cur ~= nil and not Decider.Below(____exports.ROW, cur)
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best
@@ -1170,13 +1172,13 @@ function ____exports.Consider(bot, cands)
                 towers = ownTowers(bot)
             end
             local tw = attackerOf(towers, c.creep)
-            local ____temp_65
+            local ____temp_67
             if tw == nil then
-                ____temp_65 = nil
+                ____temp_67 = nil
             else
-                ____temp_65 = towerRead(bot, c.creep, tw, 0)
+                ____temp_67 = towerRead(bot, c.creep, tw, 0)
             end
-            tr = ____temp_65
+            tr = ____temp_67
             reads[c.cid] = tr
             notarget = tr == nil and c.ck ~= "r"
         end
@@ -1212,13 +1214,13 @@ function ____exports.Consider(bot, cands)
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else
-            local ____temp_70
+            local ____temp_72
             if k == "lh" then
-                ____temp_70 = ____exports.FreeFor(bot, c.cid, now)
+                ____temp_72 = ____exports.FreeFor(bot, c.cid, now)
             else
-                ____temp_70 = nil
+                ____temp_72 = nil
             end
-            why = ____temp_70
+            why = ____temp_72
             if why == nil then
                 why = ____exports.Claim(factsOf(bot, c))
             end
@@ -1455,13 +1457,13 @@ local function rowBegin(bot)
     local cast = pd.cast
     local t = best.t
     local creep = t.creep
-    local ____temp_71
+    local ____temp_73
     if cast == nil then
-        ____temp_71 = nil
+        ____temp_73 = nil
     else
-        ____temp_71 = bot:GetAbilityByName(cast.spell.name)
+        ____temp_73 = bot:GetAbilityByName(cast.spell.name)
     end
-    local ability = ____temp_71
+    local ability = ____temp_73
     if k == "sp" and (ability == nil or ability == nil) then
         best.noteCast(false, "refused")
         return false

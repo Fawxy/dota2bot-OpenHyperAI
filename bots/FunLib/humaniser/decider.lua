@@ -97,7 +97,7 @@ ____exports.CAP = 0.44
 -- (OHA's override of Valve's attack for a few heroes: the mode a soft hold gives way to; beyond plan s3's "retreat
 -- excepted", decided 24/11/2026). `farm` is a guard only: while a row holds, Host never calls farm's gated desire.
 local UNCAPPED = {retreat = true, attack = true, farm = true}
---- Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
+--- Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour, creep and draw (aggro) rows (in that order), so no row is imported here; with none registered the decider is a pass-through.
 ____exports.ROWS = {}
 --- The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task.
 function ____exports.Add(row)
@@ -516,6 +516,24 @@ function ____exports.Offer(bot, row)
         isSoft(row, bot)
     ) end)
     return true
+end
+--- Whether `task` is the task of a row below `row` in doctrine order: a begin of `row` may take the hero from it (`over`), as `Host`
+-- does at a round. False for any other task (a row above, a job no row started) and for a row not in ROWS.
+function ____exports.Below(row, task)
+    local at = __TS__ArrayIndexOf(____exports.ROWS, row)
+    if at < 0 or task == nil then
+        return false
+    end
+    do
+        local i = at + 1
+        while i < #____exports.ROWS do
+            if ____exports.ROWS[i + 1].name == task then
+                return true
+            end
+            i = i + 1
+        end
+    end
+    return false
 end
 --- One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running.
 function ____exports.Ask(bot, row)

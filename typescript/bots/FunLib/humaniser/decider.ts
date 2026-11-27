@@ -98,7 +98,7 @@ export const CAP = 0.44;
  */
 const UNCAPPED: Record<string, boolean> = { retreat: true, attack: true, farm: true };
 
-/** Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour and creep rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
+/** Doctrine order: the first row that wants the hero holds it. index.ts fills it through `Add` with the pull, stack, rune detour, creep and draw (aggro) rows (in that order), so no row is imported here; with none registered the decider is a pass-through. */
 export const ROWS: Row[] = [];
 
 /** The one way to add a row: appends it to ROWS (once) and guards its task name, so only the decider's begin starts that task. */
@@ -462,6 +462,17 @@ export function Offer(bot: Unit, row: Row): boolean {
     if (offer === undefined || cur === row.name || !begin(bot, s, row, offer)) return false;
     pcall(() => note(bot, s, row, isSoft(row, bot)));
     return true;
+}
+
+/**
+ * Whether `task` is the task of a row below `row` in doctrine order: a begin of `row` may take the hero from it (`over`), as `Host`
+ * does at a round. False for any other task (a row above, a job no row started) and for a row not in ROWS.
+ */
+export function Below(row: Row, task: string | undefined): boolean {
+    const at = ROWS.indexOf(row);
+    if (at < 0 || task === undefined) return false;
+    for (let i = at + 1; i < ROWS.length; i++) if (ROWS[i].name === task) return true;
+    return false;
 }
 
 /** One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running. */

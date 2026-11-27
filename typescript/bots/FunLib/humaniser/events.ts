@@ -1313,9 +1313,9 @@ export const EVENTS = {
         pid: "num",
         /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`. */
         aid: "num",
-        /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
+        /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`) or `creep:<cid>` (`job=aggro`: our ranged creep the draw is for; its claim is keyed `draw:<cid>`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
         tgt: "str",
-        /** `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason). */
+        /** `stack`, `rune`, `pull`, `rune_detour`, `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason) or `aggro` (aggro_row.ts: one draw, its phases `start`, `order`, `resume`, `end`). */
         job: "str",
         /** `start` (`why=trigger`) or `end`. */
         phase: "str",
@@ -1419,8 +1419,30 @@ export const EVENTS = {
         /** `job=creep` end: the hero's HP (absolute) at the start and at the end. */
         hp0: "num",
         hp1: "num",
-        /** `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut. */
+        /** `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut. `job=aggro` end: `nodraw` (`why=missed`: no drawn creep ever had the hero as its target), `replaced` (`why=cancelled`: the creep row began over the draw), or what cancelled the order after the walk-in (`why=cancelled`: `noclash`, `unseen`, `acting` or a check of `ev=choice kind=aggro` `arf`). */
         msg: "str",
+        /** `job=aggro` (aggro_row.ts, the draw): on `order` and `end`, seconds from the start to the attack order on the enemy hero (the commit point, the hold hard from the next round); -1 on an end with no order. */
+        ot: "num",
+        /** `job=aggro` end: seconds from the order to the draw's end (no drawn creep on the hero any more), or to the attempt's end when it ended otherwise. */
+        lt: "num",
+        /** `job=aggro`: on `start` the creeps the read would draw (within AggroOffer Drawn of the draw spot), on `order` and `end` those of the read at the order. */
+        an: "num",
+        /** `job=aggro`: on `end` the most drawn creeps on the hero at one step; on `resume` those on it then. */
+        ah: "num",
+        /** `job=aggro` end: drawn creeps alive with our ranged creep as their attack target (the hand-over). */
+        ar: "num",
+        /** `job=aggro` end: how often the walk back was taken up again after another row or mode had the hero (`phase=resume`). */
+        rs: "num",
+        /** `job=aggro` end, with an order: 1 when the hero's attack target read as the order's target at some step after it (the order took), else 0. */
+        ha: "num",
+        /** `job=aggro` end, with an order: drawn creeps that closed on the hero by 150 or more since the order, or came within 200 of it (they chased it, whatever their attack target read). */
+        ac: "num",
+        /** `job=aggro` order: the target hero's distance (centre), 1 when it took damage from this hero within the draw's 3 s cooldown (`WasRecentlyDamagedByHero`), and the nearest drawn creep's distance. */
+        td: "num",
+        rh: "num",
+        nd: "num",
+        /** `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. Logs of builds before the draw's merge into team-bots name this `aw`, which on `job=creep` is the aimed cast's slack. */
+        ow: "num",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */
     stack: {
@@ -2931,7 +2953,7 @@ export const EVENTS = {
     // Ours.Threat on).
     choice: {
         pid: "num",
-        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
+        /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`, `aggro`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
         aid: "num",
         /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment; and one per refused begin (`ref`), once per row and target while it repeats). */
         kind: "str",
@@ -2945,7 +2967,7 @@ export const EVENTS = {
         beg: "str",
         /** kind=decider: the row whose begin the decider refused (Ours.FightFirst: the hero was in attack, roam or team roam), with `btgt` its offer's target, `bfrom` the mode and `why` the reason (`fight`); no `held`, `win` or `beg` on that line. Logged once per hero, row and target while the refusal repeats. */
         ref: "str",
-        /** kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
+        /** kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`, `draw:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
         btgt: "str",
         bby: "num",
         /** kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran. */
@@ -3013,7 +3035,7 @@ export const EVENTS = {
         who: "str",
         /** `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. `kind=aggro`: to the first read that failed no check. */
         wo: "num",
-        // kind=aggro (aggro_offer.ts, the draw's shadow, no-creep-unpaid s6b): one line per core of the trip table's `aggro` row and
+        // kind=aggro (aggro_offer.ts, the draw's read, no-creep-unpaid s6b): `src=shadow go=0 why=off` with Ours.LaneAggro off, else `src=own` (aggro_row.ts: `go` 1 with `aid` when the row started on the chance, else `why` the first failed check or `nogo`); one line per core of the trip table's `aggro` row and
         // our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1
         // when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot,
         // `eh` the enemy heroes covering it).

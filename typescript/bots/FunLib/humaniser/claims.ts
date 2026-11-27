@@ -2,7 +2,7 @@ import type * as Lib from "bots/FunLib/engine/tasks";
 
 /**
  * Claims by target, a read (`Reads.claims`, hum/reads.ts): which heroes of ours hold an attempt on a target, keyed by the offer's
- * target (`creep:<cid>`, `camp:<idx>`, `rune:<rune>`; the five teammates share one Lua state). Taken by the decider when it begins a
+ * target (`creep:<cid>`, `camp:<idx>`, `rune:<rune>`, `draw:<cid>`; the five teammates share one Lua state). Taken by the decider when it begins a
  * row whose offer names a target and released when that row's task ends (offers-and-the-decider s6, "claims by target"); a hero
  * holds one claim. Stored knowledge that lasts across frames and carries its writers (`Take`, `Release`, `Phase`). It decides
  * nothing and reads no position (ARCHITECTURE rule 18): the decider's acceptance and the creep row's `FreeFor` and yield read it.

@@ -28,13 +28,14 @@ import * as RuneDetour from "bots/FunLib/humaniser/rune_detour";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as AggroOffer from "bots/FunLib/humaniser/aggro_offer";
 import * as CreepRow from "bots/FunLib/humaniser/creep_row";
+import * as AggroRow from "bots/FunLib/humaniser/aggro_row";
 import * as Chooser from "bots/FunLib/humaniser/chooser";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import * as ChoiceShadow from "bots/FunLib/humaniser/choice_shadow";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
 
-export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, CampRead, RuneDetour, CreepOffer, CreepRow, Chooser, Decider, Overrides, Drill, ChoiceShadow };
+export { Config, HDebug, Chat, LaneConfig, Telemetry, Ours, StackJob, RuneJob, RunePickup, RunePlan, Plays, PullJob, CampRead, RuneDetour, CreepOffer, CreepRow, AggroRow, Chooser, Decider, Overrides, Drill, ChoiceShadow };
 // tasks: task runner spike
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 // tasks: task runner spike
@@ -198,6 +199,7 @@ const rows: [string, Decider.Row][] = [
     ["StackRow", StackJob.ROW],
     ["RuneDetourRow", RuneDetour.ROW],
     ["CreepRow", CreepRow.ROW],
+    ["AggroRow", AggroRow.ROW],
 ];
 if (Decider.ROWS.indexOf(PullJob.ROW) < 0) {
     for (const [where, row] of rows) {

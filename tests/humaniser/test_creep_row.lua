@@ -1363,6 +1363,12 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 	out = castRead(w, c)
 	check("control: another task runs for the hero (a pull): no cast, cw=row", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "row", table.concat(out, " | "))
 
+	-- The draw's row is below the creep row: its task is the cast's to take, as the attack's.
+	w, c = castWorld()
+	w.running = { name = "aggro" }
+	out = castRead(w, c)
+	check("over the draw: a lower row's task does not hold the cast back", w.starts == 1 and w.running.name == "creep", table.concat(out, " | "))
+
 	-- A support's cast and the core of its lane (pid 1) that has the creep on offer: still going for it, or refusing it for the creep's sake.
 	for _, case in ipairs({ { why = "acting", casts = false }, { why = "covered", casts = true }, { why = "held", casts = true } }) do
 		w, c = castWorld()
