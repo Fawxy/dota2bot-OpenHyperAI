@@ -33,13 +33,13 @@ export const SETTINGS = {
     /** Seconds between a hero's reads, offset by player id as the creep offer's (judgement: a draw's chance lasts seconds). */
     Every: 0.2,
     /** The draw spot is this far (centre) from their nearest fighting creep: the Drawn reach less a margin (judgement). */
-    Reach: 300,
+    Reach: 200,
     /**
      * Creeps within this of the draw spot (centre) are drawn. Made idle creeps were drawn to 500 (probe 3: 490 melee 4 of 4, none at 510);
-     * fighting wave creeps much less far (oha-lane-aggro diag3, 27/11/2026: of 58 orders, the nearest drawn creep at 350 or less chased
-     * 26 of 31, over 350 chased 5 of 27). Measured on the bot API's order, which the probe did not use.
+     * fighting wave creeps much less far (oha-lane-aggro rig r1, 27/11/2026, the bot API's order, which the probe did not use: with the
+     * nearest at 250 or less, 36 of 37 orders drew; 250 to 350, 7 of 50).
      */
-    Drawn: 350,
+    Drawn: 250,
     /** The hand-over spot is this far behind our ranged creep, away from the clash (measured: 2 of 2 handed over at 250). */
     Back: 250,
     /** Their creeps fighting within this of our ranged creep make the clash (judgement: about a wave's length). */
