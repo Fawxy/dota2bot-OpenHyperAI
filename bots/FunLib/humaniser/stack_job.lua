@@ -806,6 +806,7 @@ local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config"
 local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local Overrides = require(GetScriptDirectory().."/FunLib/humaniser/overrides")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
+local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local CampRead = require(GetScriptDirectory().."/FunLib/humaniser/camp_read")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local Stacking = require(GetScriptDirectory().."/FunLib/humaniser/stacking")
@@ -2836,6 +2837,9 @@ end
 local function rowOffer(bot, reads)
     local pid = bot:GetPlayerID()
     rowPending[pid] = nil
+    if Decider.Refusal(bot, "stack") == "fight" then
+        rowGate[pid] = "fight"
+    end
     local camp = reads.camp
     if not rowOn(bot, camp) then
         return nil

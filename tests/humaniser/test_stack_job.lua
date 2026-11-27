@@ -1243,6 +1243,32 @@ local function rowRun(o)
 	return printed, H, bot, sp
 end
 
+-- Ours.FightFirst (slice oha-no-start-over-fight): a support in team roam through the minute is never begun; the minute's line says
+-- `fight`. Control: the flag off, the same mode, the stack starts. (In attack the stack's own start check already says `busy`.)
+do
+	local function minute(flag)
+		local H, bot, sp = rowWorld()
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = flag
+		neutrals(sp and sp.location or Vector(0, 0), 3)
+		local printed = capture(function()
+			while T < 4 * 60 do
+				bot.mode = 16 -- team roam
+				rowFrame(H, bot)
+			end
+		end)
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = nil
+		local ref = {}
+		for _, l in ipairs(printed) do if l:find("ev=choice ", 1, true) and l:find("ref=stack", 1, true) then ref[#ref + 1] = l end end
+		return choices(printed, "stack"), ref
+	end
+	local c, ref = minute(true)
+	check("fight: the stack is not begun and its minute's line says fight", #c == 1 and field(c[1], "go") == "0" and field(c[1], "why") == "fight",
+		table.concat(c, " | "))
+	check("fight: one refusal line for the camp", #ref == 1 and field(ref[1], "bfrom") == "team_roam", table.concat(ref, " | "))
+	c = minute(false)
+	check("control, flag off: the stack starts in the same mode", #c >= 1 and field(c[1], "go") == "1", table.concat(c, " | "))
+end
+
 do
 	local H, bot, sp = rowWorld()
 	check("row world: the lane's pull camp is good_1", sp ~= nil and sp.idx == idxOf("good_1"), sp and sp.idx)

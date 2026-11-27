@@ -1732,6 +1732,7 @@ ____exports.EVENTS = {
         hs = "str",
         let = "str",
         beg = "str",
+        ref = "str",
         btgt = "str",
         bby = "num",
         over = "str",

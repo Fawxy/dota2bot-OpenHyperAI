@@ -36,13 +36,46 @@ local function __TS__ArrayPush(self, ...)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local refuse
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
+local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
+local OursOn = ____ours.On
 local ____reads = require(GetScriptDirectory().."/FunLib/humaniser/reads")
 local READS = ____reads.READS
 local Tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function refuse(bot, s, r)
+    s.refused[r.row] = r
+    local key = (r.row .. "|") .. (r.tgt or "")
+    local ____s_4, ____refLines_5 = s, "refLines"
+    if ____s_4[____refLines_5] == nil then
+        ____s_4[____refLines_5] = {}
+    end
+    local seen = s.refLines
+    if seen[key] == true then
+        return
+    end
+    seen[key] = true
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    Telemetry.Event(
+        "choice",
+        {
+            {
+                "pid",
+                bot:GetPlayerID()
+            },
+            {"kind", "decider"},
+            {"ref", r.row},
+            {"btgt", r.tgt},
+            {"bfrom", r.mode},
+            {"why", r.why}
+        }
+    )
+end
 --- Plan s3: above 0.95, the most Valve's attack showed, and at most 1.0, since above it J.IsRetreating reads a farm-mode
 -- hero as retreating; under OHA's retreat latch (1.1). The value inside that band is judgement.
 ____exports.HARD = 0.98
@@ -83,7 +116,7 @@ local function stateOf(bot)
     local pid = bot:GetPlayerID()
     local s = heroes[pid]
     if s == nil then
-        s = {seen = {}}
+        s = {seen = {}, refused = {}}
         heroes[pid] = s
     end
     return s
@@ -102,17 +135,39 @@ local function runningTask(bot)
     local ____opt_2 = Tasks.ForOurs.Running(bot)
     return ____opt_2 and ____opt_2.name
 end
+--- The modes a row's start is refused from (offers-and-the-decider s4 1a, user 27/11/2026: a row never starts over a fight;
+-- fights stay Valve's). A row already holding the hero when a fight starts is not cut by this.
+local FIGHT = {[BotMode.Attack] = true, [BotMode.Roam] = true, [BotMode.TeamRoam] = true}
+--- The one place a row's task starts: refused over a fight (Ours.FightFirst), else the row's own begin.
 local function begin(bot, s, row, offer)
     local over = runningTask(bot)
-    local from = HDebug.ModeName(bot:GetActiveMode())
+    local mode = bot:GetActiveMode()
+    local from = HDebug.ModeName(mode)
+    if FIGHT[mode] == true and OursOn("FightFirst") then
+        refuse(bot, s, {row = row.name, tgt = offer.tgt, why = "fight", mode = from})
+        return false
+    end
+    s.refLines = nil
     if not Tasks.Begin(
         row.name,
         function() return row.begin(bot) end
     ) then
         return false
     end
+    s.refused[row.name] = nil
     s.begun = {row = row, offer = offer, over = over, from = from}
     return true
+end
+--- Why the decider last refused to begin `row` for this hero, once (it is forgotten on reading): `fight` (the hero was in attack,
+-- roam or team roam, Ours.FightFirst). A row reads it after a begin it asked for did not happen. Undefined when none is kept.
+function ____exports.Refusal(bot, row)
+    local s = heroes[bot:GetPlayerID()]
+    local r = s and s.refused[row]
+    if r == nil then
+        return nil
+    end
+    s.refused[row] = nil
+    return r.why
 end
 --- One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused.
 local function turn(bot, s, row)
@@ -166,18 +221,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue24
+            local __continue30
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue24 = true
+                    __continue30 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue24 = true
+                __continue30 = true
             until true
-            if not __continue24 then
+            if not __continue30 then
                 break
             end
         end
@@ -243,21 +298,24 @@ end
 function ____exports.Host(bot, inner)
     return function()
         local s = stateOf(bot)
+        if FIGHT[bot:GetActiveMode()] ~= true then
+            s.refLines = nil
+        end
         local row = pick(bot, s)
-        local ____temp_6
+        local ____temp_11
         if row ~= nil then
-            ____temp_6 = retreatLeads(s)
+            ____temp_11 = retreatLeads(s)
         else
-            ____temp_6 = nil
+            ____temp_11 = nil
         end
-        s.letAt = ____temp_6
-        local ____temp_7
+        s.letAt = ____temp_11
+        local ____temp_12
         if s.letAt == nil then
-            ____temp_7 = row
+            ____temp_12 = row
         else
-            ____temp_7 = nil
+            ____temp_12 = nil
         end
-        s.held = ____temp_7
+        s.held = ____temp_12
         s.soft = s.held ~= nil and isSoft(s.held, bot)
         pcall(function() return note(bot, s) end)
         if s.held == nil then
@@ -350,13 +408,13 @@ function ____exports.LetGo(bot)
 end
 --- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
 function ____exports.Soft(bot)
-    local ____opt_8 = heroes[bot:GetPlayerID()]
-    return (____opt_8 and ____opt_8.soft) == true
+    local ____opt_13 = heroes[bot:GetPlayerID()]
+    return (____opt_13 and ____opt_13.soft) == true
 end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_10 = heroes[bot:GetPlayerID()]
-    return ____opt_10 and ____opt_10.held
+    local ____opt_15 = heroes[bot:GetPlayerID()]
+    return ____opt_15 and ____opt_15.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()

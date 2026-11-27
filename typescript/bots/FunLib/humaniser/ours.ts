@@ -62,6 +62,11 @@ export const DEFAULTS = {
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
      *  the next checkpoint batch against an arm with it off and every other switch on, and the flag deleted there either way. */
     TowerStay: true,
+    /** Slice oha-no-start-over-fight (offers-and-the-decider s10, slice A), a flag between two versions of our code: on, the decider
+     *  refuses to begin any row while Valve has the hero in attack, roam or team roam (fights stay Valve's; a row already holding is not
+     *  cut), and the row reads the refusal (`Decider.Refusal`: the creep row notes `fight`, the pull and stack take it as the slot's
+     *  reason). Off: a row begins from any mode. Deleted once judged. */
+    FightFirst: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

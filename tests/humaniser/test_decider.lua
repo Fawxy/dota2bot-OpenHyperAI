@@ -413,6 +413,95 @@ do -- each begin names the mode Valve had the hero in at that moment, read befor
 		table.concat(quiet, " | "))
 end
 
+-- Ours.FightFirst (slice oha-no-start-over-fight): no row begins while Valve has the hero in attack, roam or team roam.
+local function fightWorld(flag)
+	local H, bot, F = runnerWorld()
+	package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = flag
+	local hiOn, loOn = { want = true }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	local asked = 0
+	local loWants = lo.wants
+	lo.wants = function(...) asked = asked + 1 return loWants(...) end
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	return H, bot, F, hi, lo, function() return asked end
+end
+
+for _, m in ipairs({ { BotMode.Attack, "attack" }, { BotMode.Roam, "roam" }, { BotMode.TeamRoam, "team_roam" } }) do
+	local mode, name = m[1], m[2]
+	do -- the round: neither row begins, the next row is asked, each refusal is kept for its row and forgotten on reading
+		local H, bot, F, hi, lo, asked = fightWorld(true)
+		bot.mode = mode
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		local v
+		local lines = capture(function() v = desire() end)
+		check("fight " .. name .. ": the round begins no row and yields", hi.begun == 0 and lo.begun == 0 and F.Running(bot) == nil and v == 0.4,
+			hi.begun .. " " .. lo.begun .. " " .. tostring(v))
+		check("fight " .. name .. ": the refused row passes the turn to the next", asked() == 1, tostring(asked()))
+		check("fight " .. name .. ": each row's refusal is kept, once", H.Decider.Refusal(bot, "hi") == "fight" and H.Decider.Refusal(bot, "lo") == "fight"
+			and H.Decider.Refusal(bot, "hi") == nil, "")
+		local refs = 0
+		for _, l in ipairs(lines) do
+			if l:find("ref=", 1, true) then
+				refs = refs + 1
+				check("fight " .. name .. ": the refusal line names the row, target, mode and why",
+					l:find("why=fight", 1, true) and l:find("bfrom=" .. name, 1, true) and l:find("btgt=camp:", 1, true) and not l:find("beg=", 1, true), l)
+			end
+		end
+		check("fight " .. name .. ": one refusal line per row", refs == 2, table.concat(lines, " | "))
+		local again = capture(function()
+			T = T + 0.3
+			desire()
+		end)
+		local more = 0
+		for _, l in ipairs(again) do if l:find("ref=", 1, true) then more = more + 1 end end
+		check("fight " .. name .. ": a repeated refusal writes no second line", more == 0, table.concat(again, " | "))
+	end
+	do -- a read's offer is refused the same way
+		local H, bot, F, hi = fightWorld(true)
+		bot.mode = mode
+		local offered
+		capture(function() offered = H.Decider.Offer(bot, hi) end)
+		check("fight " .. name .. ": an offer is not begun", offered == false and hi.begun == 0 and F.Running(bot) == nil, tostring(offered))
+		check("fight " .. name .. ": the offer's refusal is kept for its row", H.Decider.Refusal(bot, "hi") == "fight", "")
+	end
+	do -- the flag off: every begin goes
+		local H, bot, F, hi = fightWorld(false)
+		bot.mode = mode
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		capture(function() desire() end)
+		check("fight " .. name .. ", flag off: the round begins the row", hi.begun == 1 and H.Decider.Refusal(bot, "hi") == nil, tostring(hi.begun))
+		local H2, bot2, _, hi2 = fightWorld(false)
+		bot2.mode = mode
+		local offered
+		capture(function() offered = H2.Decider.Offer(bot2, hi2) end)
+		check("fight " .. name .. ", flag off: an offer is begun", offered == true and hi2.begun == 1, tostring(offered))
+	end
+end
+
+for _, m in ipairs({ { BotMode.Laning, "laning" }, { BotMode.Farm, "farm" } }) do
+	do -- out of a fight the flag changes nothing, and a refused row begins once the fight ends
+		local H, bot, F, hi = fightWorld(true)
+		bot.mode = m[1]
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		local v
+		capture(function() v = desire() end)
+		check("no fight " .. m[2] .. ": the round begins the row", hi.begun == 1 and v == H.Decider.HARD, tostring(hi.begun))
+		local H2, bot2, _, hi2 = fightWorld(true)
+		bot2.mode = BotMode.Attack
+		local offered
+		capture(function()
+			H2.Decider.Offer(bot2, hi2)
+			bot2.mode = m[1]
+			T = T + 0.2
+			offered = H2.Decider.Offer(bot2, hi2)
+		end)
+		check("no fight " .. m[2] .. ": an offer refused in the fight is begun after it", offered == true and hi2.begun == 1
+			and H2.Decider.Refusal(bot2, "hi2") == nil and H2.Decider.Refusal(bot2, "hi") == nil, tostring(offered))
+	end
+end
+package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = nil
+
 do -- a lower row that wants the hero while a higher row holds it is not begun, in the round or at a read's offer
 	local H, bot, F = runnerWorld()
 	local hiOn, loOn = { want = true }, { want = false }

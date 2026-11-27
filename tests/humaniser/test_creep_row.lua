@@ -990,6 +990,42 @@ do -- the read's go is offered to the decider, which begins the row in the same 
 	check("offer: the line's target is the started creep", start ~= nil and field(dl[1], "btgt") == "creep:" .. field(start, "cid"), tostring(dl[1]))
 end
 
+do -- Ours.FightFirst: the decider refuses the start while the hero is in a fight; the creep is noted `fight`, keeps no claim and
+	-- no `tried`, and goes at a later read once the fight is over (slice oha-no-start-over-fight)
+	local function run(flag)
+		local w = world()
+		local O = package.loaded["bots/FunLib/custom_loader"].Ours
+		O.FightFirst = flag
+		local c = ranged()
+		w.targets = { target(c, { walk = 0.3, due = 1.4, dies = 3 }) }
+		local first, starts0
+		local out = capture(function()
+			w.core.mode = 2 -- attack
+			w.CO.Shadow(w.core)
+			starts0 = w.starts
+			first = package.loaded["bots/FunLib/humaniser/decider"].Refusal(w.core, "creep")
+			T = T + 0.3
+			w.core.mode = 1 -- laning
+			w.core.target = c
+			w.targets = { target(c, { walk = 0.3, due = 1.1, dies = 3 }) }
+			w.CO.Shadow(w.core)
+		end)
+		O.FightFirst = nil
+		return w, starts0, out, first
+	end
+	local w, starts0, out, first = run(true)
+	local start = lines(out, "phase=start")[1]
+	local ref = lines(out, "ref=creep")
+	check("fight: no start in attack; the start goes at the next read out of it", starts0 == 0 and w.starts == 1, starts0 .. " " .. w.starts)
+	check("fight: the row read the refusal itself (none left)", first == nil, tostring(first))
+	check("fight: the start line says the fight held it, and from which mode", start ~= nil and field(start, "hw") == "fight" and field(start, "hm") == "attack",
+		tostring(start))
+	check("fight: one refusal line, naming the creep", #ref == 1 and field(ref[1], "why") == "fight" and field(ref[1], "bfrom") == "attack"
+		and start ~= nil and field(ref[1], "btgt") == "creep:" .. field(start, "cid"), table.concat(ref, " | "))
+	local w2, starts2 = run(false)
+	check("control, flag off: the start goes in attack", starts2 == 1 and w2.starts == 1, tostring(starts2))
+end
+
 -- The creep claim (creep_claim.ts, Reads.creep): taken in the row's begin, released at every end of the task.
 local function claimOf(pid, cid) for _, c in ipairs(package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cid)) do if c.pid == pid then return c end end end
 
