@@ -134,8 +134,17 @@ function pick(name, ab) {
 // `<x>_radius` hits a circle that far in front of the caster (Shadowraze); else one around the caster. Unit-target spells get
 // no row: the target fixes where they land.
 const NOT_GEOMETRY = /vision|sight|aura|bonus|scepter|shard_distance|shard_push|pull|knockback|moved|echo|spine|inner|free_pathing|vector|reticle|application|search|spread|leash|slow|duration|stun|ally|heal|return|max_targets|tree|latch|attack|watch|break|min_|dead_zone|placement|self_|tooltip/i;
-// The flag misleads for these: a wave travelling from the caster with an area drawn at its end.
-const SHAPE_OVERRIDE = { venomancer_venomous_gale: 'l', shadow_demon_shadow_poison: 'l' };
+// The flag misleads for these: a wave travelling from the caster with an area drawn at its end (`l`); a trap, mine or ward
+// placed at the point with no area drawn (`a`).
+const SHAPE_OVERRIDE = {
+    venomancer_venomous_gale: 'l',
+    shadow_demon_shadow_poison: 'l',
+    templar_assassin_psionic_trap: 'a',
+    techies_remote_mines: 'a',
+    pugna_nether_ward: 'a',
+    venomancer_plague_ward: 'a',
+    dawnbreaker_solar_guardian: 'a',
+};
 // The rule picks the wrong key: Whirling Axes' hit radius is each axe's; the axes fly out to max_range around Troll.
 const KEY_OVERRIDE = { troll_warlord_whirling_axes_melee: { radius: 'max_range' } };
 

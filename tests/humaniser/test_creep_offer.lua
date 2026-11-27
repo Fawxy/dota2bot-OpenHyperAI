@@ -505,17 +505,25 @@ do -- slice oha-spell-aim: a point spell held beside a unit-target one is aimed,
 		a.GetSpecialValueFloat = function(_, k) return sv[k] or 0 end
 		return a
 	end
-	for _, case in ipairs({ { pick = "u", nukeMana = 50, lsaMana = 120 }, { pick = "p", nukeMana = 120, lsaMana = 50 } }) do
+	local function read(abilities)
 		local w = world()
 		local core = hero(1, 1)
 		core.mana = 400
-		-- The unit-target spell first: the slot order that shifted every later aim onto the wrong spell.
-		core.abilities = { [0] = nuke({ mana = case.nukeMana }), [1] = lsa(case.lsaMana) }
+		core.abilities = abilities
 		local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 60 })
-		local l = oneLine(w, core, c, { { hp = 60 } })
+		return oneLine(w, core, c, { { hp = 60 } })[1]
+	end
+	local alone = read({ [0] = nuke({ mana = 50 }) })
+	for _, case in ipairs({ { pick = "u", nukeMana = 50, lsaMana = 120 }, { pick = "p", nukeMana = 120, lsaMana = 50 } }) do
+		-- The unit-target spell first: the slot order that shifted every later aim onto the wrong spell.
+		local line = read({ [0] = nuke({ mana = case.nukeMana }), [1] = lsa(case.lsaMana) })
+		local l = { line }
 		local sx, sq = l[1] and field(l[1], "sx"), l[1] and field(l[1], "sq")
 		if case.pick == "u" then
-			check("the cheaper unit-target kill is logged with no aim of its own", sx == "u" and sq == nil, l[1])
+			local same = true
+			-- Not `sr`: Light Strike Array is a key spell, so holding it raises the nuke's reserve, as it should.
+			for _, k in ipairs({ "sl", "sg", "sz", "sf", "sd" }) do same = same and field(line, k) == field(alone, k) end
+			check("the cheaper unit-target kill is logged with no aim of its own, its answer as when held alone", sx == "u" and sq == nil and same, line .. "\n" .. alone)
 		else
 			check("the cheaper point kill is logged as an area, its landing after the delay", sx == "p" and sq == "a" and num(l[1], "sl") >= 0.8, l[1])
 		end

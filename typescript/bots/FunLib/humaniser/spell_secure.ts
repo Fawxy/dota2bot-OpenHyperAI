@@ -27,7 +27,10 @@ function dist(a: Place, b: Place): number {
 }
 
 export interface Timing {
-    /** Centre distance less the cast range (for `n`, the radius); above 0 the hero must walk first. */
+    /**
+     * `TimingOf` (`u`): centre distance less the cast range, below 0 inside it. `Aimed` (`p`, `n`): the aim's walk, floored at 0 (for a
+     * ring it may be away from the creep). Above 0 the hero must walk first.
+     */
     gap: number;
     walk: number;
     /** Seconds from now until the damage lands: the walk, the turn (not for `n`), the cast point and the flight at `speed`. */

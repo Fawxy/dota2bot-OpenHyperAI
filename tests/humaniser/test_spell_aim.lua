@@ -34,6 +34,11 @@ do -- an area's centre moves towards a hero, pulled back within cast range
 	check("straight at the creep the same area misses that hero", A.AimAt(area, hero, creep, {}, { foe }).others == 0)
 	local out = A.AimAt(area, hero, { x = 1100, y = 0 }, {}, {})
 	check("an area reaches cast range plus its radius: a creep 1,100 away needs 150 of walk", near(out.gap, 150), out.gap)
+	local reach = math.sqrt((out.at.x - out.from.x) ^ 2 + (out.at.y - out.from.y) ^ 2)
+	check("after the walk the centre is at cast range and the creep at its edge, not beyond it", near(reach, 700) and near(out.off, 250), out.off)
+	local skew = A.AimAt(area, hero, { x = 777.7, y = 811.3 }, {}, {})
+	local sreach = math.sqrt((skew.at.x - skew.from.x) ^ 2 + (skew.at.y - skew.from.y) ^ 2)
+	check("off the axis too, rounding does not drop the pulled-in centre", sreach <= 700 + 1e-6 and near(skew.off, 250), sreach)
 	local wave = { body(620, 60), body(640, -80), body(1200, 0) }
 	check("their other creeps are counted, not aimed for", A.AimAt(area, hero, creep, {}, wave).others == 2)
 end

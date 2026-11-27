@@ -216,15 +216,16 @@ function ____exports.AimAt(g, caster, must, wanted, others)
     if g.k == "a" then
         local gap = math.max(0, d - (g.range + g.radius))
         local from = toward(caster, must, gap)
-        local at = must
+        local centres = areaCentres(g, from, must, wanted)
+        local at = centres[1]
         local bestN = -1
         local bestOff = math.huge
-        for ____, c in ipairs(areaCentres(g, from, must, wanted)) do
+        for ____, c in ipairs(centres) do
             do
                 local __continue45
                 repeat
                     local off = dist(c, must)
-                    if off > g.radius then
+                    if off > g.radius + 0.000001 * math.max(1, g.radius) then
                         __continue45 = true
                         break
                     end

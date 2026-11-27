@@ -183,12 +183,15 @@ export function AimAt(this: void, g: Geom, caster: Place, must: Place, wanted: B
     if (g.k === "a") {
         const gap = math.max(0, d - (g.range + g.radius));
         const from = toward(caster, must, gap);
-        let at = must;
+        const centres = areaCentres(g, from, must, wanted);
+        // The first centre is `must` pulled into cast range, which after the walk sits at the radius's edge: it is always a candidate,
+        // and the slack keeps rounding from dropping it.
+        let at = centres[0];
         let bestN = -1;
         let bestOff = math.huge;
-        for (const c of areaCentres(g, from, must, wanted)) {
+        for (const c of centres) {
             const off = dist(c, must);
-            if (off > g.radius) continue;
+            if (off > g.radius + 1e-6 * math.max(1, g.radius)) continue;
             const n = count(wanted, (b) => dist(c, b) <= g.radius + b.hull);
             if (n > bestN || (n === bestN && off < bestOff)) {
                 at = c;
