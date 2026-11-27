@@ -73,6 +73,7 @@ ____exports.DEFAULTS = {
     TowerCreeps = true,
     SupportCreeps = true,
     CreepSpells = true,
+    AimedCasts = true,
     TowerStay = true,
     LaneAggro = false,
     FightFirst = true,

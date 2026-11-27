@@ -27,6 +27,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local SpellAim = require(GetScriptDirectory().."/FunLib/humaniser/spell_aim")
+____exports.SETTINGS = {ChaseFloor = 0.2}
 local function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -126,14 +127,25 @@ local function movedBy(u, t)
         vy = u.vy
     }
 end
---- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay.
+--- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
+-- where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
+-- homes on them, so they are placed `flight` before the landing, and its flight is a chase: the creep's speed away from where it
+-- casts slows the closing (a lane creep's 325 is 0.81 of Death Pulse's 400).
 local function aimedTiming(s, g, aim, creep, heroSpeed, turn)
     local walk = aim.gap / math.max(100, heroSpeed)
     local flight = 0
-    if s.speed > 0 and (g.k == "l" or g.k == "a") then
+    if s.speed > 0 and g.k == "s" then
+        local d = dist(aim.from, creep)
+        local away = d > 0 and ((creep.x - aim.from.x) * creep.vx + (creep.y - aim.from.y) * creep.vy) / d or 0
+        flight = d / math.max(s.speed * ____exports.SETTINGS.ChaseFloor, s.speed - away)
+    elseif s.speed > 0 then
         flight = dist(aim.from, g.k == "l" and creep or aim.at) / s.speed
     end
-    return {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}
+    return {timing = {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}, flight = flight}
+end
+--- Seconds from now until the spell's units are placed: at the landing, or at the cast for a homing `s` spell.
+local function placedAt(g, t)
+    return g.k == "s" and t.timing.land - t.flight or t.timing.land
 end
 --- A `p` or `n` spell aimed at the creep (spell_aim.ts): aimed at the creep and the foes where they are, then again where their
 -- velocities put them when that cast lands, and timed on the second aim. `others` (their other creeps) are counted where they are.
@@ -148,14 +160,17 @@ function ____exports.Aimed(s, hero, heroSpeed, turn, creep, foes, others)
         foes,
         others
     )
-    local t = aimedTiming(
-        s,
+    local t = placedAt(
         g,
-        first,
-        creep,
-        heroSpeed,
-        turn
-    ).land
+        aimedTiming(
+            s,
+            g,
+            first,
+            creep,
+            heroSpeed,
+            turn
+        )
+    )
     local c2 = movedBy(creep, t)
     local f2 = {}
     for ____, f in ipairs(foes) do
@@ -184,7 +199,7 @@ function ____exports.Aimed(s, hero, heroSpeed, turn, creep, foes, others)
             c2,
             heroSpeed,
             turn
-        ),
+        ).timing,
         centre = centre
     }
 end
@@ -198,18 +213,18 @@ function ____exports.Best(as)
     local best
     for ____, a in ipairs(as) do
         do
-            local __continue29
+            local __continue31
             repeat
                 if best == nil then
                     best = a
-                    __continue29 = true
+                    __continue31 = true
                     break
                 end
                 if a.kill ~= best.kill then
                     if a.kill then
                         best = a
                     end
-                    __continue29 = true
+                    __continue31 = true
                     break
                 end
                 if a.kill then
@@ -231,24 +246,40 @@ function ____exports.Best(as)
                 elseif short(a) < short(best) then
                     best = a
                 end
-                __continue29 = true
+                __continue31 = true
             until true
-            if not __continue29 then
+            if not __continue31 then
                 break
             end
         end
     end
     return best
 end
+--- Whether the cast lands where the hero faces, so the hero turns before it (slice oha-aimed-cast): a no-target line or circle in front
+-- of the hero. A point spell turns the hero to its point in the game's own order; a spell around the hero needs no facing.
+function ____exports.Turns(s)
+    if s.shape ~= "n" then
+        return false
+    end
+    local k = ____exports.GeomOf(s).k
+    return k == "l" or k == "r"
+end
+--- The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer.
+function ____exports.FacingOf(a)
+    local ____opt_0 = a.aim
+    return ____opt_0 and ____opt_0.th
+end
 local CAST_STAGES = {
     "shape",
     "nokill",
     "walk",
     "reserve",
-    "key"
+    "key",
+    "aim",
+    "aimoff"
 }
-local function castWhyOf(a)
-    if a.spell.shape ~= "u" then
+local function castWhyOf(a, o)
+    if a.spell.shape ~= "u" and a.aim == nil then
         return "shape"
     end
     if not a.kill then
@@ -263,33 +294,61 @@ local function castWhyOf(a)
     if a.spell.key and a.also <= 0 then
         return "key"
     end
-    return nil
+    if a.spell.shape == "u" then
+        return nil
+    end
+    if ____exports.Turns(a.spell) and (a.aim.slack or 0) < o.slack then
+        return "aim"
+    end
+    local ____o_aimed_2
+    if o.aimed then
+        ____o_aimed_2 = nil
+    else
+        ____o_aimed_2 = "aimoff"
+    end
+    return ____o_aimed_2
 end
---- The cast the creep row may order (slice oha-creep-spells): a unit-target spell that kills now, needs no walk, meets the reserve,
--- and is a damage spell or also hits an enemy hero. Of those a damage spell before a key spell, then the cheaper. With none, `why`
--- is the furthest any answer got (`CAST_STAGES`' order), so the line says what came closest.
-function ____exports.CastPick(as)
+--- Whether `a` is the better of two casts that both pass: a damage spell before a key spell, a unit-target one before an aimed one, then the cheaper.
+local function castBefore(a, b)
+    if a.spell.key ~= b.spell.key then
+        return not a.spell.key
+    end
+    local au = a.spell.shape == "u"
+    if au ~= (b.spell.shape == "u") then
+        return au
+    end
+    return a.spell.mana < b.spell.mana
+end
+local UNIT_ONLY = {aimed = false, slack = 0}
+--- The cast the creep row may order (slices oha-creep-spells, oha-aimed-cast): a spell that kills now, needs no walk, meets the reserve,
+-- and is a damage spell or also hits an enemy hero; a point or no-target one only aimed, with `o.aimed`, and with the slack to turn to
+-- when it turns the hero. Of those `castBefore`'s order. With none, `why` is the furthest any answer got (`CAST_STAGES`' order), so the
+-- line says what came closest.
+function ____exports.CastPick(as, o)
+    if o == nil then
+        o = UNIT_ONLY
+    end
     local pick
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue50
+            local __continue60
             repeat
-                local why = castWhyOf(a)
+                local why = castWhyOf(a, o)
                 if why == nil then
-                    if pick == nil or pick.spell.key and not a.spell.key or pick.spell.key == a.spell.key and a.spell.mana < pick.spell.mana then
+                    if pick == nil or castBefore(a, pick) then
                         pick = a
                     end
-                    __continue50 = true
+                    __continue60 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue50 = true
+                __continue60 = true
             until true
-            if not __continue50 then
+            if not __continue60 then
                 break
             end
         end

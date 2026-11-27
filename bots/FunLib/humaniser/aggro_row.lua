@@ -447,7 +447,7 @@ local function finish(bot, res)
                 a.orderAt ~= nil and closed(a) or nil
             },
             {
-                "aw",
+                "ow",
                 a.orderAt ~= nil and (a.took ~= nil and math.floor(a.took * 100 + 0.5) / 100 or -1) or nil
             },
             {"hp0", a.hp0},

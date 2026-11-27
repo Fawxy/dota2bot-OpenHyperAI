@@ -22,6 +22,14 @@ export interface Moving extends Foe {
     vy: number;
 }
 
+export const SETTINGS = {
+    /**
+     * judgement: the least closing speed of a homing flight, as a share of the projectile's, so a unit walking off as fast as
+     * it reads a long flight rather than none (a lane creep walking straight off from Death Pulse reads 80, not 75).
+     */
+    ChaseFloor: 0.2,
+};
+
 function dist(a: Place, b: Place): number {
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
@@ -106,12 +114,26 @@ function movedBy(u: Moving, t: number): Moving {
     return { x: u.x + u.vx * t, y: u.y + u.vy * t, hull: u.hull, vx: u.vx, vy: u.vy };
 }
 
-/** A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay. */
-function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Place, heroSpeed: number, turn: number): Timing {
+/**
+ * A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
+ * where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
+ * homes on them, so they are placed `flight` before the landing, and its flight is a chase: the creep's speed away from where it
+ * casts slows the closing (a lane creep's 325 is 0.81 of Death Pulse's 400).
+ */
+function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Moving, heroSpeed: number, turn: number): { timing: Timing; flight: number } {
     const walk = aim.gap / math.max(100, heroSpeed);
     let flight = 0;
-    if (s.speed > 0 && (g.k === "l" || g.k === "a")) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
-    return { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay };
+    if (s.speed > 0 && g.k === "s") {
+        const d = dist(aim.from, creep);
+        const away = d > 0 ? ((creep.x - aim.from.x) * creep.vx + (creep.y - aim.from.y) * creep.vy) / d : 0;
+        flight = d / math.max(s.speed * SETTINGS.ChaseFloor, s.speed - away);
+    } else if (s.speed > 0) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
+    return { timing: { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay }, flight };
+}
+
+/** Seconds from now until the spell's units are placed: at the landing, or at the cast for a homing `s` spell. */
+function placedAt(g: SpellAim.Geom, t: { timing: Timing; flight: number }): number {
+    return g.k === "s" ? t.timing.land - t.flight : t.timing.land;
 }
 
 /**
@@ -123,14 +145,14 @@ function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: 
 export function Aimed(this: void, s: CreepSpell, hero: Place, heroSpeed: number, turn: number, creep: Moving, foes: Moving[], others: Foe[]): { aim: SpellAim.Aim; timing: Timing; centre: number } {
     const g = GeomOf(s);
     const first = SpellAim.AimAt(g, hero, creep, foes, others);
-    const t = aimedTiming(s, g, first, creep, heroSpeed, turn).land;
+    const t = placedAt(g, aimedTiming(s, g, first, creep, heroSpeed, turn));
     const c2 = movedBy(creep, t);
     const f2: Moving[] = [];
     for (const f of foes) f2.push(movedBy(f, t));
     const aim = SpellAim.AimAt(g, hero, c2, f2, others);
     // Aimed with nobody wanted, the cast goes straight at the creep; the foes passed as `others` are then those it hits anyway.
     const centre = SpellAim.AimAt(g, hero, c2, [], f2).others;
-    return { aim, timing: aimedTiming(s, g, aim, c2, heroSpeed, turn), centre };
+    return { aim, timing: aimedTiming(s, g, aim, c2, heroSpeed, turn).timing, centre };
 }
 
 /** One spell's answer on one creep at one read. */
@@ -183,33 +205,72 @@ export function Best(this: void, as: Answer[]): Answer | undefined {
     return best;
 }
 
-/** Why an answer is not a cast the creep row may order, in the order asked; undefined when it is (`CastPick`). */
-export type CastWhy = "shape" | "nokill" | "walk" | "reserve" | "key";
+/**
+ * Whether the cast lands where the hero faces, so the hero turns before it (slice oha-aimed-cast): a no-target line or circle in front
+ * of the hero. A point spell turns the hero to its point in the game's own order; a spell around the hero needs no facing.
+ */
+export function Turns(this: void, s: CreepSpell): boolean {
+    if (s.shape !== "n") return false;
+    const k = GeomOf(s).k;
+    return k === "l" || k === "r";
+}
 
-const CAST_STAGES: CastWhy[] = ["shape", "nokill", "walk", "reserve", "key"];
+/** The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer. */
+export function FacingOf(this: void, a: Answer): number | undefined {
+    return a.aim?.th;
+}
 
-function castWhyOf(a: Answer): CastWhy | undefined {
-    if (a.spell.shape !== "u") return "shape";
+/**
+ * Why an answer is not a cast the creep row may order, in the order asked; undefined when it is (`CastPick`). `aim`: a cast that turns
+ * the hero whose aim has less slack than the pick's `slack`. `aimoff`: a point or no-target cast that passes every gate while
+ * Ours.AimedCasts is off (the shadow of that widening).
+ */
+export type CastWhy = "shape" | "nokill" | "walk" | "reserve" | "key" | "aim" | "aimoff";
+
+const CAST_STAGES: CastWhy[] = ["shape", "nokill", "walk", "reserve", "key", "aim", "aimoff"];
+
+export interface PickOpts {
+    /** Ours.AimedCasts: point and no-target answers may be cast. */
+    aimed: boolean;
+    /** The least slack (radians) a cast that turns the hero needs. */
+    slack: number;
+}
+
+function castWhyOf(a: Answer, o: PickOpts): CastWhy | undefined {
+    if (a.spell.shape !== "u" && a.aim === undefined) return "shape";
     if (!a.kill) return "nokill";
     if (a.timing.gap > 0) return "walk";
     if (a.over < 0) return "reserve";
     // User 27/11/2026: a disable secures a creep only when the same cast also hits an enemy hero.
     if (a.spell.key && a.also <= 0) return "key";
-    return undefined;
+    if (a.spell.shape === "u") return undefined;
+    if (Turns(a.spell) && (a.aim!.slack ?? 0) < o.slack) return "aim";
+    return o.aimed ? undefined : "aimoff";
 }
 
+/** Whether `a` is the better of two casts that both pass: a damage spell before a key spell, a unit-target one before an aimed one, then the cheaper. */
+function castBefore(a: Answer, b: Answer): boolean {
+    if (a.spell.key !== b.spell.key) return !a.spell.key;
+    const au = a.spell.shape === "u";
+    if (au !== (b.spell.shape === "u")) return au;
+    return a.spell.mana < b.spell.mana;
+}
+
+const UNIT_ONLY: PickOpts = { aimed: false, slack: 0 };
+
 /**
- * The cast the creep row may order (slice oha-creep-spells): a unit-target spell that kills now, needs no walk, meets the reserve,
- * and is a damage spell or also hits an enemy hero. Of those a damage spell before a key spell, then the cheaper. With none, `why`
- * is the furthest any answer got (`CAST_STAGES`' order), so the line says what came closest.
+ * The cast the creep row may order (slices oha-creep-spells, oha-aimed-cast): a spell that kills now, needs no walk, meets the reserve,
+ * and is a damage spell or also hits an enemy hero; a point or no-target one only aimed, with `o.aimed`, and with the slack to turn to
+ * when it turns the hero. Of those `castBefore`'s order. With none, `why` is the furthest any answer got (`CAST_STAGES`' order), so the
+ * line says what came closest.
  */
-export function CastPick(this: void, as: Answer[]): { pick?: Answer; why?: CastWhy } {
+export function CastPick(this: void, as: Answer[], o: PickOpts = UNIT_ONLY): { pick?: Answer; why?: CastWhy } {
     let pick: Answer | undefined;
     let far = -1;
     for (const a of as) {
-        const why = castWhyOf(a);
+        const why = castWhyOf(a, o);
         if (why === undefined) {
-            if (pick === undefined || (pick.spell.key && !a.spell.key) || (pick.spell.key === a.spell.key && a.spell.mana < pick.spell.mana)) pick = a;
+            if (pick === undefined || castBefore(a, pick)) pick = a;
             continue;
         }
         const at = CAST_STAGES.indexOf(why);

@@ -295,7 +295,7 @@ function finish(bot: Unit, res: Lib.Result): void {
         ["rs", a.resumes],
         ["ha", a.orderAt !== undefined ? (a.heroOn === true ? 1 : 0) : undefined],
         ["ac", a.orderAt !== undefined ? closed(a) : undefined],
-        ["aw", a.orderAt !== undefined ? (a.took !== undefined ? math.floor(a.took * 100 + 0.5) / 100 : -1) : undefined],
+        ["ow", a.orderAt !== undefined ? (a.took !== undefined ? math.floor(a.took * 100 + 0.5) / 100 : -1) : undefined],
         ["hp0", a.hp0],
         ["hp1", math.floor(bot.GetHealth())],
     ]);

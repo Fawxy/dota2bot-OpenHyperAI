@@ -40,6 +40,13 @@ export interface Aim {
     /** Units of `wanted` the cast hits, and of `others`. */
     also: number;
     others: number;
+    /**
+     * `l` and `r`: how far (radians) the caster's facing may turn either way from the aim before `must` or a counted wanted unit
+     * leaves the spell. Undefined for `a` and `s`, which do not depend on the facing.
+     */
+    slack?: number;
+    /** `l` and `r`: the facing (radians) the cast is aimed at. */
+    th?: number;
 }
 
 // LuaJIT (Dota) has math.atan2; Lua 5.3 (fengari, tests) folds it into math.atan.
@@ -102,10 +109,10 @@ function arcOf(g: Geom, d: number, extra: number): number | undefined {
 
 /**
  * The facing for a line or a ring: the arc that hits `must` is cut at the edges of each wanted unit's arc, and of the pieces the
- * one that hits the most wanted units wins. Within it the facing straight at `must` if the piece holds it, else the piece's middle,
- * so the unit nearest an edge keeps the most margin.
+ * one that hits the most wanted units wins, the wider of equals. The facing is the piece's middle, so the unit nearest an edge keeps
+ * the most margin; `slack` is that margin, half the piece.
  */
-function facing(g: Geom, from: Place, must: Place, wanted: Body[]): number {
+function facing(g: Geom, from: Place, must: Place, wanted: Body[]): { th: number; slack: number } {
     const base = atan2(must.y - from.y, must.x - from.x);
     const a0 = arcOf(g, dist(from, must), 0) ?? 0;
     const cuts: number[] = [-a0, a0];
@@ -120,21 +127,20 @@ function facing(g: Geom, from: Place, must: Place, wanted: Body[]): number {
     table.sort(cuts);
     let best = 0;
     let bestN = -1;
-    let bestHas0 = false;
+    let slack = -1;
     for (let i = 0; i + 1 < cuts.length; i++) {
         const lo = cuts[i];
         const hi = cuts[i + 1];
         const mid = (lo + hi) / 2;
         let n = 0;
         for (const r of arcs) if (math.abs(norm(mid - r.c)) <= r.a) n++;
-        const has0 = lo <= 0 && hi >= 0;
-        if (n > bestN || (n === bestN && has0 && !bestHas0)) {
+        if (n > bestN || (n === bestN && (hi - lo) / 2 > slack)) {
             bestN = n;
-            best = has0 ? 0 : mid;
-            bestHas0 = has0;
+            best = mid;
+            slack = (hi - lo) / 2;
         }
     }
-    return base + best;
+    return { th: base + best, slack: math.max(0, slack) };
 }
 
 function count(units: Body[], hit: (b: Body) => boolean): number {
@@ -213,7 +219,7 @@ export function AimAt(this: void, g: Geom, caster: Place, must: Place, wanted: B
         gap = math.max(0, miss);
         from = toward(caster, must, d > g.offset ? gap : -gap);
     }
-    const th = facing(g, from, must, wanted);
+    const { th, slack } = facing(g, from, must, wanted);
     const hit = (b: Body): boolean => hitsAt(g, from, th, b);
     let at: Place;
     let off: number;
@@ -227,5 +233,5 @@ export function AimAt(this: void, g: Geom, caster: Place, must: Place, wanted: B
         at = ringCentre(from, th, g);
         off = dist(at, must);
     }
-    return { gap, from, at, off, also: count(wanted, hit), others: count(others, hit) };
+    return { gap, from, at, off, also: count(wanted, hit), others: count(others, hit), slack, th };
 }
