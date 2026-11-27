@@ -3107,9 +3107,10 @@ export const EVENTS = {
         cg: "num",
         /**
          * `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target
-         * spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero), `none` (no creep spell);
-         * the hero's, as the attack's: `acting`, `row`, `held`, `tried` (its last attempt was on this creep); the creep's: `claimed` (a
-         * hero of ours holds a claim on it), `mate` (a teammate's hit kills it first), `other` (another creep's cast went); `refused` (the runner);
+         * spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero); a hero holding no creep spell
+         * is not weighed (no field). The hero's, as the attack's: `acting`, `row`, `held`, `tried` (its last attempt was on this creep); the
+         * creep's: `claimed` (a hero of ours holds a claim on it, or one with a lower `creep` cell is still going for it), `mate` (a teammate's
+         * hit kills it first), `other` (another creep's cast went); `refused` (the runner);
          * `off` (the switch off: the row would have cast on it, the cast's shadow).
          */
         cw: "str",

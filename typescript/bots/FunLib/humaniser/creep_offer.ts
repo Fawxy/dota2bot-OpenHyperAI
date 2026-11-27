@@ -704,7 +704,8 @@ export function Shadow(bot: Unit): void {
         if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
     if (rowHook !== undefined) rowHook(bot, cands);
-    // After the row: the spell read only logs, so an error in it cannot cost the row its decision this read.
+    // After the row: the best answer is kept for the line. The row's cast pass (creep_row castPass) may have asked the answers already
+    // (`answersOf` keeps them for the call), so an error in the spell read can surface inside the row's hook too.
     if (spellTargets.length === 0) return;
     const cs = spellsOf(bot, f);
     if (cs.spells.length === 0) return;

@@ -159,10 +159,33 @@ export function OnTime(this: void, need: number, due: number): boolean {
 
 /**
  * The hero's hit cannot land before the creep dies to the others' hits: its swing is ordered no sooner than the creep comes due, the
- * hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit` later (`ownHitTime`).
+ * hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit - cd` after the order (`hit` the
+ * engine's `ownHitTime`, which counts the cooldown left already).
  */
 export function AttackLate(this: void, due: number, need: number, cd: number, hit: number, dies: number): boolean {
-    return math.max(due, need, cd) + hit > dies;
+    return math.max(due, need, cd) + (hit - cd) > dies;
+}
+
+/** A lower-cell hero's answer that says it is still going for the creep: its attempt runs, or it held back for itself, not for the creep. */
+const STILL_GOING: Record<string, boolean> = { busy: true, acting: true, row: true, held: true, refused: true };
+
+/**
+ * For the cast: a hero with a lower `creep` cell has the creep on offer and its latest fresh answer says it is still going for it
+ * (`STILL_GOING`). `FreeFor` reads any fresh refusal as free, which fits the support's attack (its audit) but not a cast that spends mana.
+ */
+function mateGoing(bot: Unit, cid: number, now: number): boolean {
+    const pid = bot.GetPlayerID();
+    const mine = TripTable.RankOf("creep", LaneConfig.PositionOf(bot));
+    if (mine === undefined) return false;
+    for (let i = 1; i <= 5; i++) {
+        const m = GetTeamMember(i);
+        if (m === null || m === undefined || m.GetPlayerID() === pid || !m.IsBot()) continue;
+        const cell = TripTable.RankOf("creep", LaneConfig.PositionOf(m));
+        if (cell === undefined || cell >= mine) continue;
+        const a = CreepClaim.AnswerOf(m.GetPlayerID(), cid);
+        if (a !== undefined && a.why !== undefined && STILL_GOING[a.why] && now - a.at <= CreepClaim.ANSWER_FRESH) return true;
+    }
+    return false;
 }
 
 /** The row's refusals of an attack that leave the creep to the cast: the hero cannot take it in time, or not safely. */
@@ -709,6 +732,9 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
     for (const c of cands) {
         const why = whys[c.cid];
         if (c.t.kind !== "lasthit" || why === undefined) continue;
+        // A hero with no creep spell has nothing to weigh: the attack's facts are not read for it (the default arm runs this pass too).
+        const as = c.spells();
+        if (as.length === 0) continue;
         let claim: string | undefined;
         let onTime = true;
         let late = false;
@@ -729,14 +755,13 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
             c.noteCast(false, no);
             continue;
         }
-        if (FreeFor(bot, c.cid, now) !== undefined || CreepClaim.ClaimsOn(c.cid).length > 0) no = "claimed";
+        if (FreeFor(bot, c.cid, now) !== undefined || mateGoing(bot, c.cid, now) || CreepClaim.ClaimsOn(c.cid).length > 0) no = "claimed";
         else if (c.facts().kb === "mate") no = "mate";
         let p: SpellSecure.Answer | undefined;
         if (no === undefined) {
-            const as = c.spells();
             const r = SpellSecure.CastPick(as);
             p = r.pick;
-            if (p === undefined) no = as.length === 0 ? "none" : r.why;
+            if (p === undefined) no = r.why;
         }
         if (p === undefined) {
             c.noteCast(false, no);
@@ -921,7 +946,8 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (a !== undefined) return { tgt: `creep:${a.cid}` };
     const pd = pending[pid];
     if (pd === undefined) return undefined;
-    return { tgt: `creep:${pd.best.cid}`, by: pd.now + pd.best.t.due - pd.need };
+    // A cast goes at the read that chose it: its window is now, not the attack's due.
+    return { tgt: `creep:${pd.best.cid}`, by: pd.k === "sp" ? pd.now : pd.now + pd.best.t.due - pd.need };
 }
 
 /** The row's verb: one frame of the attempt; true once it has ended. */

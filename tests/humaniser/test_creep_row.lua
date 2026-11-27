@@ -54,7 +54,8 @@ local function world(o)
 			end,
 			turnTime = function() return 0 end,
 			cooldownLeft = function() return w.cd or 0 end,
-			ownHitTime = function() return 0.3 end,
+			-- The engine's ownHitTime counts the cooldown left (ownCommitTime): 0.3 s of wind-up and turn after it.
+			ownHitTime = function() return 0.3 + (w.cd or 0) end,
 		}
 	end
 	F.Jobs = function() return {} end
@@ -1232,7 +1233,8 @@ do -- the attack's hit lands after the creep dies (on cooldown): the cast goes o
 		and field(ch[1], "aid") ~= nil and field(ch[1], "go") == "0", table.concat(ch, " | "))
 	check("cast: the job start reads k=sp with the spell, its landing and its mana over the reserve", #jobs >= 1 and field(jobs[1], "k") == "sp" and field(jobs[1], "ab") == "test_nuke"
 		and field(jobs[1], "al") == "0.300" and field(jobs[1], "am") == "200", table.concat(jobs, " | "))
-	check("cast: the claim is held as committed", #package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cidOf(c)) == 1)
+	local claims = package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cidOf(c))
+	check("cast: the claim is held as committed (phase swing, so no lower-cell start makes it yield)", #claims == 1 and claims[1].phase == "swing", #claims)
 end
 
 do -- controls: the cast waits while the attack can still take the creep, and keeps to its own rules
@@ -1278,6 +1280,31 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 	check("control: one attempt a creep: the cast timed out and the next read on the same creep casts again no more", w.starts == 1, tostring(w.starts))
 
 	w, c = castWorld()
+	w.core.mode = 4
+	out = castRead(w, c)
+	check("control: stock's retreat holds the hero: no cast, cw=held", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "held", table.concat(out, " | "))
+
+	w, c = castWorld()
+	w.running = { name = "pull" }
+	out = castRead(w, c)
+	check("control: another task runs for the hero (a pull): no cast, cw=row", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "row", table.concat(out, " | "))
+
+	-- A support's cast and the core of its lane (pid 1) that has the creep on offer: still going for it, or refusing it for the creep's sake.
+	for _, case in ipairs({ { why = "acting", casts = false }, { why = "covered", casts = true } }) do
+		w, c = castWorld()
+		local sup = addSupport({ pos = 4 })
+		sup.mana, sup.abilities = 300, { [0] = spell() }
+		package.loaded["bots/FunLib/humaniser/creep_claim"].Touch(1, { cidOf(c) }, T)[cidOf(c)].why = case.why
+		out = capture(function() w.CO.Shadow(sup) end)
+		local ch = lines(out, "job=creep")
+		if case.casts then
+			check("support: the core refused the creep as covered: the support casts", w.starts == 1 and field(ch[1], "k") == "sp", table.concat(out, " | "))
+		else
+			check("support: the core is still going for the creep (" .. case.why .. "): no cast", w.starts == 0, table.concat(out, " | "))
+		end
+	end
+
+	w, c = castWorld()
 	package.loaded["bots/FunLib/humaniser/creep_claim"].Take(cidOf(c), { pid = 2, rank = 60, k = "lh", due = 1 })
 	out = castRead(w, c)
 	check("control: a teammate holds a claim on the creep: cw=claimed", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "claimed", table.concat(out, " | "))
@@ -1294,7 +1321,8 @@ end
 
 do -- the go rule's parts, pure
 	local CR = world().CR
-	check("AttackLate: ready at 0.4, landing 0.3 later, after a death at 0.5", CR.AttackLate(0, 0, 0.4, 0.3, 0.5) == true)
+	check("AttackLate: ready at 0.4, landing 0.3 later (the engine's 0.7 counts the cooldown), after a death at 0.5", CR.AttackLate(0, 0, 0.4, 0.7, 0.5) == true)
+	check("AttackLate: the cooldown is counted once: ready at 0.6, landing at 0.9, before a death at 1.0", CR.AttackLate(0, 0, 0.6, 0.9, 1.0) == false)
 	check("AttackLate: due at 1, the hit at 1.3 beats a death at 2", CR.AttackLate(1, 0, 0, 0.3, 2) == false)
 	check("AttackLate: a walk of 1.5 s sets the swing", CR.AttackLate(0, 1.5, 0, 0.3, 1.7) == true)
 	check("AttackCannot: the row's covered refusal leaves the creep to the cast", CR.AttackCannot("covered", nil, true, false) == "covered")

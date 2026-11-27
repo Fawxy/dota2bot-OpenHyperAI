@@ -149,7 +149,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, CAST_OVER, running, lastCid, pending
+local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, STILL_GOING, CAST_OVER, running, lastCid, pending
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -224,9 +224,56 @@ function ____exports.OnTime(need, due)
     return due >= need
 end
 --- The hero's hit cannot land before the creep dies to the others' hits: its swing is ordered no sooner than the creep comes due, the
--- hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit` later (`ownHitTime`).
+-- hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit - cd` after the order (`hit` the
+-- engine's `ownHitTime`, which counts the cooldown left already).
 function ____exports.AttackLate(due, need, cd, hit, dies)
-    return math.max(due, need, cd) + hit > dies
+    return math.max(due, need, cd) + (hit - cd) > dies
+end
+function mateGoing(bot, cid, now)
+    local pid = bot:GetPlayerID()
+    local mine = TripTable.RankOf(
+        "creep",
+        LaneConfig.PositionOf(bot)
+    )
+    if mine == nil then
+        return false
+    end
+    do
+        local i = 1
+        while i <= 5 do
+            do
+                local __continue18
+                repeat
+                    local m = GetTeamMember(i)
+                    if m == nil or m == nil or m:GetPlayerID() == pid or not m:IsBot() then
+                        __continue18 = true
+                        break
+                    end
+                    local cell = TripTable.RankOf(
+                        "creep",
+                        LaneConfig.PositionOf(m)
+                    )
+                    if cell == nil or cell >= mine then
+                        __continue18 = true
+                        break
+                    end
+                    local a = CreepClaim.AnswerOf(
+                        m:GetPlayerID(),
+                        cid
+                    )
+                    if a ~= nil and a.why ~= nil and STILL_GOING[a.why] and now - a.at <= CreepClaim.ANSWER_FRESH then
+                        return true
+                    end
+                    __continue18 = true
+                until true
+                if not __continue18 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+    return false
 end
 --- Why the attack cannot take the creep, for the cast; undefined when it can, or when the row held back for a reason the cast shares (the hero
 -- acting, another task, retreat, a claim, a teammate's hit). `why` the row's refusal this read. For a creep the row does not attack (`kind`)
@@ -323,11 +370,11 @@ function ____exports.FreeFor(bot, cid, now)
         local i = 1
         while i <= 5 do
             do
-                local __continue71
+                local __continue77
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetPlayerID() == pid then
-                        __continue71 = true
+                        __continue77 = true
                         break
                     end
                     local cell = TripTable.RankOf(
@@ -335,14 +382,14 @@ function ____exports.FreeFor(bot, cid, now)
                         LaneConfig.PositionOf(m)
                     )
                     if cell == nil or cell >= mine then
-                        __continue71 = true
+                        __continue77 = true
                         break
                     end
                     if not m:IsBot() then
                         if m:GetAssignedLane() == lane then
                             return "human"
                         end
-                        __continue71 = true
+                        __continue77 = true
                         break
                     end
                     local a = CreepClaim.AnswerOf(
@@ -352,9 +399,9 @@ function ____exports.FreeFor(bot, cid, now)
                     if a ~= nil and a.why == nil and now - a.at <= CreepClaim.ANSWER_FRESH then
                         wait = true
                     end
-                    __continue71 = true
+                    __continue77 = true
                 until true
-                if not __continue71 then
+                if not __continue77 then
                     break
                 end
             end
@@ -416,11 +463,16 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
     local pick
     for ____, c in ipairs(cands) do
         do
-            local __continue132
+            local __continue138
             repeat
                 local why = whys[c.cid]
                 if c.t.kind ~= "lasthit" or why == nil then
-                    __continue132 = true
+                    __continue138 = true
+                    break
+                end
+                local as = c.spells()
+                if #as == 0 then
+                    __continue138 = true
                     break
                 end
                 local claim
@@ -450,32 +502,31 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                     end
                 end
                 if ____exports.AttackCannot(why, claim, onTime, late) == nil then
-                    __continue132 = true
+                    __continue138 = true
                     break
                 end
                 local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
                 if no ~= nil then
                     c.noteCast(false, no)
-                    __continue132 = true
+                    __continue138 = true
                     break
                 end
-                if ____exports.FreeFor(bot, c.cid, now) ~= nil or #CreepClaim.ClaimsOn(c.cid) > 0 then
+                if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #CreepClaim.ClaimsOn(c.cid) > 0 then
                     no = "claimed"
                 elseif c.facts().kb == "mate" then
                     no = "mate"
                 end
                 local p
                 if no == nil then
-                    local as = c.spells()
                     local r = SpellSecure.CastPick(as)
                     p = r.pick
                     if p == nil then
-                        no = #as == 0 and "none" or r.why
+                        no = r.why
                     end
                 end
                 if p == nil then
                     c.noteCast(false, no)
-                    __continue132 = true
+                    __continue138 = true
                     break
                 end
                 if best == nil or c.t.dies < best.t.dies then
@@ -487,9 +538,9 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 else
                     c.noteCast(false, "other")
                 end
-                __continue132 = true
+                __continue138 = true
             until true
-            if not __continue132 then
+            if not __continue138 then
                 break
             end
         end
@@ -563,6 +614,13 @@ local HOST = BotMode.Farm
 function ____exports.Due(walk, due, lead)
     return due <= walk + lead
 end
+STILL_GOING = {
+    busy = true,
+    acting = true,
+    row = true,
+    held = true,
+    refused = true
+}
 CAST_OVER = {
     late = true,
     outdmg = true,
@@ -1121,18 +1179,18 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue127
+            local __continue133
             repeat
                 if c == best or kindOf(bot, c) == nil then
-                    __continue127 = true
+                    __continue133 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue127 = true
+                __continue133 = true
             until true
-            if not __continue127 then
+            if not __continue133 then
                 break
             end
         end
@@ -1371,7 +1429,7 @@ local function rowWants(bot, _reads)
     end
     return {
         tgt = "creep:" .. tostring(pd.best.cid),
-        by = pd.now + pd.best.t.due - pd.need
+        by = pd.k == "sp" and pd.now or pd.now + pd.best.t.due - pd.need
     }
 end
 --- The row's verb: one frame of the attempt; true once it has ended.
