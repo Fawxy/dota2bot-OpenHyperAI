@@ -494,6 +494,34 @@ do -- dead before the damage lands is no kill; the line keeps the closest read
 	check("a creep another hit kills first: sk=0 and its forecast HP under 0", #l == 1 and num(l[1], "sk") == 0 and num(l[1], "sf") == -5 and field(l[1], "sa") == nil, l[1])
 end
 
+do -- slice oha-spell-aim: a point spell held beside a unit-target one is aimed, and the unit-target one is not
+	local Data = require("bots/FunLib/humaniser/spell_damage_data")
+	local name = "lina_light_strike_array"
+	local key = (Data.SPELL_DAMAGE[name] or Data.SPELL_ADDED[name])[1]
+	local function lsa(mana)
+		local a = nuke({ name = name, dmg = 0, mana = mana, range = 700 })
+		local sv = { [key] = 80, light_strike_array_aoe = 250, light_strike_array_delay_time = 0.5 }
+		a.GetBehavior = function() return 16 end
+		a.GetSpecialValueFloat = function(_, k) return sv[k] or 0 end
+		return a
+	end
+	for _, case in ipairs({ { pick = "u", nukeMana = 50, lsaMana = 120 }, { pick = "p", nukeMana = 120, lsaMana = 50 } }) do
+		local w = world()
+		local core = hero(1, 1)
+		core.mana = 400
+		-- The unit-target spell first: the slot order that shifted every later aim onto the wrong spell.
+		core.abilities = { [0] = nuke({ mana = case.nukeMana }), [1] = lsa(case.lsaMana) }
+		local c = MakeCreep({ team = 3, x = 300, y = -5000, hp = 60 })
+		local l = oneLine(w, core, c, { { hp = 60 } })
+		local sx, sq = l[1] and field(l[1], "sx"), l[1] and field(l[1], "sq")
+		if case.pick == "u" then
+			check("the cheaper unit-target kill is logged with no aim of its own", sx == "u" and sq == nil, l[1])
+		else
+			check("the cheaper point kill is logged as an area, its landing after the delay", sx == "p" and sq == "a" and num(l[1], "sl") >= 0.8, l[1])
+		end
+	end
+end
+
 do -- no spell, or our own creep: no spell fields
 	local w = world()
 	local core = hero(1, 1)

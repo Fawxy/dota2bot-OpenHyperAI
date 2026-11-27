@@ -551,20 +551,20 @@ function spellAnswers(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
     }
     const timings: SpellSecure.Timing[] = [];
     const takens: number[] = [];
-    const aims: ({ aim: SpellAim.Aim; centre: number } | undefined)[] = [];
+    // Keyed by the spell's index: a Lua array cannot hold the gap a unit-target spell leaves (push(undefined) adds nothing, and every later aim shifts onto the wrong spell).
+    const aims = new LuaTable<number, { aim: SpellAim.Aim; centre: number }>();
     let band = false;
     let horizon = 0;
     let moving: SpellSecure.Moving | undefined;
-    for (const s of cs.spells) {
+    for (let i = 0; i < cs.spells.length; i++) {
+        const s = cs.spells[i];
         let timing: SpellSecure.Timing;
-        if (s.shape === "u") {
-            timing = SpellSecure.TimingOf(s, d, f.speed, turn);
-            aims.push(undefined);
-        } else {
+        if (s.shape === "u") timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+        else {
             moving ??= movingOf(creep, at);
             const r = SpellSecure.Aimed(s, f.hero, f.speed, turn, moving, moversOf(f), othersOf(f, creep));
             timing = r.timing;
-            aims.push(r);
+            aims.set(i, r);
         }
         const taken = creep.GetActualIncomingDamage(s.dmg, s.dtype);
         timings.push(timing);
@@ -583,7 +583,7 @@ function spellAnswers(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
         const hp = forecast !== undefined && hpNow <= taken * SETTINGS.SpellBand ? verbs.forecastHp(forecast, timing.land) : hpNow;
         const kill = SpellSecure.Kills(hp, taken);
         const over = SpellSecure.OverReserve(mana, s, cs.keys);
-        const aimed = aims[i];
+        const aimed = aims.get(i);
         if (aimed === undefined) answers.push({ spell: s, timing, taken, hp, kill, over, also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
         else answers.push({ spell: s, timing, taken, hp, kill, over, also: aimed.aim.also, aim: aimed.aim, centre: aimed.centre });
     }

@@ -447,33 +447,37 @@ function spellAnswers(bot, f, creep)
     local band = false
     local horizon = 0
     local moving
-    for ____, s in ipairs(cs.spells) do
-        local timing
-        if s.shape == "u" then
-            timing = SpellSecure.TimingOf(s, d, f.speed, turn)
-            aims[#aims + 1] = nil
-        else
-            if moving == nil then
-                moving = movingOf(creep, at)
+    do
+        local i = 0
+        while i < #cs.spells do
+            local s = cs.spells[i + 1]
+            local timing
+            if s.shape == "u" then
+                timing = SpellSecure.TimingOf(s, d, f.speed, turn)
+            else
+                if moving == nil then
+                    moving = movingOf(creep, at)
+                end
+                local r = SpellSecure.Aimed(
+                    s,
+                    f.hero,
+                    f.speed,
+                    turn,
+                    moving,
+                    moversOf(f),
+                    othersOf(f, creep)
+                )
+                timing = r.timing
+                aims[i] = r
             end
-            local r = SpellSecure.Aimed(
-                s,
-                f.hero,
-                f.speed,
-                turn,
-                moving,
-                moversOf(f),
-                othersOf(f, creep)
-            )
-            timing = r.timing
-            aims[#aims + 1] = r
-        end
-        local taken = creep:GetActualIncomingDamage(s.dmg, s.dtype)
-        timings[#timings + 1] = timing
-        takens[#takens + 1] = taken
-        if hpNow <= taken * ____exports.SETTINGS.SpellBand then
-            band = true
-            horizon = math.max(horizon, timing.land)
+            local taken = creep:GetActualIncomingDamage(s.dmg, s.dtype)
+            timings[#timings + 1] = timing
+            takens[#takens + 1] = taken
+            if hpNow <= taken * ____exports.SETTINGS.SpellBand then
+                band = true
+                horizon = math.max(horizon, timing.land)
+            end
+            i = i + 1
         end
     end
     local forecast = band and verbs.hpForecast(bot, creep, horizon) or nil
@@ -486,7 +490,7 @@ function spellAnswers(bot, f, creep)
             local hp = forecast ~= nil and hpNow <= taken * ____exports.SETTINGS.SpellBand and verbs.forecastHp(forecast, timing.land) or hpNow
             local kill = SpellSecure.Kills(hp, taken)
             local over = SpellSecure.OverReserve(mana, s, cs.keys)
-            local aimed = aims[i + 1]
+            local aimed = aims[i]
             if aimed == nil then
                 answers[#answers + 1] = {
                     spell = s,
@@ -1002,17 +1006,17 @@ function ____exports.Shadow(bot)
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue125
+                local __continue124
                 repeat
                     if listed[o.creep] == true then
-                        __continue125 = true
+                        __continue124 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue125 = true
+                    __continue124 = true
                 until true
-                if not __continue125 then
+                if not __continue124 then
                     break
                 end
             end
@@ -1044,12 +1048,12 @@ function ____exports.Shadow(bot)
     local spellTargets = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue130
+            local __continue129
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue130 = true
+                    __continue129 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -1114,9 +1118,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue130 = true
+                __continue129 = true
             until true
-            if not __continue130 then
+            if not __continue129 then
                 break
             end
         end
