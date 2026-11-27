@@ -5,7 +5,7 @@
  * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
  * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
  * RuneDetour, TowerStay, CreepSpells, FightFirst. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
- * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps.
+ * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps, AimedCasts.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
@@ -57,11 +57,24 @@ export const DEFAULTS = {
      *  our claims and of a teammate's hit. Off: the cast pass runs as a shadow (`cw=off`) and stock plays. On: provisional (plan s5's small
      *  row, merged after its audit creep-spells_audit_A to _C); read at the next checkpoint batch and deleted there if not above zero. */
     CreepSpells: true,
+    /** The cast's widening to aimed spells (creep_row.ts, slice oha-aimed-cast): with CreepSpells, a point spell is cast at its aim's point,
+     *  a no-target spell around the hero as it stands, and one that lands in front of the hero (a raze) after the hero turns to the aim's
+     *  facing; the same gates as the unit-target cast. Off: such a cast that passes them is logged `cw=aimoff` and unit-target casts only.
+     *  On: provisional (plan s5's widening, merged after its firing audit aimaudit1); deleted at the next checkpoint batch if the line or
+     *  guards fall. */
+    AimedCasts: true,
     /** Slice oha-tower-fallthrough, a flag between two versions of our code: on, the leftover rule decides only whether to pre-hit, and
      *  a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the rule ends the
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
      *  the next checkpoint batch against an arm with it off and every other switch on, and the flag deleted there either way. */
     TowerStay: true,
+    /** The draw (protective aggro), a decider row (aggro_row.ts, slice oha-lane-aggro; no-creep-unpaid proposal s6b): a core (pos 1 to 3)
+     *  beside our ranged creep while their lane creeps fight ours gives one attack order on the nearest enemy hero our team sees and walks
+     *  back past our ranged creep, so the drawn creeps take it when the draw lets go. Off: the read logs every chance as a shadow and
+     *  stock plays. On: provisional (user
+     *  27/11/2026, after batch lagg1 did not show its line at 6 pairs); read at the next checkpoint batch against an arm with it off
+     *  and every other switch on, and deleted there if its line is not above zero. */
+    LaneAggro: true,
     /** Slice oha-no-start-over-fight (offers-and-the-decider s10, slice A), a flag between two versions of our code: on, the decider
      *  refuses to begin any row while Valve has the hero in attack, roam or team roam (fights stay Valve's; a row already holding is not
      *  cut), and the row reads the refusal (`Decider.Refusal`: the creep row notes `fight`, the pull and stack take it as the slot's

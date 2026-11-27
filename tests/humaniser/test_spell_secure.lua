@@ -8,6 +8,7 @@ local function spell(o)
 	return {
 		name = o.name or "nuke", shape = o.shape or "u", range = o.range or 800, cp = o.cp or 0.4, dmg = o.dmg or 75, dtype = 2,
 		mana = o.mana or 90, cd = o.cd or 6, key = o.key == true, radius = o.radius or 0, half = o.half or 0, speed = o.speed or 0,
+		length = 0, delay = 0, offset = 0,
 	}
 end
 
@@ -85,6 +86,35 @@ do -- the cast the creep row may order (slice oha-creep-spells)
 	_, why = pick({ ans({ name = "a", hp = 90 }), ans({ name = "b", over = -1 }), ans({ name = "c", shape = "p" }) })
 	check("the reason is the furthest any answer got", why == "reserve")
 	check("nothing to weigh: no pick and no reason", S.CastPick({}).pick == nil and S.CastPick({}).why == nil)
+end
+
+do -- slice oha-aimed-cast: a point or no-target answer through the same gates, aimed
+	local function ans(o)
+		local s = spell({ name = o.name, mana = o.mana, key = o.key, shape = o.shape or "n" })
+		s.geom = o.geom
+		local aim
+		if not o.noaim then aim = { gap = 0, from = { x = 0, y = 0 }, at = { x = 450, y = 0 }, off = 0, also = o.also or 0, others = 0, slack = o.slack, th = 0 } end
+		return { spell = s, timing = { gap = o.gap or 0, walk = 0, land = 0.6 }, taken = 75, hp = o.hp or 50, kill = S.Kills(o.hp or 50, 75), over = o.over or 10,
+			also = o.also or 0, aim = aim }
+	end
+	local on = { aimed = true, slack = 0.1 }
+	local function pick(as, o) local r = S.CastPick(as, o) return r.pick and r.pick.spell.name, r.why end
+	check("a raze that kills from the spot with slack to turn to is cast", pick({ ans({ name = "raze", geom = "r", slack = 0.3 }) }, on) == "raze")
+	local _, why = pick({ ans({ name = "raze", geom = "r", slack = 0.3 }) }, { aimed = false, slack = 0.1 })
+	check("the same raze with the switch off: aimoff, the furthest reason", why == "aimoff")
+	_, why = pick({ ans({ name = "raze", geom = "r", slack = 0.05 }), ans({ name = "nuke", shape = "u", hp = 90 }) }, on)
+	check("a raze whose aim has less slack than the bar: aim", why == "aim")
+	check("a spell around the hero needs no slack", pick({ ans({ name = "pulse", geom = "s" }) }, on) == "pulse")
+	check("a point spell needs no slack (the game turns the hero to its point)", pick({ ans({ name = "lsa", shape = "p", geom = "a" }) }, on) == "lsa")
+	_, why = pick({ ans({ name = "lsa", shape = "p", geom = "a", noaim = true }) }, on)
+	check("a point answer with no aim is still shape", why == "shape")
+	_, why = pick({ ans({ name = "fissure", shape = "p", geom = "l", key = true, also = 0 }) }, on)
+	check("an aimed disable hitting no enemy hero: key, as the unit-target one", why == "key")
+	check("a unit-target damage spell before an aimed one, even when dearer", pick({ ans({ name = "pulse", geom = "s", mana = 50 }), ans({ name = "nuke", shape = "u", mana = 120 }) }, on) == "nuke")
+	check("an aimed damage spell before a unit-target disable", pick({ ans({ name = "pulse", geom = "s", mana = 120 }), ans({ name = "stun", shape = "u", key = true, also = 1, mana = 50 }) }, on) == "pulse")
+	check("Turns: a no-target ring or line, not a point spell or a circle around the hero", S.Turns(ans({ geom = "r" }).spell) and S.Turns(ans({ geom = "l" }).spell)
+		and not S.Turns(ans({ geom = "s" }).spell) and not S.Turns(ans({ shape = "p", geom = "l" }).spell))
+	check("FacingOf: the aim's facing, none without an aim", near(S.FacingOf(ans({ geom = "r" })), 0) and S.FacingOf(ans({ noaim = true })) == nil)
 end
 
 finish()

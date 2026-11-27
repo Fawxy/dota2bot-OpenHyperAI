@@ -1863,7 +1863,9 @@ local function rowWants(bot, reads)
     pending[pid] = {pull = pull, aggroAt = hitAt, d = d, camp = camp}
     return {
         tgt = "camp:" .. tostring(p.camp.campIdx),
-        by = late - walk
+        by = late - walk,
+        at = p.stand,
+        secs = hitAt - now + walk
     }
 end
 --- The row's `begin`: starts the pull `rowWants` decided this round.

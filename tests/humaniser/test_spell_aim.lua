@@ -55,6 +55,18 @@ do -- a raze's circle sits in front of the hero: it turns to the creep, or walks
 	check("a creep inside the near edge of the far raze: walk away from it", near(inside.gap, 350) and near(inside.from.x, -350), inside.from.x)
 end
 
+do -- slice oha-aimed-cast: the slack a raze's facing has before the creep leaves its circle
+	local raze = geom({ k = "r", radius = 250, offset = 450 })
+	local mid = A.AimAt(raze, hero, { x = 450, y = 0 }, {}, {})
+	-- The creep at the circle's centre distance: the facing may turn acos((450^2 + 450^2 - 250^2) / (2 * 450 * 450)) either way.
+	check("a creep at the circle's centre distance: the slack is the arc to its edge", near(mid.slack, math.acos(342500 / 405000), 1e-3), mid.slack)
+	local edge = A.AimAt(raze, hero, { x = 698, y = 0 }, {}, {})
+	check("a creep near the circle's far edge leaves almost none", edge.gap == 0 and edge.slack < 0.1, edge.slack)
+	local both = A.AimAt(raze, hero, { x = 450, y = 0 }, { body(450, 300) }, {})
+	check("turned to take a hero too, the slack is the narrower margin that keeps both", both.also == 1 and both.slack < mid.slack and both.slack > 0, both.slack)
+	check("an area does not depend on the facing: no slack", A.AimAt(geom({ k = "a", range = 700, radius = 250 }), hero, { x = 600, y = 0 }, {}, {}).slack == nil)
+end
+
 do -- a circle around the hero has no aim, only the walk to bring the creep inside
 	local s = A.AimAt(geom({ k = "s", radius = 400 }), hero, { x = 550, y = 0 }, { body(-200, 0), body(-300, 0) }, {})
 	check("the hero walks 150, and from there the foe 350 behind is inside and the one 450 behind is not", near(s.gap, 150) and s.also == 1, s.also)
@@ -69,6 +81,20 @@ do -- Aimed: the cast is timed on its delay, and aimed where a walking creep wil
 	check("its centre is where the creep will be then, 630 on", near(r.aim.at.x, 500 + 300 * 2.1) and r.aim.off < 1e-6, r.aim.at.x)
 	local still = S.Aimed(torrent, hero, 300, 0.1, { x = 800, y = 0, hull = 16, vx = 0, vy = 0 }, { { x = 800, y = 400, hull = 24, vx = 0, vy = 0 } }, {})
 	check("a hero the centre would miss is caught by the aim, and `centre` says it would not have been", still.aim.also == 1 and still.centre == 0)
+end
+
+do -- slice oha-aimed-flight: a circle around the hero whose damage flies out (Death Pulse) lands after the flight, on units picked at the cast
+	local pulse = { name = "pulse", shape = "n", geom = "s", range = 500, cp = 0, dmg = 150, dtype = 2, mana = 100, cd = 8, key = false,
+		radius = 500, half = 0, speed = 400, length = 0, delay = 0, offset = 0 }
+	local still = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 0, vy = 0 }, {}, {})
+	check("it lands after the flight to the creep, 400 at 400 a second, and no turn", near(still.timing.land, 1.0), still.timing.land)
+	-- The pulse chases: a creep walking off at 300 is caught at the closing speed of 100, one walking in at 700.
+	local away = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 300, vy = 0 }, { { x = -450, y = 0, hull = 24, vx = -300, vy = 0 } }, {})
+	check("a creep walking off is caught 400 / (400 - 300) s on", near(away.timing.land, 4.0), away.timing.land)
+	local toward = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = -300, vy = 0 }, {}, {})
+	check("a creep walking in, 400 / 700 s on", near(toward.timing.land, 400 / 700), toward.timing.land)
+	-- Four seconds on, both would be 1,200 farther off: placed at the landing neither is inside the circle.
+	check("the creep and the foe are placed at the cast: no walk, and the foe walking out is hit", away.timing.gap == 0 and away.aim.also == 1, away.timing.gap)
 end
 
 do -- the line's best answer: of two equal-cost kills, the one that needs no walk (Raze 2 at 450 before Raze 1)

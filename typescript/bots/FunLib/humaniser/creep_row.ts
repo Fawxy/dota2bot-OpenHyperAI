@@ -38,7 +38,8 @@
  * their lane creep of any kind that the attack cannot take (`AttackCannot`), when a unit-target spell kills it now with no walk, the reserve
  * kept, and a key spell also hits an enemy hero (`SpellSecure.CastPick`, user 27/11/2026), the creep free of our claims (`FreeFor`, any claim
  * on it) and of a teammate's hit. Any position. The verb is the engine's `cast` on the creep, hard and claimed as committed (phase `swing`)
- * until the cast's effect is seen.
+ * until the cast's effect is seen. With Ours.AimedCasts (slice oha-aimed-cast) a point or no-target spell passes the same gates aimed, and a
+ * spell landing in front of the hero turns it first (`castOn`).
  *
  * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why` (and the cast's `cg`, `cw`); `ev=job job=creep`
  * start and end per attempt, with `k`.
@@ -49,6 +50,7 @@ import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
 import * as Claims from "bots/FunLib/humaniser/claims";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
+import * as Offer from "bots/FunLib/humaniser/offer";
 import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -90,6 +92,17 @@ export const SETTINGS = {
     LandSlack: 0.1,
     /** Seconds past the walk and own hit time for a pre-hit's attack to fire. CANDIDATE(preHitSlack): copies `PREHIT_SLACK` (engine/src/lane.ts, laneFarm's). */
     PreHitSlack: 0.5,
+    /**
+     * judgement (slice oha-aimed-cast): the least slack (radians either way) an aim that turns the hero needs to be cast. GetFacing reads whole
+     * degrees (0.017 rad), and the hero steps a few units while it turns, so a thinner aim is a coin toss.
+     */
+    AimSlack: 0.1,
+    /** judgement: the cast is ordered once the hero faces the aim within this share of its slack (the rest is the creep's and the step's margin). */
+    AimTol: 0.5,
+    /** judgement: how far along the aimed facing the turn's move order points; the hero turns to it and steps at most a frame or two of it. */
+    TurnStep: 100,
+    /** judgement: seconds the turn may take before the attempt ends `timeout` (a hero turns half a circle in about 0.2 s). */
+    TurnTimeout: 0.5,
 };
 
 /** The mode the decider hosts its rows in: the engine steps the attempt's task under it. */
@@ -393,6 +406,13 @@ interface Attempt {
     /** Seconds from the go to that refusal (the end line's `tlt`), and whether our creeps were attacking the creep then (`tlc`). */
     tlt?: number;
     tlc?: boolean;
+    /** A cast that turns the hero first (`castOn` writes it): once it faced the aim, the seconds that took (`aq`) and the facing's error then (`ae`). */
+    turn?: Turn;
+}
+
+interface Turn {
+    aq?: number;
+    ae?: number;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -646,6 +666,8 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
         ["az", g.cast?.also],
         ["am", g.cast === undefined ? undefined : math.floor(g.cast.over + 0.5)],
         ["rv", g.rv === undefined ? undefined : r2(g.rv)],
+        ["ag", g.cast === undefined || g.cast.aim === undefined ? undefined : SpellSecure.GeomOf(g.cast.spell).k],
+        ["aw", g.cast !== undefined && SpellSecure.Turns(g.cast.spell) ? r2(g.cast.aim!.slack ?? 0) : undefined],
     ]);
 }
 
@@ -686,6 +708,8 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["wt", a === undefined ? undefined : a.wt !== undefined ? r2(a.wt) : -1],
         ["tin", a === undefined ? undefined : a.tin !== undefined ? r2(a.tin) : -1],
         ["sw", sw],
+        ["aq", a?.turn === undefined ? undefined : a.turn.aq !== undefined ? r2(a.turn.aq) : -1],
+        ["ae", a?.turn?.ae === undefined ? undefined : r2(a.turn.ae)],
         ["hp0", a?.hp0],
         ["hp1", math.floor(bot.GetHealth())],
         ["msg", msg],
@@ -772,8 +796,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const busy = acting(bot);
     // Starting a task replaces the hero's running one (the engine's `replaced`): a pull or stack in progress is not ours to take. The
     // runner's current task is asked, not the decider's Held: Held names the row that held the hero at its last round, while the runner's
-    // task is what Start would replace, whichever row or job started it.
-    const other = Tasks.Running(bot) !== undefined;
+    // task is what Start would replace, whichever row or job started it. A lower row's task is the row's to take (the draw hands its
+    // drawn creeps over mid-walk: no-creep-unpaid s6b), as a round of the decider would.
+    const cur = Tasks.Running(bot)?.name;
+    const other = cur !== undefined && !Decider.Below(ROW, cur);
     // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
     // 9 of 56 never started). A running attempt is not cut by Valve's attack: the hold is hard. A start out of a fight is the
     // decider's to refuse (`fight`, Ours.FightFirst, below).
@@ -931,7 +957,7 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
         else if (c.facts().kb === "mate") no = "mate";
         let p: SpellSecure.Answer | undefined;
         if (no === undefined) {
-            const r = SpellSecure.CastPick(as);
+            const r = SpellSecure.CastPick(as, { aimed: Ours.On("AimedCasts"), slack: SETTINGS.AimSlack });
             p = r.pick;
             if (p === undefined) no = r.why;
         }
@@ -1032,6 +1058,52 @@ function* towerAttempt(ctx: Lib.Ctx, bot: Unit, pid: number, creep: Unit, opts: 
     return yield* ctx.lastHit(opts);
 }
 
+/** Radians between two angles, 0 to pi. */
+function angleOff(a: number, b: number): number {
+    let d = math.abs(a - b) % (2 * Math.PI);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    return d;
+}
+
+/**
+ * The cast's verb (slices oha-creep-spells, oha-aimed-cast). The engine's `cast` ends once its effect (cooldown or mana) is seen; the creep's
+ * fate is the result. A unit-target spell on the creep; a point spell at its aim's point (the game turns the hero to it); a no-target spell
+ * that lands where the hero faces (`SpellSecure.Turns`) after a move order along the aim's facing has turned the hero within `AimTol` of its
+ * slack (the move is replaced by the cast order; the creep dead or a teammate's hit taking it ends the turn); any other no-target spell
+ * as the hero stands.
+ */
+function* castOn(ctx: Lib.Ctx, bot: Unit, ability: Lib.TaskAbility, cast: SpellSecure.Answer, creep: Unit, turn: Turn): Lib.TaskBody {
+    const timeout = cast.timing.land + 1;
+    if (cast.spell.shape === "u") return yield* ctx.cast(ability, { target: creep as unknown as Lib.TaskTarget, timeout });
+    const aim = cast.aim!;
+    // The hero's height stands in for the point's: the creep may be gone by the first step.
+    if (cast.spell.shape === "p") return yield* ctx.cast(ability, { at: Vector(aim.at.x, aim.at.y, bot.GetLocation().z) as unknown as Lib.Vec, timeout });
+    if (SpellSecure.Turns(cast.spell)) {
+        const th = SpellSecure.FacingOf(cast)!;
+        const tol = (aim.slack ?? 0) * SETTINGS.AimTol;
+        const t0 = ctx.now();
+        let off = angleOff((bot.GetFacing() * Math.PI) / 180, th);
+        while (off > tol) {
+            // The cast takes no target, so nothing else notices the creep gone; the move order is cancelled so the hero does not walk on.
+            let end: Lib.Result | undefined;
+            if (creep.IsNull() || !creep.IsAlive()) end = ctx.fail("no_target", "turn");
+            else if (mateTakes(bot, creep)) end = ctx.fail("interrupted", "mate");
+            else if (ctx.now() - t0 >= SETTINGS.TurnTimeout) end = ctx.fail("timeout", "turn");
+            if (end !== undefined) {
+                bot.Action_MoveToLocation(bot.GetLocation());
+                return end;
+            }
+            const at = bot.GetLocation();
+            bot.Action_MoveToLocation(Vector(at.x + SETTINGS.TurnStep * math.cos(th), at.y + SETTINGS.TurnStep * math.sin(th), at.z));
+            yield;
+            off = angleOff((bot.GetFacing() * Math.PI) / 180, th);
+        }
+        turn.aq = ctx.now() - t0;
+        turn.ae = off;
+    }
+    return yield* ctx.cast(ability, { timeout });
+}
+
 /** The row's `begin`: starts the attempt on the creep Consider chose, at the read's moment. */
 function rowBegin(bot: Unit): boolean {
     const pid = bot.GetPlayerID();
@@ -1049,9 +1121,9 @@ function rowBegin(bot: Unit): boolean {
         best.noteCast(false, "refused");
         return false;
     }
+    const turn: Turn | undefined = k === "sp" && SpellSecure.Turns(cast!.spell) ? {} : undefined;
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
-        // The cast lands after its flight; the verb ends once its effect (cooldown or mana) is seen, and the creep's fate is the result.
-        if (k === "sp") return ctx.cast(ability as unknown as Lib.TaskAbility, { target: creep, timeout: cast!.timing.land + 1 });
+        if (k === "sp") return castOn(ctx, bot, ability as unknown as Lib.TaskAbility, cast!, creep as unknown as Unit, turn ?? {});
         const opts = { target: creep, maxWait: math.max(0, t.eta - age) + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || yieldNow(pid, best.cid) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
         if (tr === undefined) return ctx.lastHit(opts);
@@ -1084,6 +1156,7 @@ function rowBegin(bot: Unit): boolean {
         k,
         tower: tr?.tower,
         ph: 0,
+        turn,
     };
     running[pid] = a;
     lastCid[pid] = best.cid;
@@ -1142,11 +1215,25 @@ function offerOf(bot: Unit, pd: Pending): Decider.Offer {
     const { best, k } = pd;
     const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
     const due = pd.now + (k === "sp" ? pd.cast!.timing.land : best.t.due);
+    // Where the hero acts and for how long (the danger at the place, Decider.Offer): a cast from where it stands until it lands; an
+    // attack from the stand spot at the verb's reach (the offer read's), until the swing is due or the walk is done, whichever is later.
+    const me = bot.GetLocation();
+    let at = me;
+    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due);
+    if (k !== "sp") {
+        const c = best.creep.GetLocation();
+        if (c !== null && c !== undefined) {
+            const sp = Offer.StandSpot(me, c, CreepOffer.Reach(bot, best.creep));
+            at = Vector(sp.x, sp.y, 0);
+        }
+    }
     return {
         tgt: Claims.CreepTarget(best.cid),
         by: k === "sp" ? pd.now : pd.now + best.t.due - pd.need,
         way: WAY[k],
         claim: { rank, k: k === "dn" ? "dn" : "lh", due, phase: k === "sp" ? "swing" : undefined },
+        at,
+        secs,
     };
 }
 

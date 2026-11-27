@@ -51,6 +51,7 @@ local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour"
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local AggroOffer = require(GetScriptDirectory().."/FunLib/humaniser/aggro_offer")
 local CreepRow = require(GetScriptDirectory().."/FunLib/humaniser/creep_row")
+local AggroRow = require(GetScriptDirectory().."/FunLib/humaniser/aggro_row")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local ChoiceShadow = require(GetScriptDirectory().."/FunLib/humaniser/choice_shadow")
@@ -79,6 +80,7 @@ ____exports.CampRead = CampRead
 ____exports.RuneDetour = RuneDetour
 ____exports.CreepOffer = CreepOffer
 ____exports.CreepRow = CreepRow
+____exports.AggroRow = AggroRow
 ____exports.Chooser = Chooser
 ____exports.Decider = Decider
 ____exports.Overrides = Overrides
@@ -283,7 +285,13 @@ if Telemetry.GuardsEnabled() then
     end
 end
 Telemetry.PerfDeepInstall()
-local rows = {{"PullRow", PullJob.ROW}, {"StackRow", StackJob.ROW}, {"RuneDetourRow", RuneDetour.ROW}, {"CreepRow", CreepRow.ROW}}
+local rows = {
+    {"PullRow", PullJob.ROW},
+    {"StackRow", StackJob.ROW},
+    {"RuneDetourRow", RuneDetour.ROW},
+    {"CreepRow", CreepRow.ROW},
+    {"AggroRow", AggroRow.ROW}
+}
 if __TS__ArrayIndexOf(Decider.ROWS, PullJob.ROW) < 0 then
     for ____, ____value in ipairs(rows) do
         local where = ____value[1]
