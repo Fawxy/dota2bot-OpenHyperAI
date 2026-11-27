@@ -149,7 +149,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, towerGone, yieldNow, onPhase, CAST_OVER, running, pending
+local lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, towerGone, yieldNow, onPhase, CAST_OVER, running, lastCid, pending
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -388,7 +388,7 @@ function factsOf(bot, c)
         )
     }
 end
-function castPass(bot, cands, whys, recs, now)
+function castPass(bot, cands, whys, recs, now, gate)
     local pid = bot:GetPlayerID()
     local verbs = Tasks.Verbs()
     local cd
@@ -433,7 +433,12 @@ function castPass(bot, cands, whys, recs, now)
                     __continue133 = true
                     break
                 end
-                local no
+                local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
+                if no ~= nil then
+                    c.noteCast(false, no)
+                    __continue133 = true
+                    break
+                end
                 if ____exports.FreeFor(bot, c.cid, now) ~= nil or #CreepClaim.ClaimsOn(c.cid) > 0 then
                     no = "claimed"
                 elseif c.facts().kb == "mate" then
@@ -663,8 +668,7 @@ local function dueNow(bot, c, r, lead, now)
     return true
 end
 running = {}
---- pid -> the creep of the hero's last attempt: one attempt a creep.
-local lastCid = {}
+lastCid = {}
 pending = {}
 function ____exports.ResetCache()
     for ____, t in ipairs({running, lastCid, pending}) do
@@ -1086,7 +1090,8 @@ function ____exports.Consider(bot, cands)
                 cands,
                 whys,
                 recs,
-                now
+                now,
+                busy and "acting" or (other and "row" or (held and "held" or nil))
             )
         end
         return

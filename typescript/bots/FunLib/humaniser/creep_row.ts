@@ -666,7 +666,8 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (best === undefined || c.t.eta < best.t.eta) best = c;
     }
     if (best === undefined) {
-        if (casts()) castPass(bot, cands, whys, recs, now);
+        // A creep the row does not attack is refused `kind` before the hero's own gates are asked, so the cast asks them here.
+        if (casts()) castPass(bot, cands, whys, recs, now, busy ? "acting" : other ? "row" : held ? "held" : undefined);
         return;
     }
     for (const c of cands) {
@@ -686,11 +687,12 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
 }
 
 /**
- * The cast pass, when the read starts no attack: over their creeps the attack cannot take (`AttackCannot`), the creep's refusals (`claimed`:
- * a lower-cell hero's `FreeFor`, or any hero of ours holding a claim on it; `mate`), then the cast's (`SpellSecure.CastPick`); the creep
- * that dies soonest of those with a cast is offered to the decider. Each creep weighed gets the cast's line fields (`noteCast`).
+ * The cast pass, when the read starts no attack: over their creeps the attack cannot take (`AttackCannot`), the hero's gates (`gate`: `acting`,
+ * `row`, `held`, as the attack's) and `tried` (the hero's last attempt was on this creep), the creep's refusals (`claimed`: a lower-cell hero's
+ * `FreeFor`, or any hero of ours holding a claim on it; `mate`), then the cast's (`SpellSecure.CastPick`); the creep that dies soonest of those
+ * with a cast is offered to the decider. Each creep weighed gets the cast's line fields (`noteCast`).
  */
-function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, recs: Record<number, Seen>, now: number): void {
+function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, recs: Record<number, Seen>, now: number, gate: string | undefined): void {
     const pid = bot.GetPlayerID();
     const verbs = Tasks.Verbs()!;
     let cd: number | undefined;
@@ -714,7 +716,11 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
             }
         }
         if (AttackCannot(why, claim, onTime, late) === undefined) continue;
-        let no: string | undefined;
+        let no: string | undefined = gate ?? (lastCid[pid] === c.cid ? "tried" : undefined);
+        if (no !== undefined) {
+            c.noteCast(false, no);
+            continue;
+        }
         if (FreeFor(bot, c.cid, now) !== undefined || CreepClaim.ClaimsOn(c.cid).length > 0) no = "claimed";
         else if (c.facts().kb === "mate") no = "mate";
         let p: SpellSecure.Answer | undefined;

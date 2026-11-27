@@ -1193,6 +1193,20 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 	check("control: a key spell with no enemy hero to hit: cw=key", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "key", table.concat(out, " | "))
 
 	w, c = castWorld()
+	w.core.IsCastingAbility = function() return true end
+	out = castRead(w, c)
+	check("control: the hero is already casting (OHA's own): no cast, cw=acting", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "acting", table.concat(out, " | "))
+
+	w, c = castWorld()
+	out = capture(function()
+		w.CO.Shadow(w.core)
+		w.onEnd({ success = false, reason = "timeout" })
+		T = T + 0.1
+		w.CO.Shadow(w.core)
+	end)
+	check("control: one attempt a creep: the cast timed out and the next read on the same creep casts again no more", w.starts == 1, tostring(w.starts))
+
+	w, c = castWorld()
 	package.loaded["bots/FunLib/humaniser/creep_claim"].Take(cidOf(c), { pid = 2, rank = 60, k = "lh", due = 1 })
 	out = castRead(w, c)
 	check("control: a teammate holds a claim on the creep: cw=claimed", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "claimed", table.concat(out, " | "))
