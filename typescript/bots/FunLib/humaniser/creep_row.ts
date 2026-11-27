@@ -672,8 +672,9 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (best === undefined || c.t.eta < best.t.eta) best = c;
     }
     if (best === undefined) {
-        // A creep the row does not attack is refused `kind` before the hero's own gates are asked, so the cast asks them here.
-        if (casts()) castPass(bot, cands, whys, recs, now, busy ? "acting" : other ? "row" : held ? "held" : undefined);
+        // A creep the row does not attack is refused `kind` before the hero's own gates are asked, so the cast asks them here. With the
+        // switch off the pass runs as the cast's shadow: the reference arm logs where it would have cast.
+        castPass(bot, cands, whys, recs, now, busy ? "acting" : other ? "row" : held ? "held" : undefined, !casts());
         return;
     }
     for (const c of cands) {
@@ -696,9 +697,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
  * The cast pass, when the read starts no attack: over their creeps the attack cannot take (`AttackCannot`), the hero's gates (`gate`: `acting`,
  * `row`, `held`, as the attack's) and `tried` (the hero's last attempt was on this creep), the creep's refusals (`claimed`: a lower-cell hero's
  * `FreeFor`, or any hero of ours holding a claim on it; `mate`), then the cast's (`SpellSecure.CastPick`); the creep that dies soonest of those
- * with a cast is offered to the decider. Each creep weighed gets the cast's line fields (`noteCast`).
+ * with a cast is offered to the decider. Each creep weighed gets the cast's line fields (`noteCast`). `shadow` (Ours.CreepSpells off): the
+ * creep it would cast on reads `off` and nothing is offered.
  */
-function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, recs: Record<number, Seen>, now: number, gate: string | undefined): void {
+function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, recs: Record<number, Seen>, now: number, gate: string | undefined, shadow: boolean): void {
     const pid = bot.GetPlayerID();
     const verbs = Tasks.Verbs()!;
     let cd: number | undefined;
@@ -747,6 +749,10 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
         } else c.noteCast(false, "other");
     }
     if (best === undefined) return;
+    if (shadow) {
+        best.noteCast(false, "off");
+        return;
+    }
     pending[pid] = { best, k: "sp", cast: pick, need: 0, lead: 0, now, seen: recs[best.cid] };
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;

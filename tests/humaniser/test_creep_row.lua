@@ -1242,7 +1242,8 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 
 	w, c = castWorld({ spells = false })
 	out = castRead(w, c)
-	check("switch off: no cast and no cast fields", w.starts == 0 and field(lines(out, "kind=creep")[1], "cg") == nil, table.concat(out, " | "))
+	check("switch off: no cast; the shadow marks the creep it would have cast on (cg=0 cw=off)", w.starts == 0 and field(lines(out, "kind=creep")[1], "cg") == "0"
+		and field(lines(out, "kind=creep")[1], "cw") == "off", table.concat(out, " | "))
 
 	w, c = castWorld({ hp = 90 })
 	out = castRead(w, c)

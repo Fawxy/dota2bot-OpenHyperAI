@@ -408,7 +408,7 @@ function factsOf(bot, c)
         )
     }
 end
-function castPass(bot, cands, whys, recs, now, gate)
+function castPass(bot, cands, whys, recs, now, gate, shadow)
     local pid = bot:GetPlayerID()
     local verbs = Tasks.Verbs()
     local cd
@@ -416,11 +416,11 @@ function castPass(bot, cands, whys, recs, now, gate)
     local pick
     for ____, c in ipairs(cands) do
         do
-            local __continue133
+            local __continue132
             repeat
                 local why = whys[c.cid]
                 if c.t.kind ~= "lasthit" or why == nil then
-                    __continue133 = true
+                    __continue132 = true
                     break
                 end
                 local claim
@@ -450,13 +450,13 @@ function castPass(bot, cands, whys, recs, now, gate)
                     end
                 end
                 if ____exports.AttackCannot(why, claim, onTime, late) == nil then
-                    __continue133 = true
+                    __continue132 = true
                     break
                 end
                 local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
                 if no ~= nil then
                     c.noteCast(false, no)
-                    __continue133 = true
+                    __continue132 = true
                     break
                 end
                 if ____exports.FreeFor(bot, c.cid, now) ~= nil or #CreepClaim.ClaimsOn(c.cid) > 0 then
@@ -475,7 +475,7 @@ function castPass(bot, cands, whys, recs, now, gate)
                 end
                 if p == nil then
                     c.noteCast(false, no)
-                    __continue133 = true
+                    __continue132 = true
                     break
                 end
                 if best == nil or c.t.dies < best.t.dies then
@@ -487,14 +487,18 @@ function castPass(bot, cands, whys, recs, now, gate)
                 else
                     c.noteCast(false, "other")
                 end
-                __continue133 = true
+                __continue132 = true
             until true
-            if not __continue133 then
+            if not __continue132 then
                 break
             end
         end
     end
     if best == nil then
+        return
+    end
+    if shadow then
+        best.noteCast(false, "off")
         return
     end
     pending[pid] = {
@@ -1104,32 +1108,31 @@ function ____exports.Consider(bot, cands)
         end
     end
     if best == nil then
-        if casts() then
-            castPass(
-                bot,
-                cands,
-                whys,
-                recs,
-                now,
-                busy and "acting" or (other and "row" or (held and "held" or nil))
-            )
-        end
+        castPass(
+            bot,
+            cands,
+            whys,
+            recs,
+            now,
+            busy and "acting" or (other and "row" or (held and "held" or nil)),
+            not casts()
+        )
         return
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue128
+            local __continue127
             repeat
                 if c == best or kindOf(bot, c) == nil then
-                    __continue128 = true
+                    __continue127 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue128 = true
+                __continue127 = true
             until true
-            if not __continue128 then
+            if not __continue127 then
                 break
             end
         end
