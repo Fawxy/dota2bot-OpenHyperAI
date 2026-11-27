@@ -157,6 +157,7 @@ local CreepClaim = require(GetScriptDirectory().."/FunLib/humaniser/creep_claim"
 local Claims = require(GetScriptDirectory().."/FunLib/humaniser/claims")
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
+local Offer = require(GetScriptDirectory().."/FunLib/humaniser/offer")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
@@ -611,11 +612,27 @@ function offerOf(bot, pd)
         LaneConfig.PositionOf(bot)
     )
     local due = pd.now + (k == "sp" and pd.cast.timing.land or best.t.due)
+    local me = bot:GetLocation()
+    local at = me
+    local secs = k == "sp" and pd.cast.timing.land or math.max(pd.need, best.t.due)
+    if k ~= "sp" then
+        local c = best.creep:GetLocation()
+        if c ~= nil and c ~= nil then
+            local sp = Offer.StandSpot(
+                me,
+                c,
+                CreepOffer.Reach(bot, best.creep)
+            )
+            at = Vector(sp.x, sp.y, 0)
+        end
+    end
     return {
         tgt = Claims.CreepTarget(best.cid),
         by = k == "sp" and pd.now or pd.now + best.t.due - pd.need,
         way = WAY[k],
-        claim = {rank = rank, k = k == "dn" and "dn" or "lh", due = due, phase = k == "sp" and "swing" or nil}
+        claim = {rank = rank, k = k == "dn" and "dn" or "lh", due = due, phase = k == "sp" and "swing" or nil},
+        at = at,
+        secs = secs
     }
 end
 ____exports.SETTINGS = {

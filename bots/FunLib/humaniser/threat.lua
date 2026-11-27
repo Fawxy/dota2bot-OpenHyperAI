@@ -598,15 +598,26 @@ function ____exports.Reader(bot, horizon, opts)
     local ownDepthAt = fixed.ownDepthAt
     local enemyDepthAt = fixed.enemyDepthAt
     local unseen = {}
+    local uns = {}
+    local nos = 0
     for ____, pid in ipairs(fixed.enemyPids) do
         do
             local __continue55
             repeat
-                if visible[pid] == true or pid == (opts and opts.exclude) then
+                if visible[pid] == true then
                     __continue55 = true
                     break
                 end
                 local info = sightingOf(fixed, pid)
+                if info == nil then
+                    nos = nos + 1
+                else
+                    uns[#uns + 1] = {pid = pid, at = info.location, tss = info.time_since_seen}
+                end
+                if pid == (opts and opts.exclude) then
+                    __continue55 = true
+                    break
+                end
                 if info == nil or info.time_since_seen <= s.MissingAfter then
                     __continue55 = true
                     break
@@ -639,10 +650,10 @@ function ____exports.Reader(bot, horizon, opts)
         local dmg = 0
         for ____, e in ipairs(enemies) do
             do
-                local __continue60
+                local __continue63
                 repeat
                     if distToSegment(e.at, from, place) > e.run then
-                        __continue60 = true
+                        __continue63 = true
                         break
                     end
                     reach[#reach + 1] = e.pid
@@ -673,9 +684,9 @@ function ____exports.Reader(bot, horizon, opts)
                         u = e.u
                     }
                     dmg = dmg + e.dmg
-                    __continue60 = true
+                    __continue63 = true
                 until true
-                if not __continue60 then
+                if not __continue63 then
                     break
                 end
             end
@@ -697,17 +708,17 @@ function ____exports.Reader(bot, horizon, opts)
         local points
         for ____, m in ipairs(unseen) do
             do
-                local __continue71
+                local __continue74
                 repeat
                     if distToSegment(m.at, from, place) > m.r then
-                        __continue71 = true
+                        __continue74 = true
                         break
                     end
                     if s.VisionCut then
                         points = points or ____exports.WalkPoints(from, place)
                         if not unseenWithin(points, m.at, m.r) then
                             mcut = mcut + 1
-                            __continue71 = true
+                            __continue74 = true
                             break
                         end
                     end
@@ -717,9 +728,9 @@ function ____exports.Reader(bot, horizon, opts)
                     )
                     mpids[#mpids + 1] = m.pid
                     mtss = math.max(mtss or 0, m.tss)
-                    __continue71 = true
+                    __continue74 = true
                 until true
-                if not __continue71 then
+                if not __continue74 then
                     break
                 end
             end
@@ -783,7 +794,9 @@ function ____exports.Reader(bot, horizon, opts)
             band = ____exports.BandOf(threat, lethal),
             eng = eng,
             att = att,
-            rows = rows
+            rows = rows,
+            uns = uns,
+            nos = nos
         }
     end
 end

@@ -1014,7 +1014,8 @@ function rowWants(bot: Unit, reads: Reads): Decider.Offer | undefined {
     trail(bot, true);
     const pull: Pull = { plan: p, left: now, host: HOST, wave: 0, peak: 0, neutrals: 0, hitAt, timer, start: camp };
     pending[pid] = { pull, aggroAt: hitAt, d, camp };
-    return { tgt: `camp:${p.camp.campIdx}`, by: late - walk };
+    // Held from the go to the aggro hit, then the walk back (about the walk out): the seconds the danger at the stand is asked for.
+    return { tgt: `camp:${p.camp.campIdx}`, by: late - walk, at: p.stand, secs: hitAt - now + walk };
 }
 
 /** The row's `begin`: starts the pull `rowWants` decided this round. */

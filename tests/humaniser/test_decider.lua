@@ -413,6 +413,34 @@ do -- each begin names the mode Valve had the hero in at that moment, read befor
 		table.concat(quiet, " | "))
 end
 
+do -- a begun offer that names a place carries its place and the danger there (Danger.At) on the begin line; one with none carries neither
+	local H, bot, F = runnerWorld()
+	local placed = taskRow(F, "placed", { want = true })
+	local inner = placed.wants
+	placed.wants = function(b)
+		local o = inner(b)
+		if o then o.at, o.secs = Vector(300, -200, 0), 6.04 end
+		return o
+	end
+	local bare = taskRow(F, "bare", { want = true })
+	local e = MakeUnit({ pid = 10, team = 3, loc = Vector(500, -200, 0) })
+	e.maxhp, e.hp, e.range, e.estDamage = 600, 600, 150, 120
+	bot.maxhp, bot.hp = 600, 600
+	H.Decider.Add(placed)
+	local lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	local l = lines[1] or ""
+	check("danger: the begin line names the place and the window", l:find("beg=placed", 1, true) and l:find("bpx=300", 1, true) and l:find("bpy=-200", 1, true)
+		and l:find("bsec=6", 1, true), l)
+	check("danger: the enemy by the place is a reacher, with its burst share", l:find("dn=1", 1, true) and l:find("dre=10:200:", 1, true) and l:find("dbu=0.2", 1, true), l)
+	H.Decider.Reset()
+	for k in pairs(H.Decider.ROWS) do H.Decider.ROWS[k] = nil end
+	H.Decider.Add(bare)
+	T = T + 1
+	local quiet = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("danger: an offer with no place logs no danger", quiet[1] ~= nil and quiet[1]:find("beg=bare", 1, true) and not quiet[1]:find("bsec=", 1, true)
+		and not quiet[1]:find("dn=", 1, true), tostring(quiet[1]))
+end
+
 -- Ours.FightFirst (slice oha-no-start-over-fight): no row begins while Valve has the hero in attack, roam or team roam.
 local function fightWorld(flag)
 	local H, bot, F = runnerWorld()

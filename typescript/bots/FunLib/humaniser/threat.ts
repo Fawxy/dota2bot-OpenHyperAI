@@ -137,6 +137,21 @@ export interface Read {
     att: number[];
     /** The reaching heroes in `reach` order, with the damage the read counted for each (safe_gather.ts reads these instead of asking SpellReady again). */
     rows: ReachRow[];
+    /**
+     * Every alive enemy hero not visible now that the API has a sighting of, however briefly unseen (MissingAfter and the belief's
+     * cuts do not apply): its last place and seconds unseen. Read by the danger shadow (danger.ts), which logs them so the cut
+     * between "just unseen" and "missing" is read from games (offers-and-the-decider s5).
+     */
+    uns: Unseen[];
+    /** Alive enemy heroes neither visible nor ever sighted. */
+    nos: number;
+}
+
+/** An enemy hero out of sight: where it was last seen and how long ago. */
+export interface Unseen {
+    pid: number;
+    at: Vector;
+    tss: number;
 }
 
 const TOWER_IDS = [Tower.Top1, Tower.Top2, Tower.Top3, Tower.Mid1, Tower.Mid2, Tower.Mid3, Tower.Bot1, Tower.Bot2, Tower.Bot3, Tower.Base1, Tower.Base2];
@@ -388,9 +403,14 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
     const ownDepthAt = fixed.ownDepthAt;
     const enemyDepthAt = fixed.enemyDepthAt;
     const unseen: { pid: number; at: Vector; tss: number; r: number }[] = [];
+    const uns: Unseen[] = [];
+    let nos = 0;
     for (const pid of fixed.enemyPids) {
-        if (visible[pid] === true || pid === opts?.exclude) continue;
+        if (visible[pid] === true) continue;
         const info = sightingOf(fixed, pid);
+        if (info === undefined) nos++;
+        else uns.push({ pid, at: info.location, tss: info.time_since_seen });
+        if (pid === opts?.exclude) continue;
         if (info === undefined || info.time_since_seen <= s.MissingAfter) continue;
         unseen.push({ pid, at: info.location, tss: info.time_since_seen, r: math.min((speeds[pid] ?? s.MissingSpeed) * info.time_since_seen, s.MissingReachMax) + s.MissingMargin });
     }
@@ -482,7 +502,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
         const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * near;
         const threat = math.max(0, math.min(1, raw));
         const lethal = burst >= 1 && reach.length > near && !escape;
-        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att, rows };
+        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att, rows, uns, nos };
     };
 }
 
