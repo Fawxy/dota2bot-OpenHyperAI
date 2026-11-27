@@ -377,6 +377,131 @@ do -- a higher row that wants the hero while a lower row's task runs takes it; t
 		tostring(lines[1]))
 end
 
+do -- each begin names the mode Valve had the hero in at that moment, read before the row's begin moves it (the round's and a read's offer)
+	local H, bot, F = runnerWorld()
+	local hiOn, loOn = { want = false }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	for _, r in ipairs({ hi, lo }) do
+		local inner = r.begin
+		r.begin = function(b)
+			b.mode = BotMode.Farm -- the started task's host mode, as Valve would show it once it runs
+			return inner(b)
+		end
+	end
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	local offered
+	local lines = capture(function()
+		bot.mode = BotMode.Laning
+		desire()
+		T = T + 0.2
+		hiOn.want = true
+		bot.mode = BotMode.Attack
+		offered = H.Decider.Offer(bot, hi)
+	end)
+	check("bfrom: the round's begin names the mode before it", lines[1] ~= nil and lines[1]:find("beg=lo", 1, true) and lines[1]:find("bfrom=laning", 1, true),
+		table.concat(lines, " | "))
+	check("bfrom: a read's offer names the mode at its own moment", offered and lines[2] ~= nil and lines[2]:find("beg=hi", 1, true)
+		and lines[2]:find("bfrom=attack", 1, true), table.concat(lines, " | "))
+	local quiet = capture(function()
+		T = T + 0.2
+		bot.mode = BotMode.Laning -- a change of `win` writes a line with no begin
+		desire()
+	end)
+	check("bfrom: a line with no begin carries none", #quiet == 1 and not quiet[1]:find("beg=", 1, true) and not quiet[1]:find("bfrom=", 1, true),
+		table.concat(quiet, " | "))
+end
+
+-- Ours.FightFirst (slice oha-no-start-over-fight): no row begins while Valve has the hero in attack, roam or team roam.
+local function fightWorld(flag)
+	local H, bot, F = runnerWorld()
+	package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = flag
+	local hiOn, loOn = { want = true }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	local asked = 0
+	local loWants = lo.wants
+	lo.wants = function(...) asked = asked + 1 return loWants(...) end
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	return H, bot, F, hi, lo, function() return asked end
+end
+
+for _, m in ipairs({ { BotMode.Attack, "attack" }, { BotMode.Roam, "roam" }, { BotMode.TeamRoam, "team_roam" } }) do
+	local mode, name = m[1], m[2]
+	do -- the round: neither row begins, the next row is asked, each refusal is kept for its row and forgotten on reading
+		local H, bot, F, hi, lo, asked = fightWorld(true)
+		bot.mode = mode
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		local v
+		local lines = capture(function() v = desire() end)
+		check("fight " .. name .. ": the round begins no row and yields", hi.begun == 0 and lo.begun == 0 and F.Running(bot) == nil and v == 0.4,
+			hi.begun .. " " .. lo.begun .. " " .. tostring(v))
+		check("fight " .. name .. ": the refused row passes the turn to the next", asked() == 1, tostring(asked()))
+		check("fight " .. name .. ": each row's refusal is kept, once", H.Decider.Refusal(bot, "hi") == "fight" and H.Decider.Refusal(bot, "lo") == "fight"
+			and H.Decider.Refusal(bot, "hi") == nil, "")
+		local refs = 0
+		for _, l in ipairs(lines) do
+			if l:find("ref=", 1, true) then
+				refs = refs + 1
+				check("fight " .. name .. ": the refusal line names the row, target, mode and why",
+					l:find("why=fight", 1, true) and l:find("bfrom=" .. name, 1, true) and l:find("btgt=camp:", 1, true) and not l:find("beg=", 1, true), l)
+			end
+		end
+		check("fight " .. name .. ": one refusal line per row", refs == 2, table.concat(lines, " | "))
+		local again = capture(function()
+			T = T + 0.3
+			desire()
+		end)
+		local more = 0
+		for _, l in ipairs(again) do if l:find("ref=", 1, true) then more = more + 1 end end
+		check("fight " .. name .. ": a repeated refusal writes no second line", more == 0, table.concat(again, " | "))
+	end
+	do -- a read's offer is refused the same way
+		local H, bot, F, hi = fightWorld(true)
+		bot.mode = mode
+		local offered
+		capture(function() offered = H.Decider.Offer(bot, hi) end)
+		check("fight " .. name .. ": an offer is not begun", offered == false and hi.begun == 0 and F.Running(bot) == nil, tostring(offered))
+		check("fight " .. name .. ": the offer's refusal is kept for its row", H.Decider.Refusal(bot, "hi") == "fight", "")
+	end
+	do -- the flag off: every begin goes
+		local H, bot, F, hi = fightWorld(false)
+		bot.mode = mode
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		capture(function() desire() end)
+		check("fight " .. name .. ", flag off: the round begins the row", hi.begun == 1 and H.Decider.Refusal(bot, "hi") == nil, tostring(hi.begun))
+		local H2, bot2, _, hi2 = fightWorld(false)
+		bot2.mode = mode
+		local offered
+		capture(function() offered = H2.Decider.Offer(bot2, hi2) end)
+		check("fight " .. name .. ", flag off: an offer is begun", offered == true and hi2.begun == 1, tostring(offered))
+	end
+end
+
+for _, m in ipairs({ { BotMode.Laning, "laning" }, { BotMode.Farm, "farm" } }) do
+	do -- out of a fight the flag changes nothing, and a refused row begins once the fight ends
+		local H, bot, F, hi = fightWorld(true)
+		bot.mode = m[1]
+		local desire = H.Decider.Host(bot, function() return 0.4 end)
+		local v
+		capture(function() v = desire() end)
+		check("no fight " .. m[2] .. ": the round begins the row", hi.begun == 1 and v == H.Decider.HARD, tostring(hi.begun))
+		local H2, bot2, _, hi2 = fightWorld(true)
+		bot2.mode = BotMode.Attack
+		local offered
+		capture(function()
+			H2.Decider.Offer(bot2, hi2)
+			bot2.mode = m[1]
+			T = T + 0.2
+			offered = H2.Decider.Offer(bot2, hi2)
+		end)
+		check("no fight " .. m[2] .. ": an offer refused in the fight is begun after it", offered == true and hi2.begun == 1
+			and H2.Decider.Refusal(bot2, "hi2") == nil and H2.Decider.Refusal(bot2, "hi") == nil, tostring(offered))
+	end
+end
+package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = nil
+
 do -- a lower row that wants the hero while a higher row holds it is not begun, in the round or at a read's offer
 	local H, bot, F = runnerWorld()
 	local hiOn, loOn = { want = true }, { want = false }
@@ -443,6 +568,105 @@ do -- a row's task started anywhere but the decider's begin is refused and logge
 		table.concat(errs, " | "))
 	capture(function() exempt = F.Start(bot, { name = "stack", host = BotMode.Farm }, FOREVER, "StackJob.Wants") end)
 	check("control: the chooser's stack (StackJob.Wants) is exempt and starts", exempt == true and F.Running(bot).name == "stack")
+end
+
+-- Claims by target and acceptance (slice oha-offer-accept, offers-and-the-decider s4 and s6): the decider takes the offer's target
+-- as the hero's claim after a begin and releases it when the row's task ends; the claim and go-by checks are logged, never refuse.
+do -- a begin takes the claim with the offer's data; the task's end releases it, after the row's own end could still read it
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local on = { want = true }
+	local r = taskRow(F, "lo", on)
+	local base = r.wants
+	r.wants = function(...)
+		local o = base(...)
+		if o then o.claim = { rank = 60, k = "lh", due = 301 } end
+		return o
+	end
+	H.Decider.Add(r)
+	capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	local c = C.ClaimsOn("camp:lo")[1]
+	check("claim: the begin takes the target with the offer's claim", c ~= nil and c.pid == 4 and c.rank == 60 and c.k == "lh" and c.due == 301 and C.HeldBy(4) == "camp:lo",
+		tostring(c and c.pid))
+	local endsBefore = #r.ends
+	F.Cancel(bot, "cancelled", "test")
+	check("claim: the task's end releases it", #r.ends == endsBefore + 1 and C.HeldBy(4) == nil and #C.ClaimsOn("camp:lo") == 0, tostring(C.HeldBy(4)))
+end
+
+do -- the row's own end still sees the claim; the decider releases after it
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local seen
+	local r = { name = "lo", begun = 0 }
+	r.wants = function() if r.running ~= false then return { tgt = "creep:9" } end end
+	r.begin = function(b)
+		r.running = F.Start(b, { name = "lo", host = BotMode.Farm, onEnd = function()
+			r.running = false
+			seen = C.HeldBy(4)
+		end }, FOREVER)
+		return r.running
+	end
+	r.step = function() return not r.running end
+	H.Decider.Add(r)
+	capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	F.Cancel(bot, "cancelled", "test")
+	check("claim order: the row's end reads the claim, then it is gone", seen == "creep:9" and C.HeldBy(4) == nil, tostring(seen))
+end
+
+do -- a higher row begun over a lower row: the lower row's claim goes with its task, the higher row's is taken
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local hiOn, loOn = { want = false }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	capture(function() desire() end)
+	local first = C.HeldBy(4)
+	capture(function()
+		T = T + 0.2
+		hiOn.want = true
+		desire()
+	end)
+	check("claim over: the lower row's claim was taken, then the higher row's replaces it", first == "camp:lo" and C.HeldBy(4) == "camp:hi"
+		and #C.ClaimsOn("camp:lo") == 0, tostring(first) .. " " .. tostring(C.HeldBy(4)))
+end
+
+do -- the claim and go-by checks are logged on the begin line and refuse nothing
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	C.Take("camp:lo", { pid = 2 })
+	local r = taskRow(F, "lo", { want = true })
+	H.Decider.Add(r)
+	local lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept claim: another hero's claim is logged as would-refuse and the begin goes", r.begun == 1 and lines[1] ~= nil
+		and lines[1]:find("beg=lo", 1, true) and lines[1]:find("bacc=claim", 1, true) and lines[1]:find("bcl=1", 1, true), table.concat(lines, " | "))
+	check("accept claim: both heroes now hold the target", #C.ClaimsOn("camp:lo") == 2)
+
+	H, bot, F = runnerWorld()
+	C = package.loaded["bots/FunLib/humaniser/claims"]
+	C.Take("creep:3", { pid = 2, rank = 70, k = "lh" })
+	local lt = taskRow(F, "lo", { want = true })
+	lt.wants = function() if lt.running ~= false then return { tgt = "creep:3", claim = { rank = 60, k = "lh" } } end end
+	H.Decider.Add(lt)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept claim: a claim at a higher cell than this offer's does not hold it, and is counted", lines[1] ~= nil and lines[1]:find("bcl=1", 1, true)
+		and not lines[1]:find("bacc=", 1, true), table.concat(lines, " | "))
+
+	H, bot, F = runnerWorld()
+	local late = taskRow(F, "lo", { want = true })
+	late.wants = function() if late.running ~= false then return { tgt = "camp:lo", by = T - 1 } end end
+	H.Decider.Add(late)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept late: a go-by already past is logged as would-refuse and the begin goes", late.begun == 1 and lines[1] ~= nil
+		and lines[1]:find("bacc=late", 1, true) and not lines[1]:find("bcl=", 1, true), table.concat(lines, " | "))
+
+	H, bot, F = runnerWorld()
+	local ok = taskRow(F, "lo", { want = true })
+	H.Decider.Add(ok)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("control: an offer on time and unclaimed carries no acceptance fields", lines[1] ~= nil and lines[1]:find("beg=lo", 1, true)
+		and not lines[1]:find("bacc=", 1, true) and not lines[1]:find("bcl=", 1, true), table.concat(lines, " | "))
 end
 
 do -- a begin that throws ends the decider's allowance: the row's task started afterwards outside begin is refused and logged

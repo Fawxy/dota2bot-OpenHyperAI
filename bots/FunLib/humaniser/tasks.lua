@@ -1,4 +1,16 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__ObjectAssign(target, ...)
+    local sources = {...}
+    for i = 1, #sources do
+        local source = sources[i]
+        for key in pairs(source) do
+            target[key] = source[key]
+        end
+    end
+    return target
+end
+-- End of Lua Library inline imports
 local ____exports = {}
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
@@ -182,6 +194,36 @@ function ____exports.Begin(row, begin)
     end
     return res == true
 end
+--- The decider's hook on a row's task end (`OnRowEnd`).
+local rowEnd
+--- The decider's hook, called when any guarded row's task ends, after the task's own onEnd (so a row's end line still sees what the
+-- hero held): the decider releases the claim it took at the begin (offers-and-the-decider s6, claims by target).
+function ____exports.OnRowEnd(fn)
+    rowEnd = fn
+end
+--- A guarded row's task options with the decider's end hook after the row's own onEnd; any other task's unchanged. Exported for runner stubs in tests.
+function ____exports.WithRowEnd(bot, opts)
+    local name = opts.name
+    if name == nil or ROW_TASKS[name] ~= true or rowEnd == nil then
+        return opts
+    end
+    local own = opts.onEnd
+    local hook = rowEnd
+    return __TS__ObjectAssign(
+        {},
+        opts,
+        {onEnd = function(r, info)
+            local ok, err = unpack(own == nil and ({true, nil}) or ({pcall(own, r, info)}))
+            hook(bot, name)
+            if not ok then
+                error(
+                    tostring(err),
+                    0
+                )
+            end
+        end}
+    )
+end
 --- A row's task started anywhere but the decider's begin: refused and logged (ev=lua_error where=Tasks.Start).
 local function refusedRowStart(name, via)
     if ROW_TASKS[name] ~= true or beginning == name or via ~= nil and EXEMPT[via] == true then
@@ -195,7 +237,11 @@ function ____exports.Start(bot, opts, body, via)
         return false
     end
     local l = loadBundle()
-    return l ~= nil and l.Tasks.task(bot, opts, body)
+    return l ~= nil and l.Tasks.task(
+        bot,
+        ____exports.WithRowEnd(bot, opts),
+        body
+    )
 end
 --- Call from the host mode's Think(); returns false when no task of this bot runs under `mode`.
 function ____exports.Step(bot, mode)
@@ -257,7 +303,11 @@ ____exports.ForOurs = {
             return false
         end
         local l = loadBundle(true)
-        return l ~= nil and l.Tasks.task(bot, opts, body)
+        return l ~= nil and l.Tasks.task(
+            bot,
+            ____exports.WithRowEnd(bot, opts),
+            body
+        )
     end,
     Step = function(bot, mode)
         local l = loadBundle(true)

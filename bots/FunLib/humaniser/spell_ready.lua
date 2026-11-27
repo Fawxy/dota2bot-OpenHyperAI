@@ -9,6 +9,7 @@ local AbilityClasses = require(GetScriptDirectory().."/FunLib/humaniser/ability_
 local ____spell_damage_data = require(GetScriptDirectory().."/FunLib/humaniser/spell_damage_data")
 local SPELL_ADDED = ____spell_damage_data.SPELL_ADDED
 local SPELL_DAMAGE = ____spell_damage_data.SPELL_DAMAGE
+local SPELL_SHAPE = ____spell_damage_data.SPELL_SHAPE
 function readyOf(a, added)
     if a:GetLevel() <= 0 or a:IsHidden() or not a:IsFullyCastable() then
         return nil
@@ -262,9 +263,15 @@ local B_POINT = ABILITY_BEHAVIOR_POINT or 16
 local B_CHANNELLED = ABILITY_BEHAVIOR_CHANNELLED or 128
 local B_TOGGLE = ABILITY_BEHAVIOR_TOGGLE or 512
 local T_CREEP = ABILITY_TARGET_TYPE_CREEP or 2
+local T_ENEMY = ABILITY_TARGET_TEAM_ENEMY or 2
 --- Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators).
 local function has(bits, flag)
     return flag > 0 and math.floor(bits / flag) % 2 == 1
+end
+--- The special value at `key`, 0 when it reads as no positive number.
+local function valueAt(a, key)
+    local v = a:GetSpecialValueFloat(key)
+    return type(v) == "number" and v > 0 and v or 0
 end
 local function firstKey(a, keys)
     for ____, k in ipairs(keys) do
@@ -297,11 +304,11 @@ function ____exports.CreepSpellsOf(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue47
+                local __continue48
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() or a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or a:IsUltimate() then
-                        __continue47 = true
+                        __continue48 = true
                         break
                     end
                     if AbilityClasses.Classify(
@@ -311,9 +318,9 @@ function ____exports.CreepSpellsOf(bot)
                         keys[a:GetName()] = a:GetManaCost()
                     end
                     learned[#learned + 1] = a
-                    __continue47 = true
+                    __continue48 = true
                 until true
-                if not __continue47 then
+                if not __continue48 then
                     break
                 end
             end
@@ -323,37 +330,72 @@ function ____exports.CreepSpellsOf(bot)
     local spells = {}
     for ____, a in ipairs(learned) do
         do
-            local __continue50
+            local __continue51
             repeat
                 local r = readyOf(a, true)
                 if r == nil then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 local row = SPELL_DAMAGE[r.name] or SPELL_ADDED[r.name]
                 if row ~= nil and row[2] then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 if has(r.behavior, B_CHANNELLED) or has(r.behavior, B_TOGGLE) then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
+                local geo = SPELL_SHAPE[r.name]
+                local geoRadius = (geo and geo.radius) ~= nil and valueAt(a, geo.radius) or 0
                 local shape
                 if has(r.behavior, B_UNIT) then
-                    local ____opt_4 = a.GetTargetType
-                    local tt = ____opt_4 and ____opt_4(a)
+                    local ____opt_6 = a.GetTargetType
+                    local tt = ____opt_6 and ____opt_6(a)
                     if tt ~= nil and tt > 0 and not has(tt, T_CREEP) then
-                        __continue50 = true
+                        __continue51 = true
+                        break
+                    end
+                    local ____opt_8 = a.GetTargetTeam
+                    local team = ____opt_8 and ____opt_8(a)
+                    if team ~= nil and team > 0 and not has(team, T_ENEMY) then
+                        __continue51 = true
                         break
                     end
                     shape = "u"
                 elseif has(r.behavior, B_POINT) then
                     shape = "p"
-                elseif has(r.behavior, B_NO_TARGET) and r.range > 0 then
+                elseif has(r.behavior, B_NO_TARGET) and (r.range > 0 or geoRadius > 0) then
                     shape = "n"
                 else
-                    __continue50 = true
+                    __continue51 = true
+                    break
+                end
+                if shape ~= "u" and geo ~= nil then
+                    local half = geo.width ~= nil and valueAt(a, geo.width) / 2 or (geo.half ~= nil and valueAt(a, geo.half) or 0)
+                    local radius = geo.k == "l" and 0 or (geoRadius > 0 and geoRadius or (shape == "n" and r.range or 0))
+                    spells[#spells + 1] = {
+                        name = r.name,
+                        shape = shape,
+                        range = shape == "n" and geo.k == "s" and radius or r.range,
+                        cp = r.cp,
+                        dmg = r.dmg,
+                        dtype = r.dtype,
+                        mana = a:GetManaCost(),
+                        cd = a:GetCooldown(),
+                        key = keys[r.name] ~= nil,
+                        radius = radius,
+                        half = geo.k == "l" and half or 0,
+                        speed = geo.speed ~= nil and valueAt(a, geo.speed) or 0,
+                        geom = geo.k,
+                        length = geo.k == "l" and math.max(
+                            r.range,
+                            geo.length ~= nil and valueAt(a, geo.length) or 0
+                        ) or 0,
+                        delay = geo.delay ~= nil and valueAt(a, geo.delay) or 0,
+                        offset = geo.k == "r" and geo.offset ~= nil and valueAt(a, geo.offset) or 0
+                    }
+                    __continue51 = true
                     break
                 end
                 local width = firstKey(a, WIDTH_KEYS)
@@ -370,11 +412,14 @@ function ____exports.CreepSpellsOf(bot)
                     key = keys[r.name] ~= nil,
                     radius = shape == "n" and r.range or firstKey(a, RADIUS_KEYS),
                     half = shape == "n" and 0 or half,
-                    speed = shape == "n" and 0 or firstKey(a, SPEED_KEYS)
+                    speed = shape == "n" and 0 or firstKey(a, SPEED_KEYS),
+                    length = 0,
+                    delay = 0,
+                    offset = 0
                 }
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
@@ -461,21 +506,21 @@ function ____exports.ReadyList(bot)
         local slot = 0
         while slot < SLOTS do
             do
-                local __continue75
+                local __continue78
                 repeat
                     local a = bot:GetAbilityInSlot(slot)
                     if a == nil or a == nil or a:IsNull() then
-                        __continue75 = true
+                        __continue78 = true
                         break
                     end
                     if a:GetLevel() <= 0 or a:IsHidden() or a:IsPassive() or not a:IsFullyCastable() then
-                        __continue75 = true
+                        __continue78 = true
                         break
                     end
                     out[#out + 1] = (a:GetName() .. ":") .. classOf(a)
-                    __continue75 = true
+                    __continue78 = true
                 until true
-                if not __continue75 then
+                if not __continue78 then
                     break
                 end
             end

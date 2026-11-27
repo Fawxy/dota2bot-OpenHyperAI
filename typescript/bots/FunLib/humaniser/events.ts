@@ -1335,9 +1335,20 @@ export const EVENTS = {
         took: "num",
         /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
         gj: "num",
-        /** `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`). */
+        /**
+         * `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`),
+         * `sp` a cast on their creep (Ours.CreepSpells, `SpellSecure.CastPick`).
+         */
         k: "str",
-        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt took its own (creep_claim.ts). */
+        /** `job=creep k=sp` start: the spell cast. */
+        ab: "str",
+        /** `job=creep k=sp` start: seconds from the go until the damage was to land (turn, cast point, flight: `SpellSecure.TimingOf`). */
+        al: "num",
+        /** `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`). */
+        az: "num",
+        /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
+        am: "num",
+        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt began (claims.ts; the decider then takes its own). */
         oc: "num",
         /** `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`. */
         cl: "num",
@@ -2936,7 +2947,7 @@ export const EVENTS = {
         pid: "num",
         /** The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`, `aggro`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing. */
         aid: "num",
-        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment). */
+        /** The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment; and one per refused begin (`ref`), once per row and target while it repeats). */
         kind: "str",
         /** kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code. */
         held: "str",
@@ -2946,18 +2957,33 @@ export const EVENTS = {
         let: "str",
         /** kind=decider: the row the decider began (started its task) since its last line; a begin always writes a line. Present with `let` when the row was begun in the round the decider let go (its task is then cut by the runner's preemptAfter). */
         beg: "str",
-        /** kind=decider, with `beg`: the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
+        /** kind=decider: the row whose begin the decider refused (Ours.FightFirst: the hero was in attack, roam or team roam), with `btgt` its offer's target, `bfrom` the mode and `why` the reason (`fight`); no `held`, `win` or `beg` on that line. Logged once per hero, row and target while the refusal repeats. */
+        ref: "str",
+        /** kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
         btgt: "str",
         bby: "num",
         /** kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran. */
         over: "str",
+        /** kind=decider, with `beg` (or `ref`): the mode Valve had the hero in at the begin (or the refusal), read inside the begin (HDebug.ModeName: `laning`, `farm`, `attack`, `roam`, `team_roam`, ...); absent on logs before oha-start-from. */
+        bfrom: "str",
+        /** kind=decider, with `beg`: how the offer is taken (`attack`, `deny`, `spell`: the creep row); absent where a row has one way. Absent on logs before oha-offer-accept. */
+        bway: "str",
+        /**
+         * kind=decider, with `beg`: the first of the decider's acceptance checks that would have refused the begin had it been allowed
+         * to (offers-and-the-decider s4; it refuses nothing yet): `claim` (another hero of ours holds the offer's target, at a cell at
+         * or under this one's, or with none), `late` (the offer's go-by time had passed). Absent when every check passes, and on logs
+         * before oha-offer-accept.
+         */
+        bacc: "str",
+        /** kind=decider, with `beg`: how many other heroes of ours held a claim on the offer's target at the begin; absent when none. */
+        bcl: "num",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */
         want: "num",
-        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: CampRead StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `claimed`, `wait`, `human` (a support's last hit, Ours.SupportCreeps: a lower-cell hero holds a claim on the creep, has it on offer and has not refused it yet, or is a human in the lane; creep_row FreeFor), `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `nowindow` (Ours.TowerCreeps: a tower is attacking the creep and no pre-hits make the hero's hit the last, `Verdict` `none`), `mates` (the same, a pre-hit would race our own creeps attacking it), `notarget` (a melee creep inside our tower's range that the tower is not attacking), `other` (it went for another creep), `refused`. */
+        /** What held a wanted pull back: a start check (`enemy-near`, `busy`, `acting`, `late`, `refused`), `empty`, `one`, `camp-dmg`, `weak` (the record, or the puller's look on arrival, under the bar: CampRead StrongAt); for kind=stack also `strong` and `empty` (not wanted: the record at the bar, or 0, which the mark refills) and `low-hp`; on logs before the pull became a decider row also a higher job's name, `partner-low`, `partner-gank`, `enemy-site`, `threat`, `missing`; `lane` when not wanted; `no-read` when the run left no clash. `off` on every `src=shadow` line, wanted or not: it stands in for `lane` and `no-read` too, so a shadow line whose run left no clash shows only by its missing `st`. Also `ctl`, `no_ctl`, `ew` and `drill` from the lane controller and drills. For kind=creep with `src=own`, the creep row's first reason once the creep was about to come due (`early` only if it never was) (CreepRow.Consider, Claim): `busy`, `kind`, `early`, `notime_new`, `notime_held`, `notime_acting`, `notime` (the hero cannot be in the verb's range before the creep comes due: at its first read about to come due, after a refusal for `held` or `acting`, or neither), `acting`, `held` (stock's retreat holds the hero; Valve's attack does not, the hold is hard), `stock` (logs before oha-creep-early only), `tried`, `claimed`, `wait`, `human` (a support's last hit, Ours.SupportCreeps: a lower-cell hero holds a claim on the creep, has it on offer and has not refused it yet, or is a human in the lane; creep_row FreeFor), `late`, `outdmg`, `race`, `covered`, `tower`, `etower`, `given`, `mate`, `nowindow` (Ours.TowerCreeps: a tower is attacking the creep and no pre-hits make the hero's hit the last, `Verdict` `none`), `mates` (the same, a pre-hit would race our own creeps attacking it), `notarget` (a melee creep inside our tower's range that the tower is not attacking), `other` (it went for another creep), `refused`, `fight` (the decider refused the start: the hero was in attack, roam or team roam, Ours.FightFirst; a later read may clear it, as `held`). For kind=pull and kind=stack, `fight` too: the decider refused the slot's start over a fight and the slot ran out (`late`'s place). */
         why: "str",
-        /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting`, `notime_row` and `notime`, which `why` overwrites with an earlier one, can be counted. */
+        /** `kind=creep`, `go=0`, `src=own`: the creep row's latest reason as given at its last read of the creep (the set of `why`, `early` and `kind` too), so `notime_held`, `notime_acting`, `notime_row`, `notime_fight` and `notime`, which `why` overwrites with an earlier one, can be counted. */
         lw: "str",
         /** Who decided: `own` or `ping`; `shadow` for a puller whose pull is switched off (PullJob.Shadow: `go=0 why=off`, the slot and `want` as the pull would have read them). */
         src: "str",
@@ -3093,9 +3119,13 @@ export const EVENTS = {
         sa: "num",
         /** `kind=creep`, `sk=1`: seconds from the first such read to the last. */
         sw: "num",
-        /** `kind=creep`, with `sp`: the creep's centre distance less the cast range (for `sx=n` its radius) at that read; above 0 the hero walks first. */
+        /**
+         * `kind=creep`, with `sp`: for `sx=u` the creep's centre distance less the cast range; for `sx=p` and `n` with `sq` (slice
+         * oha-spell-aim) the walk the aim needs before the cast can hit the creep (for `sq=r` towards or away), floored at 0; older
+         * logs without `sq`, the distance less the cast range (for `sx=n` its radius). Above 0 the hero walks first.
+         */
         sg: "num",
-        /** `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight). */
+        /** `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight; with `sq`, the spell's delay too). */
         sl: "num",
         /** `kind=creep`, with `sp`: the spell's damage after the creep's resistance. */
         sd: "num",
@@ -3107,10 +3137,39 @@ export const EVENTS = {
         sr: "num",
         /** `kind=creep`, with `sp`: the spell's cooldown (s). */
         sc: "num",
-        /** `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`). */
+        /**
+         * `kind=creep`, with `sp`: visible enemy heroes the cast would also hit. `sx=u`: aimed at the creep (its line, or its area around the
+         * creep). With `sq`: as the aim puts it (spell_aim.ts), the heroes where their velocities put them when it lands. Older logs, `sx=p`
+         * and `n`: aimed at the creep's centre, or around the hero for `n`.
+         */
         sz: "num",
         /** `kind=creep`, with `sp`: how many creep spells the hero held at that read. */
         sn: "num",
+        /**
+         * `kind=creep`, `sx=p` or `n` (slice oha-spell-aim): where the spell lands (SPELL_SHAPE, spell_aim.ts): `a` an area at a point in cast
+         * range, `l` a line from the hero, `r` a circle in front of the hero (Shadowraze), `s` a circle around the hero.
+         */
+        sq: "str",
+        /** `kind=creep`, with `sq`: the creep's distance from the aimed hit's centre (`l`: from the line's axis), when it lands. */
+        sv: "num",
+        /** `kind=creep`, with `sq`: their other lane creeps the aimed cast also hits, where they stand now. */
+        so: "num",
+        /** `kind=creep`, with `sq`: the enemy heroes the same cast hits aimed straight at the creep (the aim's gain is `sz` less this). */
+        su: "num",
+        /**
+         * `kind=creep`, their creep (slice oha-creep-spells, Ours.CreepSpells): 1 when the creep row cast on it (`aid` is the cast's
+         * attempt), 0 when the row weighed a cast because the attack could not take the creep and did not cast. Absent: never weighed.
+         */
+        cg: "num",
+        /**
+         * `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target
+         * spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero); a hero holding no creep spell
+         * is not weighed (no field). The hero's, as the attack's: `acting`, `row`, `held`, `tried` (its last attempt was on this creep); the
+         * creep's: `claimed` (a hero of ours holds a claim on it, or one with a lower `creep` cell is still going for it), `mate` (a teammate's
+         * hit kills it first), `other` (another creep's cast went); `refused` (the runner);
+         * `off` (the switch off: the row would have cast on it, the cast's shadow).
+         */
+        cw: "str",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */

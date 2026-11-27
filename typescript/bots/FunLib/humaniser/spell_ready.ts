@@ -22,7 +22,7 @@
 import { BotScriptEnums, DamageType, Unit } from "bots/ts_libs/dota";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as AbilityClasses from "bots/FunLib/humaniser/ability_classes";
-import { SPELL_ADDED, SPELL_DAMAGE } from "bots/FunLib/humaniser/spell_damage_data";
+import { SPELL_ADDED, SPELL_DAMAGE, SPELL_SHAPE } from "bots/FunLib/humaniser/spell_damage_data";
 
 const SLOTS = 6;
 
@@ -215,10 +215,17 @@ const B_POINT = BotScriptEnums.ABILITY_BEHAVIOR_POINT ?? 16;
 const B_CHANNELLED = BotScriptEnums.ABILITY_BEHAVIOR_CHANNELLED ?? 128;
 const B_TOGGLE = BotScriptEnums.ABILITY_BEHAVIOR_TOGGLE ?? 512;
 const T_CREEP = BotScriptEnums.ABILITY_TARGET_TYPE_CREEP ?? 2;
+const T_ENEMY = BotScriptEnums.ABILITY_TARGET_TEAM_ENEMY ?? 2;
 
 /** Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators). */
 function has(bits: number, flag: number): boolean {
     return flag > 0 && math.floor(bits / flag) % 2 === 1;
+}
+
+/** The special value at `key`, 0 when it reads as no positive number. */
+function valueAt(a: { GetSpecialValueFloat(key: string): number }, key: string): number {
+    const v = a.GetSpecialValueFloat(key);
+    return type(v) === "number" && v > 0 ? v : 0;
 }
 
 function firstKey(a: { GetSpecialValueFloat(key: string): number }, keys: string[]): number {
@@ -235,6 +242,7 @@ interface CreepCastHandle extends CastHandle {
     GetManaCost(): number;
     GetCooldown(): number;
     GetTargetType?(): number;
+    GetTargetTeam?(): number;
 }
 
 /** A spell `bot` can cast now that can kill a lane creep in one cast (CreepSpells); the facts spell_secure.ts answers on. */
@@ -258,6 +266,17 @@ export interface CreepSpell {
     half: number;
     /** Projectile or line speed (0: lands at the end of the cast point). */
     speed: number;
+    /**
+     * Where a `p` or `n` spell lands (SPELL_SHAPE's `k`, spell_aim.ts Geom): `a` an area at the point, `l` a line from the hero, `r` a
+     * circle `offset` in front of it, `s` one around it. Undefined for `u` and for a spell with no SPELL_SHAPE row.
+     */
+    geom?: "a" | "l" | "r" | "s";
+    /** A line's length: the longer of the cast range and SPELL_SHAPE's `length` (0 when not a line). */
+    length: number;
+    /** Seconds from the cast point until it lands besides the flight (SPELL_SHAPE's `delay`; 0 for `u`). */
+    delay: number;
+    /** For `r`, how far in front of the hero its circle's centre is. */
+    offset: number;
 }
 
 /** CreepSpells' answer: the spells, and the mana cost of each learned key spell (castable now or not), by name. */
@@ -298,14 +317,43 @@ export function CreepSpellsOf(bot: Unit): CreepSpells {
         const row = SPELL_DAMAGE[r.name] ?? SPELL_ADDED[r.name];
         if (row !== undefined && row[1]) continue;
         if (has(r.behavior, B_CHANNELLED) || has(r.behavior, B_TOGGLE)) continue;
+        const geo = SPELL_SHAPE[r.name];
+        const geoRadius = geo?.radius !== undefined ? valueAt(a, geo.radius) : 0;
         let shape: "u" | "p" | "n";
         if (has(r.behavior, B_UNIT)) {
             const tt = a.GetTargetType?.();
             if (tt !== undefined && tt > 0 && !has(tt, T_CREEP)) continue;
+            // An ally's spell (Frost Shield) can name creeps among its targets: only one that may target an enemy is cast on their creep.
+            const team = a.GetTargetTeam?.();
+            if (team !== undefined && team > 0 && !has(team, T_ENEMY)) continue;
             shape = "u";
         } else if (has(r.behavior, B_POINT)) shape = "p";
-        else if (has(r.behavior, B_NO_TARGET) && r.range > 0) shape = "n";
+        else if (has(r.behavior, B_NO_TARGET) && (r.range > 0 || geoRadius > 0)) shape = "n";
         else continue;
+        if (shape !== "u" && geo !== undefined) {
+            // Slice oha-spell-aim: a point or no-target spell's geometry is SPELL_SHAPE's, read at its keys; a unit-target spell keeps the key lists below.
+            const half = geo.width !== undefined ? valueAt(a, geo.width) / 2 : geo.half !== undefined ? valueAt(a, geo.half) : 0;
+            const radius = geo.k === "l" ? 0 : geoRadius > 0 ? geoRadius : shape === "n" ? r.range : 0;
+            spells.push({
+                name: r.name,
+                shape,
+                range: shape === "n" && geo.k === "s" ? radius : r.range,
+                cp: r.cp,
+                dmg: r.dmg,
+                dtype: r.dtype,
+                mana: a.GetManaCost(),
+                cd: a.GetCooldown(),
+                key: keys[r.name] !== undefined,
+                radius,
+                half: geo.k === "l" ? half : 0,
+                speed: geo.speed !== undefined ? valueAt(a, geo.speed) : 0,
+                geom: geo.k,
+                length: geo.k === "l" ? math.max(r.range, geo.length !== undefined ? valueAt(a, geo.length) : 0) : 0,
+                delay: geo.delay !== undefined ? valueAt(a, geo.delay) : 0,
+                offset: geo.k === "r" && geo.offset !== undefined ? valueAt(a, geo.offset) : 0,
+            });
+            continue;
+        }
         // A cone (a start and an end radius) is read as a line as wide as its far end: generous to the also-hit count.
         const width = firstKey(a, WIDTH_KEYS);
         const half = width > 0 ? width / 2 : firstKey(a, ["start_radius"]) > 0 ? firstKey(a, ["end_radius"]) : 0;
@@ -322,6 +370,9 @@ export function CreepSpellsOf(bot: Unit): CreepSpells {
             radius: shape === "n" ? r.range : firstKey(a, RADIUS_KEYS),
             half: shape === "n" ? 0 : half,
             speed: shape === "n" ? 0 : firstKey(a, SPEED_KEYS),
+            length: 0,
+            delay: 0,
+            offset: 0,
         });
     }
     const out = { spells, keys };

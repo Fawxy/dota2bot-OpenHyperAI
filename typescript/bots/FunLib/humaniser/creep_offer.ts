@@ -11,7 +11,7 @@
  * key here, never called (BACKLOG 0.14).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Lane, Unit, UnitType } from "bots/ts_libs/dota";
+import { Lane, Unit, UnitType, Vector as Vec } from "bots/ts_libs/dota";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -21,6 +21,7 @@ import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Offer from "bots/FunLib/humaniser/offer";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as SpellSecure from "bots/FunLib/humaniser/spell_secure";
+import type * as SpellAim from "bots/FunLib/humaniser/spell_aim";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -78,7 +79,7 @@ interface Parts {
     lists: (this: void, bot: Unit) => { listed: LuaTable<Unit, boolean>; theirs: Unit[] };
     snapshot: (this: void, bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, others: Offer.Other[]) => Snap;
     race: (this: void, bot: Unit, creep: Unit) => [string, number | undefined];
-    spell: (this: void, bot: Unit, f: Frame, creep: Unit, o: Opp, now: number) => void;
+    spell: (this: void, bot: Unit, f: Frame, creep: Unit) => SpellSecure.Answer[];
 }
 let parts: Parts | undefined;
 
@@ -128,6 +129,11 @@ interface SpellSnap {
     cd: number;
     /** The spells the read weighed. */
     n: number;
+    /** `p` and `n` (slice oha-spell-aim): the geometry kind, the creep's distance from the aimed hit's centre, other creeps of theirs hit, heroes hit aimed straight at the creep. */
+    geom?: string;
+    off?: number;
+    others?: number;
+    centre?: number;
 }
 
 interface Opp {
@@ -161,6 +167,13 @@ interface Opp {
     sp?: SpellSnap;
     spFrom?: number;
     spTo?: number;
+    /**
+     * Set by the row's cast pass (Candidate.noteCast, Ours.CreepSpells): it cast on this creep (`cgo`, with its attempt id `caid`),
+     * else its latest reason for not casting while the attack could not take the creep (`cwhy`). Both undefined: never weighed.
+     */
+    cgo?: boolean;
+    caid?: number;
+    cwhy?: string;
 }
 
 /**
@@ -175,6 +188,10 @@ export interface Candidate {
     arrive: Offer.Arrival;
     facts(this: void): Snap;
     note(this: void, go: boolean, why?: string, aid?: number): void;
+    /** Their creep: every creep spell's answer at this read (computed once a read, shared with the shadow); a deny: none. */
+    spells(this: void): SpellSecure.Answer[];
+    /** The row's cast pass on this creep: it cast (`aid`), or why not. */
+    noteCast(this: void, go: boolean, why?: string, aid?: number): void;
 }
 
 export type RowHook = (this: void, bot: Unit, cands: Candidate[]) => void;
@@ -244,7 +261,7 @@ function line(bot: Unit, o: Opp): void {
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "creep"],
-        ["aid", o.go === true ? o.aid : undefined],
+        ["aid", o.go === true ? o.aid : o.cgo === true ? o.caid : undefined],
         ["go", o.go === true ? 1 : 0],
         ["want", want ? 1 : 0],
         ["why", o.go === true ? undefined : o.why ?? "off"],
@@ -289,6 +306,8 @@ function line(bot: Unit, o: Opp): void {
         ["ra", math.floor(s.ra)],
         ["enh", s.enh],
         ...spellFields(o),
+        ["cg", o.cgo === true ? 1 : o.cwhy !== undefined ? 0 : undefined],
+        ["cw", o.cgo === true ? undefined : o.cwhy],
     ]);
 }
 
@@ -312,6 +331,10 @@ function spellFields(o: Opp): Telemetry.Fields<"choice"> {
         ["sc", r1(p.cd)],
         ["sz", p.also],
         ["sn", p.n],
+        ["sq", p.geom],
+        ["sv", p.off !== undefined ? math.floor(p.off + 0.5) : undefined],
+        ["so", p.others],
+        ["su", p.centre],
     ];
 }
 
@@ -362,7 +385,14 @@ interface Frame {
     enemyHeights?: string[];
     /** The hero's creep spells (SpellReady.CreepSpellsOf), read once a call when a creep of theirs is offered. */
     spells?: SpellReady.CreepSpells;
+    /** Each creep's spell answers this call (`answersOf`), shared by the row's cast pass and the shadow. */
+    answers?: LuaTable<Unit, SpellSecure.Answer[]>;
     foes?: SpellSecure.Foe[];
+    /** The units behind `enemies`, in its order. */
+    enemyUnits?: Unit[];
+    /** Slice oha-spell-aim, read when a point or no-target spell is aimed: the seen enemy heroes with velocities, and their creeps' places. */
+    movers?: SpellSecure.Moving[];
+    others?: LuaTable<Unit, SpellSecure.Foe>;
 }
 
 /** The terrain height level at a place; undefined when the API is absent or gives no number. */
@@ -413,10 +443,13 @@ function enemiesOf(f: Frame): Offer.PathEnemy[] {
     if (f.enemies !== undefined) return f.enemies;
     const out: Offer.PathEnemy[] = [];
     const hs: string[] = [];
+    const units: Unit[] = [];
+    f.enemyUnits = units;
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
+        units.push(e);
         out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1, speed: e.GetCurrentMovementSpeed() });
         hs.push(`${e.GetPlayerID()}:${heightAt(at.x, at.y) ?? "-"}`);
     }
@@ -498,11 +531,13 @@ function snapshot(bot: Unit, f: Frame, t: Lib.Verbs.LaneTarget, slack: number, o
 }
 
 /**
- * The spell read on their creep at this read: each creep spell's answer (SpellSecure), the best kept on the opportunity as `Opp.sp`
- * says. The creep's HP is forecast (the engine's hpForecast, which laneTargets also reads) only within `SpellBand`.
+ * Every creep spell's answer on their creep at this read (SpellSecure). The creep's HP is forecast (the engine's hpForecast, which
+ * laneTargets also reads) only within `SpellBand`. `f.spells` is read first (`spellsOf`).
  */
-function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void {
+function spellAnswers(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
     const cs = f.spells!;
+    const answers: SpellSecure.Answer[] = [];
+    if (cs.spells.length === 0) return answers;
     const verbs = Tasks.Verbs()!;
     const at = creep.GetLocation();
     const d = dist(f.hero, at);
@@ -516,10 +551,21 @@ function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void 
     }
     const timings: SpellSecure.Timing[] = [];
     const takens: number[] = [];
+    // Keyed by the spell's index: a Lua array cannot hold the gap a unit-target spell leaves (push(undefined) adds nothing, and every later aim shifts onto the wrong spell).
+    const aims = new LuaTable<number, { aim: SpellAim.Aim; centre: number }>();
     let band = false;
     let horizon = 0;
-    for (const s of cs.spells) {
-        const timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+    let moving: SpellSecure.Moving | undefined;
+    for (let i = 0; i < cs.spells.length; i++) {
+        const s = cs.spells[i];
+        let timing: SpellSecure.Timing;
+        if (s.shape === "u") timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+        else {
+            moving ??= movingOf(creep, at);
+            const r = SpellSecure.Aimed(s, f.hero, f.speed, turn, moving, moversOf(f), othersOf(f, creep));
+            timing = r.timing;
+            aims.set(i, r);
+        }
         const taken = creep.GetActualIncomingDamage(s.dmg, s.dtype);
         timings.push(timing);
         takens.push(taken);
@@ -530,14 +576,80 @@ function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void 
     }
     // One forecast to the latest landing among the spells in band (the engine caps its horizon at 10 s).
     const forecast = band ? verbs.hpForecast(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep, horizon) : undefined;
-    const answers: SpellSecure.Answer[] = [];
     for (let i = 0; i < cs.spells.length; i++) {
         const s = cs.spells[i];
         const timing = timings[i];
         const taken = takens[i];
         const hp = forecast !== undefined && hpNow <= taken * SETTINGS.SpellBand ? verbs.forecastHp(forecast, timing.land) : hpNow;
-        answers.push({ spell: s, timing, taken, hp, kill: SpellSecure.Kills(hp, taken), over: SpellSecure.OverReserve(mana, s, cs.keys), also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
+        const kill = SpellSecure.Kills(hp, taken);
+        const over = SpellSecure.OverReserve(mana, s, cs.keys);
+        const aimed = aims.get(i);
+        if (aimed === undefined) answers.push({ spell: s, timing, taken, hp, kill, over, also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
+        else answers.push({ spell: s, timing, taken, hp, kill, over, also: aimed.aim.also, aim: aimed.aim, centre: aimed.centre });
     }
+    return answers;
+}
+
+/** A unit's velocity from the API's extrapolation one second on (0 where the API gives none, as in the unit tests' mocks). */
+function velocityOf(u: Unit, at: Vec): [number, number] {
+    const ex = (u as Unit & { GetExtrapolatedLocation?(t: number): Vec | undefined }).GetExtrapolatedLocation?.(1);
+    if (ex === undefined || ex === null) return [0, 0];
+    return [ex.x - at.x, ex.y - at.y];
+}
+
+function movingOf(u: Unit, at: Vec): SpellSecure.Moving {
+    const [vx, vy] = velocityOf(u, at);
+    return { x: at.x, y: at.y, hull: u.GetBoundingRadius(), vx, vy };
+}
+
+/** The seen enemy heroes (`enemiesOf`) with their velocities, read once a call when a point or no-target spell is aimed. */
+function moversOf(f: Frame): SpellSecure.Moving[] {
+    if (f.movers !== undefined) return f.movers;
+    enemiesOf(f);
+    const out: SpellSecure.Moving[] = [];
+    for (const e of f.enemyUnits!) {
+        const at = e.GetLocation();
+        if (at !== null && at !== undefined) out.push(movingOf(e, at));
+    }
+    f.movers = out;
+    return out;
+}
+
+/** Their lane creeps in the hero's list other than `creep`, where they stand: what an aimed cast also hits. */
+function othersOf(f: Frame, creep: Unit): SpellSecure.Foe[] {
+    if (f.others === undefined) {
+        const all = new LuaTable<Unit, SpellSecure.Foe>();
+        for (const c of f.enemyCreeps) {
+            const at = c.GetLocation();
+            if (at !== null && at !== undefined) all.set(c, { x: at.x, y: at.y, hull: c.GetBoundingRadius() });
+        }
+        f.others = all;
+    }
+    const out: SpellSecure.Foe[] = [];
+    for (const [c, b] of f.others) if (c !== creep) out.push(b);
+    return out;
+}
+
+/** The hero's creep spells, read once a call (`Frame.spells`). */
+function spellsOf(bot: Unit, f: Frame): SpellReady.CreepSpells {
+    f.spells ??= SpellReady.CreepSpellsOf(bot);
+    return f.spells;
+}
+
+/** The read's answers on one creep, computed once a call whoever asks first (the row's cast pass or the shadow). */
+function answersOf(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
+    f.answers ??= new LuaTable<Unit, SpellSecure.Answer[]>();
+    let as = f.answers.get(creep);
+    if (as === undefined) {
+        spellsOf(bot, f);
+        as = partsOf().spell(bot, f, creep);
+        f.answers.set(creep, as);
+    }
+    return as;
+}
+
+/** The best of the read's answers kept on the opportunity as `Opp.sp` says. */
+function spellRecord(o: Opp, answers: SpellSecure.Answer[], n: number, now: number): void {
     const best = SpellSecure.Best(answers);
     if (best === undefined) return;
     if (o.spFrom !== undefined) {
@@ -558,7 +670,11 @@ function spellRead(bot: Unit, f: Frame, creep: Unit, o: Opp, now: number): void 
         also: best.also,
         mana: best.spell.mana,
         cd: best.spell.cd,
-        n: cs.spells.length,
+        n,
+        geom: best.aim !== undefined ? SpellSecure.GeomOf(best.spell).k : undefined,
+        off: best.aim?.off,
+        others: best.aim?.others,
+        centre: best.centre,
     };
     if (best.kill) {
         o.spFrom = now;
@@ -580,7 +696,7 @@ function partsOf(): Parts {
         }),
         snapshot: Telemetry.PerfStep("CO:snapshot", snapshot),
         race: Telemetry.PerfStep("CO:race", race),
-        spell: Telemetry.PerfStep("CO:spell", spellRead),
+        spell: Telemetry.PerfStep("CO:spell", spellAnswers),
     };
     return parts;
 }
@@ -665,11 +781,12 @@ export function Shadow(bot: Unit): void {
         if (rowHook !== undefined) cands.push(candidate(bot, f, targets, t, creep, cid, o, a, now));
     }
     if (rowHook !== undefined) rowHook(bot, cands);
-    // After the row: the spell read only logs, so an error in it cannot cost the row its decision this read.
+    // After the row: the best answer is kept for the line. The row's cast pass (creep_row castPass) may have asked the answers already
+    // (`answersOf` keeps them for the call), so an error in the spell read can surface inside the row's hook too.
     if (spellTargets.length === 0) return;
-    f.spells = SpellReady.CreepSpellsOf(bot);
-    if (f.spells.spells.length === 0) return;
-    for (const [creep, o] of spellTargets) P.spell(bot, f, creep, o, now);
+    const cs = spellsOf(bot, f);
+    if (cs.spells.length === 0) return;
+    for (const [creep, o] of spellTargets) spellRecord(o, answersOf(bot, f, creep), cs.spells.length, now);
 }
 
 function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.Verbs.LaneTarget, creep: Unit, cid: number, o: Opp, a: Offer.Arrival, now: number): Candidate {
@@ -687,6 +804,15 @@ function candidate(bot: Unit, f: Frame, targets: Lib.Verbs.LaneTarget[], t: Lib.
                 fresh = partsOf().snapshot(bot, f, t, a.slack, others);
             }
             return fresh;
+        },
+        spells: () => (t.kind === "lasthit" ? answersOf(bot, f, creep) : []),
+        noteCast: (go: boolean, why?: string, aid?: number) => {
+            if (o.cgo === true) return;
+            if (go) {
+                o.cgo = true;
+                o.caid = aid;
+                o.cwhy = undefined;
+            } else o.cwhy = why;
         },
         note: (go: boolean, why?: string, aid?: number) => {
             if (o.go === true) return;

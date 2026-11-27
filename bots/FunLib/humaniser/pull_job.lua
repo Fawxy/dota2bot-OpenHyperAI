@@ -1779,6 +1779,9 @@ local function rowWants(bot, reads)
     logSeeds()
     local pid = bot:GetPlayerID()
     pending[pid] = nil
+    if Decider.Refusal(bot, "pull") == "fight" then
+        gateWhy[pid] = "fight"
+    end
     local read = reads.camp
     if not rowOn(bot, read) then
         return nil

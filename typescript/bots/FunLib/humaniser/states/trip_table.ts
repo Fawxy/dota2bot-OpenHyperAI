@@ -9,7 +9,7 @@
  *   chosen in pull_job). Ours.RuneRotation and the other job switches gate their jobs in code. None changes a cell.
  * - The creep offer (creep_offer) and its row (creep_row) are no chooser job (the chooser's JOBS list does not hold `creep` or
  *   `deny`): their rows say only which positions the read covers and the row lets act, `creep` (last hits, Ours.LaneCreeps)
- *   and `deny` (our own creeps, Ours.CreepDeny). The `creep` cell also orders heroes on one creep, lower first (creep_claim
+ *   and `deny` (our own creeps, Ours.CreepDeny). The `creep` cell also orders heroes on one creep, lower first (claims.ts, the decider's claim by target
  *   `FreeFor`, creep_row's yield); a hero whose cell is above the lowest one (`Outranked`) needs Ours.SupportCreeps too.
  * - The draw (`aggro`, no-creep-unpaid s6b) is no chooser job either: its row says which positions the draw's shadow read
  *   (aggro_offer) covers, cores only for now.

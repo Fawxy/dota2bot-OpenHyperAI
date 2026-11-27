@@ -137,6 +137,7 @@ do
 		a.GetManaCost = function() return o.mana or 100 end
 		a.GetCooldown = function() return o.cd or 8 end
 		a.GetTargetType = o.ttype and function() return o.ttype end or nil
+		a.GetTargetTeam = o.tteam and function() return o.tteam end or nil
 		a.GetSpecialValueFloat = function(_, k) return sv[k] or 0 end
 		return a
 	end
@@ -159,6 +160,18 @@ do
 	check("a line's half width and speed from its keys", by.bolt.half == 60 and by.bolt.speed == 1600 and by.bolt.radius == 0)
 	check("a cone reads as a line as wide as its far end", by.wave.half == 250 and by.wave.speed == 1050)
 	check("a key spell on cooldown still sets the reserve", got.keys.lion_voodoo == 125 and by.bolt.key == false)
+
+	T = T + 1
+	caster.abilities = {
+		[0] = cast("ally_shield", { dmg = 50, ttype = 3, tteam = 1 }), -- an ally's buff that damages around its target (Frost Shield)
+		[1] = cast("both_teams", { dmg = 60, ttype = 3, tteam = 3 }),
+		[2] = cast("enemy_nuke", { dmg = 70, ttype = 3, tteam = 2 }),
+	}
+	local teams = SpellReady.CreepSpellsOf(caster)
+	local tn = {}
+	for _, s in ipairs(teams.spells) do tn[s.name] = true end
+	check("a unit target only an ally may take is left out; one for either team or the enemy is kept",
+		#teams.spells == 2 and tn.both_teams and tn.enemy_nuke and not tn.ally_shield, #teams.spells)
 
 	T = T + 1
 	caster.abilities = {
@@ -187,6 +200,23 @@ do
 	local left = SpellReady.CreepSpellsOf(caster)
 	check("a left-out spell takes its SPELL_ADDED damage in the creep read", #left.spells == 1 and left.spells[1].dmg == 80, leftName)
 	check("the chase's list stays as built: no damage, no entry", #SpellReady.ReadySpells(caster) == 0)
+
+	-- Slice oha-spell-aim: a point or no-target spell's geometry is SPELL_SHAPE's keys, which the key lists above miss.
+	local function dmgKey(name) return (Data.SPELL_DAMAGE[name] or Data.SPELL_ADDED[name])[1] end
+	T = T + 1
+	caster.abilities = {
+		[0] = cast("nevermore_shadowraze2", { dmg = 0, bits = 4, range = 0, special = { [dmgKey("nevermore_shadowraze2")] = 90, shadowraze_radius = 250, shadowraze_range = 450 } }),
+		[1] = cast("lina_light_strike_array", { dmg = 0, bits = 16, special = { [dmgKey("lina_light_strike_array")] = 80, light_strike_array_aoe = 250, light_strike_array_delay_time = 0.5 } }),
+		[2] = cast("earthshaker_fissure", { dmg = 0, bits = 16, range = 1600, special = { [dmgKey("earthshaker_fissure")] = 110, fissure_radius = 225 } }),
+	}
+	local g = {}
+	for _, s in ipairs(SpellReady.CreepSpellsOf(caster).spells) do g[s.name] = s end
+	local raze, lsa, fissure = g.nevermore_shadowraze2, g.lina_light_strike_array, g.earthshaker_fissure
+	check("a raze, cast range 0 and no `radius` key, is kept as a circle 450 in front of the hero",
+		raze and raze.shape == "n" and raze.geom == "r" and raze.offset == 450 and raze.radius == 250, raze and raze.radius)
+	check("Light Strike Array: an area of its own aoe key, landing after its delay", lsa and lsa.geom == "a" and lsa.radius == 250 and lsa.delay == 0.5)
+	check("Fissure: a line from the hero as long as its cast range, its radius key the half width",
+		fissure and fissure.geom == "l" and fissure.half == 225 and fissure.length == 1600 and fissure.radius == 0)
 end
 
 finish()

@@ -180,12 +180,19 @@ Customize.Humaniser = {
 -- in its lane, and yields it to such a hero that starts on it before its swing (creep_row FreeFor); their ranged creep outside our tower's
 -- range only. Needs LaneCreeps. Off: stock plays. On by default: provisional (plan s5's widening, after its firing audit scraudit1), deleted at the
 -- next checkpoint batch if the line or its guards fall.
+-- CreepSpells (the creep row's cast, slice oha-creep-spells; no-creep-unpaid proposal s6): any position casts a unit-target spell on their lane
+-- creep of any kind the attack cannot take, when the cast kills it now with no walk, keeps the mana of the hero's dearest other key spell, and as a
+-- key spell also hits an enemy hero; the creep free of our claims and of a teammate's hit. Off: the cast pass is logged as a shadow, stock plays.
+-- On by default: provisional (plan s5's small row, after its audit), read at the next checkpoint batch and deleted there if not above zero.
 -- TowerStay (slice oha-tower-fallthrough): the leftover rule only decides whether to pre-hit; its refusal mid-attempt falls through to the
 -- plain last hit. Off: the rule ends the attempt. On by default: provisional (plan s5's small row), read at the next checkpoint batch against
 -- an arm with it off and every other switch on; the flag is deleted there either way.
 -- LaneAggro (decider row, the draw; slice oha-lane-aggro, no-creep-unpaid proposal s6b): a core (pos 1 to 3) beside our ranged creep while their
 -- lane creeps fight ours orders one attack on the nearest enemy hero our team sees and walks back past our ranged creep, so the drawn creeps
 -- take it (aggro_row). Off: the read logs each chance as a shadow (ev=choice kind=aggro src=shadow) and stock plays. Off by default until its batch: the on arm sets it (--set Ours.LaneAggro=true).
+-- FightFirst (slice oha-no-start-over-fight, a flag between two versions of our code): the decider refuses to begin a row while the hero is
+-- in attack, roam or team roam (fights stay Valve's); a row already holding is not cut. Off: a row begins from any mode. On by default:
+-- provisional (the check before the batch could not read its line at 6 pairs), read at the next checkpoint batch; the flag is deleted there either way.
 -- LaneCreeps (decider row, doctrine D11; no-creep-unpaid proposal s5): a core (pos 1 to 3) last-hits their ranged creep in the
 -- claimed cells (in range or a walk up to 1 s, not out-damaged; a longer walk no enemy hero covers) once it is about to come due,
 -- whether or not stock is attacking it (creep_row). On: it beat the reference arm on its line (batches ceh1, ceh2). Off: the creep offer read logs a shadow (ev=choice kind=creep src=shadow) and stock plays.
@@ -203,7 +210,7 @@ Customize.Humaniser = {
 -- Team (head-to-head scope, unset by default): "radiant" or "dire" (any case, or 2/3) turns every switch above off on the other
 -- team, whose contexts then run OHA's path. Set it per run with
 -- `--set Ours.Team=radiant`; unset or any other value: both teams.
-Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, CreepDeny = true, TowerCreeps = true, SupportCreeps = true, TowerStay = true, LaneAggro = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
+Customize.Ours = { StackExecute = false, DoubleStack = false, JobChooser = false, RuneRotation = false, RuneSpawn = false, RuneDetour = true, SupportPull = true, LaneCreeps = true, CreepDeny = true, TowerCreeps = true, SupportCreeps = true, CreepSpells = true, TowerStay = true, FightFirst = true, LaneAggro = false, Threat = false, Retreat = false, MidWater = false, BurstReady = false, Sustain = false, ExitWindow = false, IdleBar = false, TowerRead = false, TripRead = false, ChoiceShadow = false }
 
 -- Test-harness knobs. ClockOffset (s): added to DotaTime() by the humaniser's game-phase clock (Config.Now) only,
 -- so a scenario can make "is it the mid game" logic think it is later; world-timed code (camps, runes) keeps DotaTime().

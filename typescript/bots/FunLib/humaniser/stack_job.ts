@@ -17,7 +17,7 @@ import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
 import * as Ours from "bots/FunLib/humaniser/ours";
 import * as Overrides from "bots/FunLib/humaniser/overrides";
 import * as Drill from "bots/FunLib/humaniser/drill";
-import type * as Decider from "bots/FunLib/humaniser/decider";
+import * as Decider from "bots/FunLib/humaniser/decider";
 import * as CampRead from "bots/FunLib/humaniser/camp_read";
 import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
@@ -1558,6 +1558,9 @@ export function Shadow(bot: Unit): void {
 function rowOffer(bot: Unit, reads: Reads): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
     rowPending[pid] = undefined;
+    // Last round's offer refused by the decider over a fight (Ours.FightFirst): the minute's reason until another holds it back, so a
+    // minute that runs out ends `late` with why `fight`.
+    if (Decider.Refusal(bot, "stack") === "fight") rowGate[pid] = "fight";
     const camp = reads.camp;
     if (!rowOn(bot, camp)) return undefined;
     readOutcome(bot);

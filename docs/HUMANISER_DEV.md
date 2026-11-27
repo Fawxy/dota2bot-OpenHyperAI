@@ -127,18 +127,21 @@ task the hero has (the runner's `replaced`), so the order among rows is the deci
 
 - `name`: logged as `held`, and the name of the row's task (the decider reads the runner's current task by it).
 - `wants(bot, reads)`: asked every desire round in doctrine order until a row answers. Returns an `Offer` (`tgt`, the target;
-  `by`, the game time it must go by; both optional) while its task runs or when it would start one now, else undefined.
+  `by`, the game time it must go by; `way`, how it is taken where a row has more than one; `claim`, what the claim carries;
+  all optional) while its task runs or when it would start one now, else undefined.
   It checks its own `Ours.<Name>` switch, may keep its memo and write its own decision line (`ev=choice`), and keeps what
   it decided for `begin`; it starts, cancels and orders nothing.
 - Facts: a fact of the lane, the camp or the team that more than one row asks is a read, passed to `wants` as its second
   argument (`Reads` and its one instance `READS` in `reads.ts`; the decider passes it in `turn`, `Offer` and `Ask`). Today
-  there are two members. `reads.camp`, `camp_read.ts`: the lane camp's look (`CampStateOf`), the record of its strength
+  there are three members. `reads.camp`, `camp_read.ts`: the lane camp's look (`CampStateOf`), the record of its strength
   (`Known`, `NoteSighting`, `NoteStack`, `Hold`), `CampGate`, and who pulls it (`IsPuller`, `SpawnerFor`).
-  `reads.creep`, `creep_claim.ts`: per enemy or own lane creep (the
-  `cid`), the claim (`Take`, `Release`, `Phase`: hero, rank in the trip table's line for its kind, game time the swing is due to be ordered,
-  the verb's phase; read with `ClaimsOn`, `HeldBy`) and each hero's latest answer (`Touch`, `AnswerOf`: what the creep row
-  noted, formerly its private `Seen`). The creep row takes the claim in `begin` and releases it in the task's `onEnd`; the
-  job lines carry `oc` (others already on the creep) at the start and `cl` (claim released) at the end. With
+  `reads.claims`, `claims.ts`: the claim by target, keyed by the offer's `tgt` (`creep:<cid>`, `camp:<idx>`, `rune:<rune>`;
+  `Take`, `Release`, `Phase`: hero, and where the row gives them the rank in the trip table's line for its kind, the kind, the
+  game time the swing is due to be ordered and the verb's phase; read with `ClaimsOn`, `HeldBy`). The decider takes it after
+  any begin whose offer names a target, from the offer's `claim`, and releases it when that row's task ends (`Tasks.OnRowEnd`,
+  after the row's own `onEnd`). `reads.creep`, `creep_claim.ts`: per enemy or own lane creep (the `cid`), each hero's latest
+  answer (`Touch`, `AnswerOf`: what the creep row noted, formerly its private `Seen`). The creep row's job lines carry `oc`
+  (others already on the creep) at the start and `cl` (a claim held) at the end. With
   Ours.SupportCreeps (on, provisional) a support (trip table `creep` cell 70, the cores' 60: lower goes first) last-hits their ranged creep, outside our tower's range, only when
   `FreeFor` says it is free: refusals `claimed` (a lower-cell hero holds a claim), `human` (a human of a lower cell in its assigned
   lane publishes no answers), `wait` (a lower-cell bot has it on offer and no refusal in its fresh answer yet); a core's answer is never
@@ -162,7 +165,9 @@ The decider begins the first row that wants the hero when its task is not runnin
 task runs takes the hero from it; the decider's `ev=choice kind=decider` line then carries `beg`, the offer (`btgt`,
 `bby`) and `over` (the task replaced). A row that decides at a read of its own between rounds (the creep row, at the
 creep offer read) keeps its choice and calls `Decider.Offer(bot, row)`: the decider begins it in that call unless a row
-above holds the hero. `tasks.ts` refuses and logs (`ev=lua_error where=Tasks.Start`) a start of a row's task (any name
+above holds the hero. Both paths go through one acceptance (`accept`, offers-and-the-decider s4): a fight refuses
+(Ours.FightFirst); the claim (another hero holds the target at a cell at or under this offer's, or with none) and the go-by
+(already past) are logged on the begin line as `bacc`, with `bcl` the other holders, and refuse nothing yet. `tasks.ts` refuses and logs (`ev=lua_error where=Tasks.Start`) a start of a row's task (any name
 `Decider.Add` registered) that does not come through the decider's begin; the job chooser's stack
 (`StackJob.Wants`) names itself and is exempt. Offline: `tests/humaniser/test_decider.lua`.
 
