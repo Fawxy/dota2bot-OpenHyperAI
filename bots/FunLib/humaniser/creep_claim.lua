@@ -157,32 +157,11 @@ local function __TS__Delete(target, key)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local claims, held
---- The hero lets go of whatever it holds; true when it held a claim.
-function ____exports.Release(pid)
-    local cid = held[pid]
-    if cid == nil then
-        return false
-    end
-    held[pid] = nil
-    local m = claims[cid]
-    if m ~= nil then
-        __TS__Delete(m, pid)
-        if (next(m)) == nil then
-            claims[cid] = nil
-        end
-    end
-    return true
-end
 --- pid -> creep id -> the hero's answer.
 local answers = {}
-claims = {}
-held = {}
 function ____exports.ResetCache()
-    for ____, t in ipairs({answers, claims, held}) do
-        for k in pairs(t) do
-            t[k] = nil
-        end
+    for k in pairs(answers) do
+        answers[k] = nil
     end
 end
 --- The hero's answers on each listed creep, new ones made now; answers on creeps this read does not list are dropped.
@@ -211,52 +190,6 @@ end
 function ____exports.AnswerOf(pid, cid)
     local ____opt_0 = answers[pid]
     return ____opt_0 and ____opt_0[cid]
-end
---- The hero takes the creep (a hero holds one claim: an earlier one is released first). Returns the heroes already holding a claim on the
--- same creep, which the caller logs; the claim is taken either way.
-function ____exports.Take(cid, c)
-    ____exports.Release(c.pid)
-    local m = claims[cid]
-    local others = {}
-    if m == nil then
-        m = {}
-        claims[cid] = m
-    end
-    for pid in pairs(m) do
-        others[#others + 1] = pid
-    end
-    m[c.pid] = c
-    held[c.pid] = cid
-    return others
-end
-function ____exports.Phase(pid, p)
-    local cid = held[pid]
-    local ____temp_4
-    if cid == nil then
-        ____temp_4 = nil
-    else
-        local ____opt_2 = claims[cid]
-        ____temp_4 = ____opt_2 and ____opt_2[pid]
-    end
-    local c = ____temp_4
-    if c ~= nil then
-        c.phase = p
-    end
-end
---- The heroes holding a claim on the creep, none when it is free.
-function ____exports.ClaimsOn(cid)
-    local out = {}
-    local m = claims[cid]
-    if m ~= nil then
-        for ____, c in pairs(m) do
-            out[#out + 1] = c
-        end
-    end
-    return out
-end
---- The creep the hero holds, if any.
-function ____exports.HeldBy(pid)
-    return held[pid]
 end
 --- An answer older than this (s) is not a read of the hero's now: a dead hero's or a hero whose row is off stops touching its answers.
 ____exports.ANSWER_FRESH = 1

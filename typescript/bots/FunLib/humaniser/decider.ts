@@ -18,6 +18,7 @@
  * takes the hero, so its verb must cope with being cut off between any two steps.
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as Claims from "bots/FunLib/humaniser/claims";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { On as OursOn } from "bots/FunLib/humaniser/ours";
 import { READS } from "bots/FunLib/humaniser/reads";
@@ -25,10 +26,17 @@ import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
-/** What a row wants: its target (a name or id) and the game time it must go by. Both optional; logged when the row is begun. */
+/**
+ * What a row wants (offers-and-the-decider s3), every field optional and logged when the row is begun: its target (a name or id,
+ * the claim's key), the game time it must go by, how it is taken (`way`: `attack`, `deny`, `spell`; absent where a row has one
+ * way) and what its claim carries (`claim`: the creep row's rank, kind, due time and phase). The other fields of s3 (place,
+ * seconds, gain, phases, end) arrive with the first code that reads each.
+ */
 export interface Offer {
     tgt?: string;
     by?: number;
+    way?: string;
+    claim?: Omit<Claims.Claim, "pid">;
 }
 
 export interface Row {
@@ -120,6 +128,8 @@ interface Begun {
     over?: string;
     /** The mode Valve had the hero in at the moment of the begin (the creep row's `Offer` falls between rounds, so not `note`'s read). */
     from: string;
+    /** Acceptance's answer (`accept`). */
+    v: Verdict;
 }
 
 /** A begin the decider refused: kept for the row to read (`Refusal`), and logged once per row and target. */
@@ -133,6 +143,8 @@ interface Refused {
 interface HeroState {
     held?: Row;
     begun?: Begun;
+    /** The row whose begin took the hero's claim (`Claims`), released when that row's task ends (`rowEnded`). */
+    claimRow?: string;
     /** Per row, the last begin refused since the row read it (`Refusal`); a begin of that row clears it. */
     refused: Record<string, Refused | undefined>;
     /** The rows and targets refused since the hero was last out of a fight, so each refusal is logged once while it repeats. */
@@ -177,21 +189,77 @@ function runningTask(bot: Unit): string | undefined {
  */
 const FIGHT: Record<number, boolean> = { [BotMode.Attack]: true, [BotMode.Roam]: true, [BotMode.TeamRoam]: true };
 
-/** The one place a row's task starts: refused over a fight (Ours.FightFirst), else the row's own begin. */
+/**
+ * Acceptance's answer for one offer: `no`, the check that refuses it; `would`, the first check asked but not yet allowed to refuse
+ * (logged as `bacc`); `others`, how many other heroes of ours hold a claim on its target.
+ */
+interface Verdict {
+    no?: string;
+    would?: string;
+    others: number;
+}
+
+/** Another hero's claim the offer may not take (s4 step 2): lower goes first, so one with no rank on either side, or a rank at or under this one's, holds. */
+function holds(c: Claims.Claim, mine: Offer["claim"]): boolean {
+    return c.rank === undefined || mine?.rank === undefined || c.rank <= mine.rank;
+}
+
+/**
+ * Acceptance (offers-and-the-decider s4), the same for a polled row and an offered one, its checks in s4's order. Step 1 (a row
+ * above holds the hero) is `Offer`'s, before the row's `wants` is asked; a polled row is asked only when no row above wanted the
+ * hero. 1a, the fight (Ours.FightFirst), refuses. 2, the claim (another hero holds the target, `holds`), and 3, the go-by (the
+ * time to go by has passed), are asked and logged and refuse nothing: each still lives in its row (the creep row's `FreeFor`,
+ * each row's own `by`) and refuses here once the conversion that removes the row's own check (route step 3) shows its shadow at 0.
+ * 4, danger at the place, is not asked yet; 5, the order, is `pick`'s.
+ */
+function accept(bot: Unit, offer: Offer, mode: number): Verdict {
+    if (FIGHT[mode] === true && OursOn("FightFirst")) return { no: "fight", others: 0 };
+    const pid = bot.GetPlayerID();
+    let others = 0;
+    let would: string | undefined;
+    if (offer.tgt !== undefined) {
+        for (const c of Claims.ClaimsOn(offer.tgt)) {
+            if (c.pid === pid) continue;
+            others++;
+            if (holds(c, offer.claim)) would = "claim";
+        }
+    }
+    if (would === undefined && offer.by !== undefined && DotaTime() > offer.by) would = "late";
+    return { would, others };
+}
+
+/** The one place a row's task starts: acceptance (`accept`), then the row's own begin; the decider takes the offer's target as the hero's claim. */
 function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     const over = runningTask(bot);
     const mode = bot.GetActiveMode();
     const from = HDebug.ModeName(mode);
-    if (FIGHT[mode] === true && OursOn("FightFirst")) {
-        refuse(bot, s, { row: row.name, tgt: offer.tgt, why: "fight", mode: from });
+    const v = accept(bot, offer, mode);
+    if (v.no !== undefined) {
+        refuse(bot, s, { row: row.name, tgt: offer.tgt, why: v.no, mode: from });
         return false;
     }
     s.refLines = undefined;
     if (!Tasks.Begin(row.name, () => row.begin(bot))) return false;
     s.refused[row.name] = undefined;
-    s.begun = { row, offer, over, from };
+    // Taken after the begin, so a task the begin replaced has released its own (its end runs inside the start); only while the
+    // row's task runs, so a task that ended inside its begin leaves none behind.
+    if (offer.tgt !== undefined && runningTask(bot) === row.name) {
+        const c = offer.claim;
+        Claims.Take(offer.tgt, { pid: bot.GetPlayerID(), rank: c?.rank, k: c?.k, due: c?.due, phase: c?.phase });
+        s.claimRow = row.name;
+    }
+    s.begun = { row, offer, over, from, v };
     return true;
 }
+
+/** Tasks' end hook for a row's task: the claim that row's begin took is released (after the row's own end, which may read it). */
+function rowEnded(bot: Unit, name: string): void {
+    const s = heroes[bot.GetPlayerID()];
+    if (s === undefined || s.claimRow !== name) return;
+    s.claimRow = undefined;
+    Claims.Release(bot.GetPlayerID());
+}
+Tasks.OnRowEnd(rowEnded);
 
 /** Keeps a refusal for the row and writes its line once per row and target while it repeats. */
 function refuse(bot: Unit, s: HeroState, r: Refused): void {
@@ -298,7 +366,7 @@ function note(bot: Unit, s: HeroState, heldRow = s.held, softNow = s.soft): void
     ];
     if (heldRow !== undefined) fields.push(["hs", soft ? "soft" : "hard"]);
     if (s.letAt !== undefined) fields.push(["let", "retreat"], ["d_retreat", s.letAt]);
-    if (b !== undefined) fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from]);
+    if (b !== undefined) fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from], ["bway", b.offer.way], ["bacc", b.v.would], ["bcl", b.v.others > 0 ? b.v.others : undefined]);
     Telemetry.Event("choice", fields);
 }
 
@@ -396,4 +464,5 @@ export function Held(bot: Unit): Row | undefined {
 /** Tests: forget every hero. */
 export function Reset(): void {
     for (const [k] of pairs(heroes)) heroes[k] = undefined as any;
+    Claims.ResetCache();
 }

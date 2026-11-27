@@ -22,6 +22,20 @@ local function holds(w) return w.CR.ROW.wants(w.core) ~= nil end
 local function lines(all, pat) local r = {} for _, l in ipairs(all) do if l:find(pat, 1, true) then table.insert(r, l) end end return r end
 local function field(line, k) return line and line:match(" " .. k .. "=(%S+)") end
 
+-- The creep answers (creep_claim.ts) and the claims by target (claims.ts, which the decider takes), with a claim keyed here by
+-- the creep's id as the creep row's offer names it (`creep:<cid>`). Looked up afresh: a world reloads the modules.
+local function claimApi()
+	local A = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	return {
+		Touch = A.Touch, AnswerOf = A.AnswerOf, ANSWER_FRESH = A.ANSWER_FRESH,
+		Take = function(cid, c) return C.Take("creep:" .. cid, c) end,
+		Release = C.Release,
+		ClaimsOn = function(cid) return C.ClaimsOn("creep:" .. cid) end,
+		HeldBy = function(pid) local t = C.HeldBy(pid) return t and tonumber(t:match("^creep:(%d+)$")) end,
+	}
+end
+
 local RANGED = "npc_dota_creep_badguys_ranged"
 
 -- o.on: the switch; o.refuse: the runner refuses. w.targets: what laneTargets returns; w.starts, w.opts, w.body, w.onEnd: the
@@ -62,7 +76,9 @@ local function world(o)
 	F.Running = function() return w.running end
 	F.Tick = function() end
 	-- The runner's current task: the decider reads it to see that the row's attempt runs; it ends with the task's onEnd.
-	F.Start = function(_, opts, body)
+	-- The real Start wraps a row's onEnd with the decider's end hook (Tasks.WithRowEnd), which releases the claim; so does the stub.
+	F.Start = function(bot, opts, body)
+		opts = package.loaded["bots/FunLib/humaniser/tasks"].WithRowEnd(bot, opts)
 		w.starts = w.starts + 1
 		w.opts, w.body = opts, body
 		if o.refuse == true then return false end
@@ -726,7 +742,7 @@ do -- the leftover rule in the row: the pre-hit, the claim, the controls
 	w = towered({ hp = 40, due = 1.2 })
 	out = capture(function() w.CO.Shadow(w.core) w.drive() end)
 	local o = w.lhOpts
-	local claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local claim = claimApi()
 	check("leftover: a wait verdict starts the attempt and goes straight to the last hit", w.starts == 1 and table.concat(w.order, ",") == "lasthit" and claim.HeldBy(1) ~= nil, table.concat(w.order, ","))
 	check("leftover: while the verdict holds the attempt is not interrupted", o.interruptIf() == false)
 	w.tower.target = nil
@@ -1027,7 +1043,7 @@ do -- Ours.FightFirst: the decider refuses the start while the hero is in a figh
 end
 
 -- The creep claim (creep_claim.ts, Reads.creep): taken in the row's begin, released at every end of the task.
-local function claimOf(pid, cid) for _, c in ipairs(package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cid)) do if c.pid == pid then return c end end end
+local function claimOf(pid, cid) for _, c in ipairs(claimApi().ClaimsOn(cid)) do if c.pid == pid then return c end end end
 
 do -- a started attempt holds the claim until the task ends, whatever the end
 	local ends = {
@@ -1041,7 +1057,7 @@ do -- a started attempt holds the claim until the task ends, whatever the end
 		w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
 		local out = capture(function() w.CO.Shadow(w.core) end)
 		local cid = tonumber(field(lines(out, "phase=start")[1], "cid"))
-		local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+		local Claim = claimApi()
 		local held = claimOf(1, cid)
 		check("claim " .. e[1] .. ": held while the task runs, with the hero's rank and the due time", held ~= nil and held.rank == 60 and held.k == "lh" and near(held.due, 100.5) and Claim.HeldBy(1) == cid, tostring(held))
 		local out2 = capture(function() w.onEnd(e[2]) end)
@@ -1054,7 +1070,7 @@ do -- the runner refusing the start leaves no claim; the verb's phase is on the 
 	local c = ranged()
 	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
 	capture(function() w.CO.Shadow(w.core) end)
-	check("claim: a refused start takes none", package.loaded["bots/FunLib/humaniser/creep_claim"].HeldBy(1) == nil)
+	check("claim: a refused start takes none", claimApi().HeldBy(1) == nil)
 
 	w = world()
 	c = ranged()
@@ -1067,7 +1083,7 @@ do -- the runner refusing the start leaves no claim; the verb's phase is on the 
 end
 
 do -- two heroes on one creep: both hold, the second sees the first, one release leaves the other
-	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local Claim = claimApi()
 	world()
 	local o1 = Claim.Take(7, { pid = 1, rank = 60, k = "lh", due = 10 })
 	local o2 = Claim.Take(7, { pid = 2, rank = 60, k = "lh", due = 10.2 })
@@ -1080,7 +1096,7 @@ do -- two heroes on one creep: both hold, the second sees the first, one release
 end
 
 do -- a hero's answer on a creep is dropped once a read no longer lists it
-	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local Claim = claimApi()
 	world()
 	Claim.Touch(1, { 5, 6 }, 100)[5].why = "race"
 	Claim.Touch(1, { 5 }, 100.2)
@@ -1111,7 +1127,7 @@ end
 
 do -- the free rule: claimed, human, wait, refused, and a core is never asked
 	local w = world({ support = true })
-	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local Claim = claimApi()
 	local sup = addSupport()
 	check("free: a creep nobody lower has on offer is free", w.CR.FreeFor(sup, 77, T) == nil)
 	Claim.Take(1, { pid = 1, rank = 60, k = "lh", due = 1 })
@@ -1141,7 +1157,7 @@ end
 
 do -- the row: the control (the core has it on offer, not refused), the core refusing, the switch off
 	local w = world({ support = true })
-	local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	local Claim = claimApi()
 	local sup = addSupport()
 	local c = ranged()
 	local cid = cidOf(c)
@@ -1151,7 +1167,7 @@ do -- the row: the control (the core has it on offer, not refused), the core ref
 	check("support: the core has it on offer and has not refused: no task, the line reads `wait`", w.starts == 0 and #ch >= 1 and field(ch[1], "why") == "wait", table.concat(ch, " | "))
 
 	w = world({ support = true })
-	Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	Claim = claimApi()
 	sup = addSupport()
 	c = ranged()
 	cid = cidOf(c)
@@ -1188,7 +1204,7 @@ end
 do -- the yield: a lower-cell claim before the swing ends the attempt, with yd=1; after the swing order it does not
 	local function supportAttempt()
 		local w = world({ support = true })
-		local Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+		local Claim = claimApi()
 		local sup = addSupport()
 		local c = ranged()
 		local cid = cidOf(c)
@@ -1209,7 +1225,7 @@ do -- the yield: a lower-cell claim before the swing ends the attempt, with yd=1
 	check("yield: the swing already ordered, the support keeps it", opts.interruptIf() == false)
 
 	w = world({ support = true })
-	Claim = package.loaded["bots/FunLib/humaniser/creep_claim"]
+	Claim = claimApi()
 	local c = ranged()
 	cid = cidOf(c)
 	w.targets = { target(c, { walk = 0.3, due = 0.5 }) }
@@ -1269,7 +1285,7 @@ do -- the attack's hit lands after the creep dies (on cooldown): the cast goes o
 		and field(ch[1], "aid") ~= nil and field(ch[1], "go") == "0", table.concat(ch, " | "))
 	check("cast: the job start reads k=sp with the spell, its landing and its mana over the reserve", #jobs >= 1 and field(jobs[1], "k") == "sp" and field(jobs[1], "ab") == "test_nuke"
 		and field(jobs[1], "al") == "0.300" and field(jobs[1], "am") == "200", table.concat(jobs, " | "))
-	local claims = package.loaded["bots/FunLib/humaniser/creep_claim"].ClaimsOn(cidOf(c))
+	local claims = claimApi().ClaimsOn(cidOf(c))
 	check("cast: the claim is held as committed (phase swing, so no lower-cell start makes it yield)", #claims == 1 and claims[1].phase == "swing", #claims)
 end
 
@@ -1330,7 +1346,7 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 		w, c = castWorld()
 		local sup = addSupport({ pos = 4 })
 		sup.mana, sup.abilities = 300, { [0] = spell() }
-		package.loaded["bots/FunLib/humaniser/creep_claim"].Touch(1, { cidOf(c) }, T)[cidOf(c)].why = case.why
+		claimApi().Touch(1, { cidOf(c) }, T)[cidOf(c)].why = case.why
 		out = capture(function() w.CO.Shadow(sup) end)
 		local ch = lines(out, "job=creep")
 		if case.casts then
@@ -1341,7 +1357,7 @@ do -- controls: the cast waits while the attack can still take the creep, and ke
 	end
 
 	w, c = castWorld()
-	package.loaded["bots/FunLib/humaniser/creep_claim"].Take(cidOf(c), { pid = 2, rank = 60, k = "lh", due = 1 })
+	claimApi().Take(cidOf(c), { pid = 2, rank = 60, k = "lh", due = 1 })
 	out = castRead(w, c)
 	check("control: a teammate holds a claim on the creep: cw=claimed", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "claimed", table.concat(out, " | "))
 end
