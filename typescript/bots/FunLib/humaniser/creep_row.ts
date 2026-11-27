@@ -908,7 +908,8 @@ function angleOff(a: number, b: number): number {
  * The cast's verb (slices oha-creep-spells, oha-aimed-cast). The engine's `cast` ends once its effect (cooldown or mana) is seen; the creep's
  * fate is the result. A unit-target spell on the creep; a point spell at its aim's point (the game turns the hero to it); a no-target spell
  * that lands where the hero faces (`SpellSecure.Turns`) after a move order along the aim's facing has turned the hero within `AimTol` of its
- * slack (the move is replaced by the cast order); any other no-target spell as the hero stands.
+ * slack (the move is replaced by the cast order; the creep dead or a teammate's hit taking it ends the turn); any other no-target spell
+ * as the hero stands.
  */
 function* castOn(ctx: Lib.Ctx, bot: Unit, ability: Lib.TaskAbility, cast: SpellSecure.Answer, creep: Unit, turn: Turn): Lib.TaskBody {
     const timeout = cast.timing.land + 1;
@@ -922,7 +923,15 @@ function* castOn(ctx: Lib.Ctx, bot: Unit, ability: Lib.TaskAbility, cast: SpellS
         const t0 = ctx.now();
         let off = angleOff((bot.GetFacing() * Math.PI) / 180, th);
         while (off > tol) {
-            if (ctx.now() - t0 >= SETTINGS.TurnTimeout) return ctx.fail("timeout", "turn");
+            // The cast takes no target, so nothing else notices the creep gone; the move order is cancelled so the hero does not walk on.
+            let end: Lib.Result | undefined;
+            if (creep.IsNull() || !creep.IsAlive()) end = ctx.fail("no_target", "turn");
+            else if (mateTakes(bot, creep)) end = ctx.fail("interrupted", "mate");
+            else if (ctx.now() - t0 >= SETTINGS.TurnTimeout) end = ctx.fail("timeout", "turn");
+            if (end !== undefined) {
+                bot.Action_MoveToLocation(bot.GetLocation());
+                return end;
+            }
             const at = bot.GetLocation();
             bot.Action_MoveToLocation(Vector(at.x + SETTINGS.TurnStep * math.cos(th), at.y + SETTINGS.TurnStep * math.sin(th), at.z));
             yield;

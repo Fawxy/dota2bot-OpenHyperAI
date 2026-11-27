@@ -193,10 +193,9 @@ export function Turns(this: void, s: CreepSpell): boolean {
     return k === "l" || k === "r";
 }
 
-/** The facing (radians) an aimed answer casts at: from where it casts towards its point. */
+/** The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer. */
 export function FacingOf(this: void, a: Answer): number | undefined {
-    if (a.aim === undefined) return undefined;
-    return SpellAim.Atan2(a.aim.at.y - a.aim.from.y, a.aim.at.x - a.aim.from.x);
+    return a.aim?.th;
 }
 
 /**

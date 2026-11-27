@@ -1394,10 +1394,14 @@ local function nova()
 	return a
 end
 
+-- A read that starts the cast and leaves the creep alive (the turn checks it each frame).
+local function castGo(w) return capture(function() w.CO.Shadow(w.core) end) end
+local function angleTo(p, from) return math.deg(math.atan(p.y - from.y, p.x - from.x)) end
+
 do -- the raze: the hero faces away, turns along the aim with a move order, then casts with no target
 	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
 	w.core.facing = 180
-	local out = castRead(w, c)
+	local out = castGo(w)
 	check("raze: one cast started on the creep 450 east, the hero facing west", w.starts == 1, table.concat(out, " | "))
 	local start = lines(out, "phase=start")[1]
 	check("raze: the start line names the ring and its slack", field(start, "ag") == "r" and tonumber(field(start, "aw")) >= 0.1, start)
@@ -1408,27 +1412,53 @@ do -- the raze: the hero faces away, turns along the aim with a move order, then
 			w.core.facing = 0
 		end
 	end)
-	local to = moves[1] and moves[1].args[1]
-	check("raze: the first frame orders a move east along the aim, and no cast yet", #moves == 1 and to.x > 0 and math.abs(to.y + 5000) < 1, moves[1] and to.x)
-	check("raze: once facing east, the cast is ordered with no target and no point", r.success and got.a:GetName() == "nevermore_shadowraze2" and got.opts.target == nil and got.opts.at == nil)
+	check("raze: the first frame orders a move along the aim, and no cast yet", #moves == 1 and math.abs(angleTo(moves[1].args[1], w.core.loc)) < 1, #moves)
+	check("raze: once facing it, the cast is ordered with no target and no point", r.success and got.a:GetName() == "nevermore_shadowraze2" and got.opts.target == nil and got.opts.at == nil)
 	out = capture(function() w.onEnd(r) end)
 	local fin = lines(out, "phase=end")[1]
 	check("raze: the end line has the turn's seconds and the facing's error at the cast", near(tonumber(field(fin, "aq")), 0.03) and field(fin, "ae") == "0", fin)
 end
 
-do -- the raze, controls: already facing, never facing, the switch off, too little slack
+do -- the raze off the axes: the creep north-east, the hero facing 300 degrees, turning 20 then 40 degrees a frame
+	local w = castWorld({ aimed = true, x = 300, abilities = { [0] = raze() } })
+	local c = w.targets[1].creep
+	c.loc = Vector(300, -4700)
+	w.core.facing = 300
+	castGo(w)
+	local faced = { 20, 40 }
+	local r, got = driveCast(w, function(i)
+		if faced[i] then w.core.facing = faced[i] end
+	end)
+	local moves = ActionsOf(1, "MoveToLocation")
+	check("off axis: every move order points at 45 degrees (degrees and radians, the sign of y)", #moves == 2 and math.abs(angleTo(moves[1].args[1], w.core.loc) - 45) < 1
+		and math.abs(angleTo(moves[2].args[1], w.core.loc) - 45) < 1, #moves .. " " .. (moves[1] and angleTo(moves[1].args[1], w.core.loc) or ""))
+	local out = capture(function() w.onEnd(r) end)
+	local ae = tonumber(field(lines(out, "phase=end")[1], "ae"))
+	check("off axis: 25 degrees off is outside half the slack, 5 degrees off is inside: the cast follows the second turn", r.success and got.a ~= nil and ae ~= nil and math.abs(ae - math.rad(5)) < 0.01, ae)
+end
+
+do -- the raze, controls: already facing, never facing, the creep gone mid-turn, the switch off, too little slack
 	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
-	castRead(w, c)
+	castGo(w)
 	local r, got = driveCast(w)
 	check("raze facing the aim already: the cast at once, no move order", r.success and got.a ~= nil and #ActionsOf(1, "MoveToLocation") == 0)
 
 	w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
 	w.core.facing = 180
-	castRead(w, c)
+	castGo(w)
 	r, got = driveCast(w)
-	check("raze: the hero never turns: the attempt ends timeout (turn) with no cast", not r.success and r.reason == "timeout" and r.message == "turn" and got.a == nil, r.reason)
+	local stop = ActionsOf(1, "MoveToLocation")
+	stop = stop[#stop].args[1]
+	check("raze: the hero never turns: timeout (turn), no cast, and a move to where it stands ends the turn's walk", not r.success and r.reason == "timeout" and r.message == "turn"
+		and got.a == nil and stop.x == w.core.loc.x and stop.y == w.core.loc.y, r.reason)
 	local out = capture(function() w.onEnd(r) end)
 	check("raze: never faced, the end line reads aq=-1", field(lines(out, "phase=end")[1], "aq") == "-1", table.concat(out, " | "))
+
+	w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
+	w.core.facing = 180
+	castGo(w)
+	r, got = driveCast(w, function(i) if i == 1 then kill(c) end end)
+	check("raze: the creep dies mid-turn: no_target and no cast (the cast takes no target to notice it)", not r.success and r.reason == "no_target" and got.a == nil, r.reason)
 
 	w, c = castWorld({ aimed = false, x = 450, abilities = { [0] = raze() } })
 	out = castRead(w, c)
@@ -1438,6 +1468,7 @@ do -- the raze, controls: already facing, never facing, the switch off, too litt
 	out = castRead(w, c)
 	check("a creep at the raze's far edge: under AimSlack, no cast, cw=aim", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "aim", table.concat(out, " | "))
 end
+
 
 do -- a point spell: cast at the aim's point, no turn of ours
 	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = nova() } })

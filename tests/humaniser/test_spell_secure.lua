@@ -93,7 +93,7 @@ do -- slice oha-aimed-cast: a point or no-target answer through the same gates, 
 		local s = spell({ name = o.name, mana = o.mana, key = o.key, shape = o.shape or "n" })
 		s.geom = o.geom
 		local aim
-		if not o.noaim then aim = { gap = 0, from = { x = 0, y = 0 }, at = { x = 450, y = 0 }, off = 0, also = o.also or 0, others = 0, slack = o.slack } end
+		if not o.noaim then aim = { gap = 0, from = { x = 0, y = 0 }, at = { x = 450, y = 0 }, off = 0, also = o.also or 0, others = 0, slack = o.slack, th = 0 } end
 		return { spell = s, timing = { gap = o.gap or 0, walk = 0, land = 0.6 }, taken = 75, hp = o.hp or 50, kill = S.Kills(o.hp or 50, 75), over = o.over or 10,
 			also = o.also or 0, aim = aim }
 	end
@@ -114,7 +114,7 @@ do -- slice oha-aimed-cast: a point or no-target answer through the same gates, 
 	check("an aimed damage spell before a unit-target disable", pick({ ans({ name = "pulse", geom = "s", mana = 120 }), ans({ name = "stun", shape = "u", key = true, also = 1, mana = 50 }) }, on) == "pulse")
 	check("Turns: a no-target ring or line, not a point spell or a circle around the hero", S.Turns(ans({ geom = "r" }).spell) and S.Turns(ans({ geom = "l" }).spell)
 		and not S.Turns(ans({ geom = "s" }).spell) and not S.Turns(ans({ shape = "p", geom = "l" }).spell))
-	check("FacingOf: from where it casts towards its point", near(S.FacingOf(ans({ geom = "r" })), 0) and S.FacingOf(ans({ noaim = true })) == nil)
+	check("FacingOf: the aim's facing, none without an aim", near(S.FacingOf(ans({ geom = "r" })), 0) and S.FacingOf(ans({ noaim = true })) == nil)
 end
 
 finish()

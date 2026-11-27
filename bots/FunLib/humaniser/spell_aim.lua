@@ -5,7 +5,6 @@ if ____math_atan2_0 == nil then
     ____math_atan2_0 = math.atan
 end
 local atan2 = ____math_atan2_0
-____exports.Atan2 = atan2
 local function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -80,8 +79,8 @@ local function arcOf(g, d, extra)
     return c <= -1 and math.pi or math.acos(c)
 end
 --- The facing for a line or a ring: the arc that hits `must` is cut at the edges of each wanted unit's arc, and of the pieces the
--- one that hits the most wanted units wins. Within it the facing straight at `must` if the piece holds it, else the piece's middle,
--- so the unit nearest an edge keeps the most margin. `slack`: the facing's distance to the nearer end of its piece.
+-- one that hits the most wanted units wins, the wider of equals. The facing is the piece's middle, so the unit nearest an edge keeps
+-- the most margin; `slack` is that margin, half the piece.
 local function facing(g, from, must, wanted)
     local base = atan2(must.y - from.y, must.x - from.x)
     local a0 = arcOf(
@@ -124,8 +123,7 @@ local function facing(g, from, must, wanted)
     table.sort(cuts)
     local best = 0
     local bestN = -1
-    local bestHas0 = false
-    local slack = 0
+    local slack = -1
     do
         local i = 0
         while i + 1 < #cuts do
@@ -138,17 +136,18 @@ local function facing(g, from, must, wanted)
                     n = n + 1
                 end
             end
-            local has0 = lo <= 0 and hi >= 0
-            if n > bestN or n == bestN and has0 and not bestHas0 then
+            if n > bestN or n == bestN and (hi - lo) / 2 > slack then
                 bestN = n
-                best = has0 and 0 or mid
-                bestHas0 = has0
-                slack = math.min(best - lo, hi - best)
+                best = mid
+                slack = (hi - lo) / 2
             end
             i = i + 1
         end
     end
-    return {th = base + best, slack = slack}
+    return {
+        th = base + best,
+        slack = math.max(0, slack)
+    }
 end
 local function count(units, hit)
     local n = 0
@@ -298,7 +297,8 @@ function ____exports.AimAt(g, caster, must, wanted, others)
         off = off,
         also = count(wanted, hit),
         others = count(others, hit),
-        slack = slack
+        slack = slack,
+        th = th
     }
 end
 return ____exports

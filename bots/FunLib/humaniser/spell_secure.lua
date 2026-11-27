@@ -249,12 +249,10 @@ function ____exports.Turns(s)
     local k = ____exports.GeomOf(s).k
     return k == "l" or k == "r"
 end
---- The facing (radians) an aimed answer casts at: from where it casts towards its point.
+--- The facing (radians) an aimed line or ring casts at (the aim's `th`); undefined for any other answer.
 function ____exports.FacingOf(a)
-    if a.aim == nil then
-        return nil
-    end
-    return SpellAim.Atan2(a.aim.at.y - a.aim.from.y, a.aim.at.x - a.aim.from.x)
+    local ____opt_0 = a.aim
+    return ____opt_0 and ____opt_0.th
 end
 local CAST_STAGES = {
     "shape",
@@ -287,13 +285,13 @@ local function castWhyOf(a, o)
     if ____exports.Turns(a.spell) and (a.aim.slack or 0) < o.slack then
         return "aim"
     end
-    local ____o_aimed_0
+    local ____o_aimed_2
     if o.aimed then
-        ____o_aimed_0 = nil
+        ____o_aimed_2 = nil
     else
-        ____o_aimed_0 = "aimoff"
+        ____o_aimed_2 = "aimoff"
     end
-    return ____o_aimed_0
+    return ____o_aimed_2
 end
 --- Whether `a` is the better of two casts that both pass: a damage spell before a key spell, a unit-target one before an aimed one, then the cheaper.
 local function castBefore(a, b)
@@ -319,23 +317,23 @@ function ____exports.CastPick(as, o)
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue59
+            local __continue58
             repeat
                 local why = castWhyOf(a, o)
                 if why == nil then
                     if pick == nil or castBefore(a, pick) then
                         pick = a
                     end
-                    __continue59 = true
+                    __continue58 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue59 = true
+                __continue58 = true
             until true
-            if not __continue59 then
+            if not __continue58 then
                 break
             end
         end
