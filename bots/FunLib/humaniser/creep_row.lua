@@ -149,7 +149,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, offerOf, STILL_GOING, CAST_OVER, running, lastCid, pending, WAY
+local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, r2, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, offerOf, STILL_GOING, CAST_OVER, running, lastCid, pending, WAY
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
@@ -372,11 +372,11 @@ function ____exports.FreeFor(bot, cid, now)
         local i = 1
         while i <= 5 do
             do
-                local __continue77
+                local __continue97
                 repeat
                     local m = GetTeamMember(i)
                     if m == nil or m == nil or m:GetPlayerID() == pid then
-                        __continue77 = true
+                        __continue97 = true
                         break
                     end
                     local cell = TripTable.RankOf(
@@ -384,14 +384,14 @@ function ____exports.FreeFor(bot, cid, now)
                         LaneConfig.PositionOf(m)
                     )
                     if cell == nil or cell >= mine then
-                        __continue77 = true
+                        __continue97 = true
                         break
                     end
                     if not m:IsBot() then
                         if m:GetAssignedLane() == lane then
                             return "human"
                         end
-                        __continue77 = true
+                        __continue97 = true
                         break
                     end
                     local a = CreepClaim.AnswerOf(
@@ -401,9 +401,9 @@ function ____exports.FreeFor(bot, cid, now)
                     if a ~= nil and a.why == nil and now - a.at <= CreepClaim.ANSWER_FRESH then
                         wait = true
                     end
-                    __continue77 = true
+                    __continue97 = true
                 until true
-                if not __continue77 then
+                if not __continue97 then
                     break
                 end
             end
@@ -427,10 +427,13 @@ function yieldsTo(pid, cid)
         function(____, c) return c.pid ~= pid and c.k == "lh" and c.rank ~= nil and c.rank < r end
     )
 end
+function r2(x)
+    return math.floor(x * 100 + 0.5) / 100
+end
 function enterPhase(a, p, t)
     if a.phase ~= nil then
-        local ____a_spent_6, ____a_phase_7 = a.spent, a.phase
-        ____a_spent_6[____a_phase_7] = ____a_spent_6[____a_phase_7] + (t - a.phaseAt)
+        local ____a_spent_11, ____a_phase_12 = a.spent, a.phase
+        ____a_spent_11[____a_phase_12] = ____a_spent_11[____a_phase_12] + (t - a.phaseAt)
     end
     a.phase = p
     a.phaseAt = t
@@ -467,16 +470,16 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
     local pick
     for ____, c in ipairs(cands) do
         do
-            local __continue139
+            local __continue168
             repeat
                 local why = whys[c.cid]
                 if c.t.kind ~= "lasthit" or why == nil then
-                    __continue139 = true
+                    __continue168 = true
                     break
                 end
                 local as = c.spells()
                 if #as == 0 then
-                    __continue139 = true
+                    __continue168 = true
                     break
                 end
                 local claim
@@ -506,13 +509,13 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                     end
                 end
                 if ____exports.AttackCannot(why, claim, onTime, late) == nil then
-                    __continue139 = true
+                    __continue168 = true
                     break
                 end
                 local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
                 if no ~= nil then
                     c.noteCast(false, no)
-                    __continue139 = true
+                    __continue168 = true
                     break
                 end
                 if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #Claims.ClaimsOn(Claims.CreepTarget(c.cid)) > 0 then
@@ -536,7 +539,7 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 end
                 if p == nil then
                     c.noteCast(false, no)
-                    __continue139 = true
+                    __continue168 = true
                     break
                 end
                 if best == nil or c.t.dies < best.t.dies then
@@ -548,9 +551,9 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 else
                     c.noteCast(false, "other")
                 end
-                __continue139 = true
+                __continue168 = true
             until true
-            if not __continue139 then
+            if not __continue168 then
                 break
             end
         end
@@ -610,9 +613,9 @@ function onPhase(pid, p, t)
     Claims.Phase(pid, p)
 end
 function offerOf(bot, pd)
-    local ____pd_76 = pd
-    local best = ____pd_76.best
-    local k = ____pd_76.k
+    local ____pd_91 = pd
+    local best = ____pd_91.best
+    local k = ____pd_91.k
     local rank = TripTable.RankOf(
         k == "dn" and "deny" or "creep",
         LaneConfig.PositionOf(bot)
@@ -620,7 +623,11 @@ function offerOf(bot, pd)
     local due = pd.now + (k == "sp" and pd.cast.timing.land or best.t.due)
     local me = bot:GetLocation()
     local at = me
-    local secs = k == "sp" and pd.cast.timing.land or math.max(pd.need, best.t.due)
+    local age = math.max(
+        0,
+        DotaTime() - pd.now
+    )
+    local secs = k == "sp" and pd.cast.timing.land or math.max(pd.need, best.t.due - age)
     if k ~= "sp" then
         local c = best.creep:GetLocation()
         if c ~= nil and c ~= nil then
@@ -646,6 +653,8 @@ ____exports.SETTINGS = {
     WaitSlack = 1.5,
     EarlyLead = 3,
     Round = 0.4,
+    DeciderRound = 0.32,
+    Margin = 0.6,
     MaxPreHits = 2,
     LandSlack = 0.1,
     PreHitSlack = 0.5,
@@ -781,8 +790,129 @@ end
 running = {}
 lastCid = {}
 pending = {}
+local reserved = {}
+--- A reservation's refusals that wait: the start is not offered while one stands, and it drops only once late.
+local WAITS = {acting = true, held = true, fight = true}
+--- An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due).
+local function reserves(k, tr)
+    return k ~= "sp" and tr == nil
+end
+--- The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death).
+local function slackOf(pd, now, at)
+    if at == nil then
+        at = pd.best.t.due
+    end
+    return at - pd.need - (now - pd.now)
+end
+--- The reservation ends without a start: the claim goes, the creep's try is not spent, and the line says why.
+local function drop(bot, pid, rv, why)
+    reserved[pid] = nil
+    local ____opt_6 = pending[pid]
+    if (____opt_6 and ____opt_6.rvAt) ~= nil then
+        pending[pid] = nil
+    end
+    Decider.Unreserve(bot, ____exports.ROW)
+    if not Telemetry.IsEnabled() then
+        return
+    end
+    Telemetry.Event(
+        "job",
+        {
+            {"pid", pid},
+            {"job", "creep"},
+            {"k", rv.pd.k},
+            {"phase", "drop"},
+            {"why", why},
+            {"host", HOST},
+            {"cid", rv.cid},
+            {
+                "rv",
+                r2(DotaTime() - rv.at)
+            }
+        }
+    )
+end
+--- A read with a reservation: the creep is read again as any candidate (`whys`), and the reservation drops when the creep is gone
+-- from the read (`gone`), no longer about to come due (`early`), not reachable before it dies (`late`: Consider's on-time test reads
+-- the reserved creep's death, not its due), another task runs for
+-- the hero (`row`), or our tower now attacks it (`tower`: the leftover rule starts at once, so the next read offers it). Any other
+-- refusal is kept for the start round. Else the read's view replaces the reservation's. True while it stands.
+local function keep(bot, pid, rv, cands, whys, reads, recs, lead, now)
+    local c = __TS__ArrayFind(
+        cands,
+        function(____, x) return x.cid == rv.cid end
+    )
+    local why = c == nil and "gone" or whys[c.cid]
+    local out
+    if c == nil then
+        out = "gone"
+    elseif why == "early" or why == "kind" then
+        out = "early"
+    elseif why ~= nil and string.sub(why, 1, 6) == "notime" then
+        out = "late"
+    elseif why == "row" then
+        out = "row"
+    elseif reads[c.cid] ~= nil then
+        out = "tower"
+    end
+    if out ~= nil then
+        drop(bot, pid, rv, out)
+        return false
+    end
+    rv.why = why
+    rv.pd = __TS__ObjectAssign(
+        {},
+        rv.pd,
+        {
+            best = c,
+            need = ____exports.Need(bot, c.creep),
+            lead = lead,
+            now = now,
+            seen = recs[c.cid]
+        }
+    )
+    if why == nil then
+        c.note(false, "reserved")
+    end
+    return true
+end
+--- The decider's round with a reservation: the start is offered (as `pending`, which `rowBegin` takes) once one more round would
+-- leave less than `Margin`, unless a waiting refusal stands; past its due it is still offered until the hero's walk would end after
+-- the creep dies (rig ladder-support dire, 27/11/2026: 9 of 14 `late` drops with no other mode were started by the same hero within 2 s, most
+-- already in range, a start refused at its round having let the due pass). Late, gone, or a claim's refusal kept from the last read: dropped.
+-- The creep's handle is read only through `IsNull` and `IsAlive`: the read that listed it may be a round old.
+local function startDue(bot, pid, rv)
+    Decider.Refusal(bot, ____exports.ROW.name)
+    local now = DotaTime()
+    local creep = rv.pd.best.creep
+    local ____opt_8 = creep.IsNull
+    local ____temp_10 = ____opt_8 and ____opt_8(creep)
+    if ____temp_10 == nil then
+        ____temp_10 = false
+    end
+    if ____temp_10 or not creep:IsAlive() then
+        drop(bot, pid, rv, "gone")
+        return nil
+    end
+    if slackOf(rv.pd, now, rv.pd.best.t.dies) < 0 then
+        drop(bot, pid, rv, "late")
+        return nil
+    end
+    if slackOf(rv.pd, now) > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
+        return nil
+    end
+    if rv.why ~= nil then
+        if WAITS[rv.why] ~= true then
+            drop(bot, pid, rv, rv.why)
+        end
+        return nil
+    end
+    local pd = __TS__ObjectAssign({}, rv.pd, {rvAt = rv.at})
+    pending[pid] = pd
+    return offerOf(bot, pd)
+end
 function ____exports.ResetCache()
-    for ____, t in ipairs({running, lastCid, pending}) do
+    for ____, t in ipairs({running, lastCid, pending, reserved}) do
         for k in pairs(t) do
             t[k] = nil
         end
@@ -817,9 +947,6 @@ local function mateTakes(bot, creep)
     local a = k.attacker
     return a ~= bot and a:GetTeam() == bot:GetTeam()
 end
-local function r2(x)
-    return math.floor(x * 100 + 0.5) / 100
-end
 --- The start line: the creep (`cid`, as on the read's line and `creep_death`), the walk and due at go, the hero's attack range (`rng`)
 -- and the engine's reach on the creep (`rch`), and
 -- what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
@@ -827,9 +954,11 @@ end
 -- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
 -- cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
 -- creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
+-- A reserved start carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
+-- read's, its due that read's less the time since.
 local function startLine(bot, cid, aid, t, g)
-    local ____Telemetry_Event_22 = Telemetry.Event
-    local ____array_21 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_28 = Telemetry.Event
+    local ____array_27 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -879,59 +1008,66 @@ local function startLine(bot, cid, aid, t, g)
         },
         {"oc", g.oc}
     )
-    local ____temp_8
+    local ____temp_13
     if g.tr == nil then
-        ____temp_8 = nil
+        ____temp_13 = nil
     else
-        ____temp_8 = r2(g.tr.v.leftover)
+        ____temp_13 = r2(g.tr.v.leftover)
     end
-    __TS__SparseArrayPush(____array_21, {"lf", ____temp_8})
-    local ____temp_9
+    __TS__SparseArrayPush(____array_27, {"lf", ____temp_13})
+    local ____temp_14
     if g.tr == nil then
-        ____temp_9 = nil
+        ____temp_14 = nil
     else
-        ____temp_9 = r2(g.tr.hit)
+        ____temp_14 = r2(g.tr.hit)
     end
-    __TS__SparseArrayPush(____array_21, {"tT", ____temp_9})
-    local ____opt_10 = g.tr
-    __TS__SparseArrayPush(____array_21, {"ts", ____opt_10 and ____opt_10.v.shots})
-    local ____opt_12 = g.tr
-    __TS__SparseArrayPush(____array_21, {"vd", ____opt_12 and ____opt_12.v.vd})
-    local ____opt_14 = g.cast
-    __TS__SparseArrayPush(____array_21, {"ab", ____opt_14 and ____opt_14.spell.name})
-    local ____temp_16
+    __TS__SparseArrayPush(____array_27, {"tT", ____temp_14})
+    local ____opt_15 = g.tr
+    __TS__SparseArrayPush(____array_27, {"ts", ____opt_15 and ____opt_15.v.shots})
+    local ____opt_17 = g.tr
+    __TS__SparseArrayPush(____array_27, {"vd", ____opt_17 and ____opt_17.v.vd})
+    local ____opt_19 = g.cast
+    __TS__SparseArrayPush(____array_27, {"ab", ____opt_19 and ____opt_19.spell.name})
+    local ____temp_21
     if g.cast == nil then
-        ____temp_16 = nil
+        ____temp_21 = nil
     else
-        ____temp_16 = r2(g.cast.timing.land)
+        ____temp_21 = r2(g.cast.timing.land)
     end
-    __TS__SparseArrayPush(____array_21, {"al", ____temp_16})
-    local ____opt_17 = g.cast
-    __TS__SparseArrayPush(____array_21, {"az", ____opt_17 and ____opt_17.also})
-    local ____temp_19
+    __TS__SparseArrayPush(____array_27, {"al", ____temp_21})
+    local ____opt_22 = g.cast
+    __TS__SparseArrayPush(____array_27, {"az", ____opt_22 and ____opt_22.also})
+    local ____temp_24
     if g.cast == nil then
-        ____temp_19 = nil
+        ____temp_24 = nil
     else
-        ____temp_19 = math.floor(g.cast.over + 0.5)
+        ____temp_24 = math.floor(g.cast.over + 0.5)
     end
-    __TS__SparseArrayPush(____array_21, {"am", ____temp_19})
-    local ____temp_20
+    __TS__SparseArrayPush(____array_27, {"am", ____temp_24})
+    local ____temp_25
+    if g.rv == nil then
+        ____temp_25 = nil
+    else
+        ____temp_25 = r2(g.rv)
+    end
+    __TS__SparseArrayPush(____array_27, {"rv", ____temp_25})
+    local ____temp_26
     if g.cast == nil or g.cast.aim == nil then
-        ____temp_20 = nil
+        ____temp_26 = nil
     else
-        ____temp_20 = SpellSecure.GeomOf(g.cast.spell).k
+        ____temp_26 = SpellSecure.GeomOf(g.cast.spell).k
     end
     __TS__SparseArrayPush(
-        ____array_21,
-        {"ag", ____temp_20},
+        ____array_27,
+        {"ag", ____temp_26},
         {
             "aw",
             g.cast ~= nil and SpellSecure.Turns(g.cast.spell) and r2(g.cast.aim.slack or 0) or nil
         }
     )
-    ____Telemetry_Event_22(
+    ____Telemetry_Event_28(
         "job",
-        {__TS__SparseArraySpread(____array_21)}
+        {__TS__SparseArraySpread(____array_27)}
     )
 end
 --- The end line: `pw`, `pq`, `ps` the seconds in each phase of the verb (walk, wait, swing), `so` the seconds from the go to the swing order (-1 none), `tk` how many times another
@@ -947,8 +1083,8 @@ local function endLine(bot, a, r, cut, claimed)
     elseif r.reason ~= "preempted" and msg ~= nil then
         sw = (string.find(msg, " end=", 1, true)) ~= nil and 1 or 0
     end
-    local ____Telemetry_Event_62 = Telemetry.Event
-    local ____array_61 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_68 = Telemetry.Event
+    local ____array_67 = __TS__SparseArrayNew(
         {
             "pid",
             bot:GetPlayerID()
@@ -964,93 +1100,93 @@ local function endLine(bot, a, r, cut, claimed)
         {"yd", (a and a.yielded) == true and 1 or nil},
         {"cid", a and a.cid}
     )
-    local ____temp_33
+    local ____temp_39
     if (a and a.tower) == nil then
-        ____temp_33 = nil
+        ____temp_39 = nil
     else
-        ____temp_33 = a.ph
+        ____temp_39 = a.ph
     end
-    __TS__SparseArrayPush(____array_61, {"ph", ____temp_33}, {"tl", a and a.tl})
-    local ____temp_38
+    __TS__SparseArrayPush(____array_67, {"ph", ____temp_39}, {"tl", a and a.tl})
+    local ____temp_44
     if (a and a.tlt) == nil then
-        ____temp_38 = nil
+        ____temp_44 = nil
     else
-        ____temp_38 = r2(a.tlt)
+        ____temp_44 = r2(a.tlt)
     end
-    __TS__SparseArrayPush(____array_61, {"tlt", ____temp_38})
-    local ____temp_41
-    if (a and a.tlc) == nil then
-        ____temp_41 = nil
-    else
-        ____temp_41 = a.tlc and 1 or 0
-    end
-    __TS__SparseArrayPush(____array_61, {"tlc", ____temp_41})
-    local ____temp_42
-    if a == nil then
-        ____temp_42 = nil
-    else
-        ____temp_42 = a.so ~= nil and r2(a.so) or -1
-    end
-    __TS__SparseArrayPush(____array_61, {"so", ____temp_42}, {"tk", a and a.tk})
-    local ____temp_45
-    if a == nil then
-        ____temp_45 = nil
-    else
-        ____temp_45 = r2(a.tks)
-    end
-    __TS__SparseArrayPush(____array_61, {"tks", ____temp_45})
-    local ____temp_46
-    if a == nil then
-        ____temp_46 = nil
-    else
-        ____temp_46 = r2(a.spent.walk)
-    end
-    __TS__SparseArrayPush(____array_61, {"pw", ____temp_46})
+    __TS__SparseArrayPush(____array_67, {"tlt", ____temp_44})
     local ____temp_47
-    if a == nil then
+    if (a and a.tlc) == nil then
         ____temp_47 = nil
     else
-        ____temp_47 = r2(a.spent.wait)
+        ____temp_47 = a.tlc and 1 or 0
     end
-    __TS__SparseArrayPush(____array_61, {"pq", ____temp_47})
+    __TS__SparseArrayPush(____array_67, {"tlc", ____temp_47})
     local ____temp_48
     if a == nil then
         ____temp_48 = nil
     else
-        ____temp_48 = r2(a.spent.swing)
+        ____temp_48 = a.so ~= nil and r2(a.so) or -1
     end
-    __TS__SparseArrayPush(____array_61, {"ps", ____temp_48})
-    local ____temp_49
+    __TS__SparseArrayPush(____array_67, {"so", ____temp_48}, {"tk", a and a.tk})
+    local ____temp_51
     if a == nil then
-        ____temp_49 = nil
+        ____temp_51 = nil
     else
-        ____temp_49 = a.wt ~= nil and r2(a.wt) or -1
+        ____temp_51 = r2(a.tks)
     end
-    __TS__SparseArrayPush(____array_61, {"wt", ____temp_49})
-    local ____temp_50
+    __TS__SparseArrayPush(____array_67, {"tks", ____temp_51})
+    local ____temp_52
     if a == nil then
-        ____temp_50 = nil
+        ____temp_52 = nil
     else
-        ____temp_50 = a.tin ~= nil and r2(a.tin) or -1
+        ____temp_52 = r2(a.spent.walk)
     end
-    __TS__SparseArrayPush(____array_61, {"tin", ____temp_50}, {"sw", sw})
+    __TS__SparseArrayPush(____array_67, {"pw", ____temp_52})
     local ____temp_53
-    if (a and a.turn) == nil then
+    if a == nil then
         ____temp_53 = nil
     else
-        ____temp_53 = a.turn.aq ~= nil and r2(a.turn.aq) or -1
+        ____temp_53 = r2(a.spent.wait)
     end
-    __TS__SparseArrayPush(____array_61, {"aq", ____temp_53})
-    local ____temp_58
-    local ____opt_54 = a and a.turn
-    if (____opt_54 and ____opt_54.ae) == nil then
-        ____temp_58 = nil
+    __TS__SparseArrayPush(____array_67, {"pq", ____temp_53})
+    local ____temp_54
+    if a == nil then
+        ____temp_54 = nil
     else
-        ____temp_58 = r2(a.turn.ae)
+        ____temp_54 = r2(a.spent.swing)
+    end
+    __TS__SparseArrayPush(____array_67, {"ps", ____temp_54})
+    local ____temp_55
+    if a == nil then
+        ____temp_55 = nil
+    else
+        ____temp_55 = a.wt ~= nil and r2(a.wt) or -1
+    end
+    __TS__SparseArrayPush(____array_67, {"wt", ____temp_55})
+    local ____temp_56
+    if a == nil then
+        ____temp_56 = nil
+    else
+        ____temp_56 = a.tin ~= nil and r2(a.tin) or -1
+    end
+    __TS__SparseArrayPush(____array_67, {"tin", ____temp_56}, {"sw", sw})
+    local ____temp_59
+    if (a and a.turn) == nil then
+        ____temp_59 = nil
+    else
+        ____temp_59 = a.turn.aq ~= nil and r2(a.turn.aq) or -1
+    end
+    __TS__SparseArrayPush(____array_67, {"aq", ____temp_59})
+    local ____temp_64
+    local ____opt_60 = a and a.turn
+    if (____opt_60 and ____opt_60.ae) == nil then
+        ____temp_64 = nil
+    else
+        ____temp_64 = r2(a.turn.ae)
     end
     __TS__SparseArrayPush(
-        ____array_61,
-        {"ae", ____temp_58},
+        ____array_67,
+        {"ae", ____temp_64},
         {"hp0", a and a.hp0},
         {
             "hp1",
@@ -1058,9 +1194,9 @@ local function endLine(bot, a, r, cut, claimed)
         },
         {"msg", msg}
     )
-    ____Telemetry_Event_62(
+    ____Telemetry_Event_68(
         "job",
-        {__TS__SparseArraySpread(____array_61)}
+        {__TS__SparseArraySpread(____array_67)}
     )
 end
 --- As the pull's: an attempt the engine ends because the host lost the hero names what took it.
@@ -1081,8 +1217,8 @@ local function finish(bot, r)
     local now = DotaTime()
     if a ~= nil then
         if a.phase ~= nil then
-            local ____a_spent_63, ____a_phase_64 = a.spent, a.phase
-            ____a_spent_63[____a_phase_64] = ____a_spent_63[____a_phase_64] + (now - a.phaseAt)
+            local ____a_spent_69, ____a_phase_70 = a.spent, a.phase
+            ____a_spent_69[____a_phase_70] = ____a_spent_69[____a_phase_70] + (now - a.phaseAt)
         end
         if a.lastStep ~= nil and now - a.lastStep > ____exports.SETTINGS.Round then
             a.tk = a.tk + 1
@@ -1127,6 +1263,10 @@ function ____exports.Consider(bot, cands)
     local lead = ____exports.Lead(bot)
     local recs = touch(pid, cands, now)
     if #cands == 0 then
+        local rv = reserved[pid]
+        if rv ~= nil then
+            drop(bot, pid, rv, "gone")
+        end
         return
     end
     if running[pid] ~= nil then
@@ -1150,8 +1290,8 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
-    local ____opt_65 = Tasks.Running(bot)
-    local cur = ____opt_65 and ____opt_65.name
+    local ____opt_71 = Tasks.Running(bot)
+    local cur = ____opt_71 and ____opt_71.name
     local other = cur ~= nil and not Decider.Below(____exports.ROW, cur)
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
@@ -1172,13 +1312,13 @@ function ____exports.Consider(bot, cands)
                 towers = ownTowers(bot)
             end
             local tw = attackerOf(towers, c.creep)
-            local ____temp_67
+            local ____temp_73
             if tw == nil then
-                ____temp_67 = nil
+                ____temp_73 = nil
             else
-                ____temp_67 = towerRead(bot, c.creep, tw, 0)
+                ____temp_73 = towerRead(bot, c.creep, tw, 0)
             end
-            tr = ____temp_67
+            tr = ____temp_73
             reads[c.cid] = tr
             notarget = tr == nil and c.ck ~= "r"
         end
@@ -1200,29 +1340,35 @@ function ____exports.Consider(bot, cands)
             now
         ) then
             why = "early"
-        elseif not pre and not ____exports.OnTime(
-            ____exports.Need(bot, c.creep),
-            c.t.due
-        ) then
-            why = noTime(r, first)
-        elseif busy then
-            why = "acting"
-        elseif other then
-            why = "row"
-        elseif held then
-            why = "held"
-        elseif lastCid[pid] == c.cid then
-            why = "tried"
         else
-            local ____temp_72
-            if k == "lh" then
-                ____temp_72 = ____exports.FreeFor(bot, c.cid, now)
-            else
-                ____temp_72 = nil
+            local ____temp_82 = not pre
+            if ____temp_82 then
+                local ____exports_OnTime_81 = ____exports.OnTime
+                local ____exports_Need_result_80 = ____exports.Need(bot, c.creep)
+                local ____opt_78 = reserved[pid]
+                ____temp_82 = not ____exports_OnTime_81(____exports_Need_result_80, (____opt_78 and ____opt_78.cid) == c.cid and c.t.dies or c.t.due)
             end
-            why = ____temp_72
-            if why == nil then
-                why = ____exports.Claim(factsOf(bot, c))
+            if ____temp_82 then
+                why = noTime(r, first)
+            elseif busy then
+                why = "acting"
+            elseif other then
+                why = "row"
+            elseif held then
+                why = "held"
+            elseif lastCid[pid] == c.cid then
+                why = "tried"
+            else
+                local ____temp_83
+                if k == "lh" then
+                    ____temp_83 = ____exports.FreeFor(bot, c.cid, now)
+                else
+                    ____temp_83 = nil
+                end
+                why = ____temp_83
+                if why == nil then
+                    why = ____exports.Claim(factsOf(bot, c))
+                end
             end
         end
         if why ~= nil and why ~= "kind" and why ~= "early" then
@@ -1239,6 +1385,37 @@ function ____exports.Consider(bot, cands)
             best = c
         end
     end
+    local rv = reserved[pid]
+    if rv ~= nil and keep(
+        bot,
+        pid,
+        rv,
+        cands,
+        whys,
+        reads,
+        recs,
+        lead,
+        now
+    ) then
+        for ____, c in ipairs(cands) do
+            do
+                local __continue154
+                repeat
+                    if c.cid == rv.cid or whys[c.cid] ~= nil or kindOf(bot, c) == nil then
+                        __continue154 = true
+                        break
+                    end
+                    c.note(false, "busy")
+                    recs[c.cid].why = "busy"
+                    __continue154 = true
+                until true
+                if not __continue154 then
+                    break
+                end
+            end
+        end
+        return
+    end
     if best == nil then
         castPass(
             bot,
@@ -1253,23 +1430,23 @@ function ____exports.Consider(bot, cands)
     end
     for ____, c in ipairs(cands) do
         do
-            local __continue133
+            local __continue158
             repeat
                 if c == best or kindOf(bot, c) == nil then
-                    __continue133 = true
+                    __continue158 = true
                     break
                 end
                 c.note(false, "other")
                 recs[c.cid].why = "other"
                 recs[c.cid].ok = "other"
-                __continue133 = true
+                __continue158 = true
             until true
-            if not __continue133 then
+            if not __continue158 then
                 break
             end
         end
     end
-    pending[pid] = {
+    local pd = {
         best = best,
         k = kindOf(bot, best),
         need = ____exports.Need(bot, best.creep),
@@ -1278,11 +1455,45 @@ function ____exports.Consider(bot, cands)
         seen = recs[best.cid],
         tr = reads[best.cid]
     }
-    Decider.Offer(bot, ____exports.ROW)
-    if pending[pid] == nil then
-        return
+    if reserves(pd.k, pd.tr) and cur == nil and slackOf(pd, now) > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
+        if Decider.Reserve(
+            bot,
+            ____exports.ROW,
+            offerOf(bot, pd)
+        ) then
+            reserved[pid] = {cid = best.cid, pd = pd, at = now}
+            best.note(false, "reserved")
+            if Telemetry.IsEnabled() then
+                Telemetry.Event(
+                    "job",
+                    {
+                        {"pid", pid},
+                        {"job", "creep"},
+                        {"k", pd.k},
+                        {"phase", "reserve"},
+                        {"host", HOST},
+                        {"cid", best.cid},
+                        {
+                            "gd",
+                            r2(best.t.due)
+                        },
+                        {
+                            "gn",
+                            r2(pd.need)
+                        }
+                    }
+                )
+            end
+            return
+        end
+    else
+        pending[pid] = pd
+        Decider.Offer(bot, ____exports.ROW)
+        if pending[pid] == nil then
+            return
+        end
+        pending[pid] = nil
     end
-    pending[pid] = nil
     if Decider.Refusal(bot, ____exports.ROW.name) == "fight" then
         best.note(false, "fight")
         local r = recs[best.cid]
@@ -1455,15 +1666,23 @@ local function rowBegin(bot)
     local now = pd.now
     local tr = pd.tr
     local cast = pd.cast
+    local ____temp_84
+    if pd.rvAt ~= nil then
+        ____temp_84 = reserved[pid]
+    else
+        ____temp_84 = nil
+    end
+    local rv = ____temp_84
     local t = best.t
     local creep = t.creep
-    local ____temp_73
+    local age = DotaTime() - now
+    local ____temp_85
     if cast == nil then
-        ____temp_73 = nil
+        ____temp_85 = nil
     else
-        ____temp_73 = bot:GetAbilityByName(cast.spell.name)
+        ____temp_85 = bot:GetAbilityByName(cast.spell.name)
     end
-    local ability = ____temp_73
+    local ability = ____temp_85
     if k == "sp" and (ability == nil or ability == nil) then
         best.noteCast(false, "refused")
         return false
@@ -1491,7 +1710,7 @@ local function rowBegin(bot)
             end
             local opts = {
                 target = creep,
-                maxWait = t.eta + ____exports.SETTINGS.WaitSlack,
+                maxWait = math.max(0, t.eta - age) + ____exports.SETTINGS.WaitSlack,
                 interruptIf = function() return mateTakes(bot, creep) or yieldNow(pid, best.cid) or towerLost(bot, pid) end,
                 onPhase = function(p, at) return onPhase(pid, p, at) end
             }
@@ -1517,7 +1736,13 @@ local function rowBegin(bot)
             best.note(false, "refused")
             pd.seen.why = "refused"
         end
+        if rv ~= nil then
+            drop(bot, pid, rv, "refused")
+        end
         return false
+    end
+    if rv ~= nil then
+        reserved[pid] = nil
     end
     local aid = Telemetry.NextAid(pid)
     if k == "sp" then
@@ -1550,12 +1775,18 @@ local function rowBegin(bot)
         end
     end
     local sa = bot:GetAttackTarget()
-    startLine(
-        bot,
-        best.cid,
-        aid,
-        t,
+    local ____startLine_90 = startLine
+    local ____array_89 = __TS__SparseArrayNew(bot, best.cid, aid, {walk = t.walk, due = t.due - age})
+    local ____temp_88
+    if pd.rvAt == nil then
+        ____temp_88 = nil
+    else
+        ____temp_88 = t0 - pd.rvAt
+    end
+    __TS__SparseArrayPush(
+        ____array_89,
         {
+            rv = ____temp_88,
             need = need,
             reach = CreepOffer.Reach(bot, best.creep),
             seen = pd.seen,
@@ -1568,10 +1799,11 @@ local function rowBegin(bot)
             cast = cast
         }
     )
+    ____startLine_90(__TS__SparseArraySpread(____array_89))
     return true
 end
 --- The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
--- row decides at the read (Consider), never at the decider's round.
+-- row decides at the read (Consider); a reserved attempt's start is offered at the decider's round (`startDue`).
 local function rowWants(bot, _reads)
     if not ____exports.On(bot) then
         return nil
@@ -1581,6 +1813,11 @@ local function rowWants(bot, _reads)
     local a = running[pid]
     if a ~= nil then
         return {tgt = "creep:" .. tostring(a.cid)}
+    end
+    local rv = reserved[pid]
+    if rv ~= nil then
+        pending[pid] = nil
+        return startDue(bot, pid, rv)
     end
     local pd = pending[pid]
     if pd == nil then

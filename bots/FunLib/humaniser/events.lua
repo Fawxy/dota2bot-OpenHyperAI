@@ -847,6 +847,7 @@ ____exports.EVENTS = {
         al = "num",
         az = "num",
         am = "num",
+        rv = "num",
         ag = "str",
         aw = "num",
         aq = "num",

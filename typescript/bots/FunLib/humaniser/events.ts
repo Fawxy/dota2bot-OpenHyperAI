@@ -1317,9 +1317,9 @@ export const EVENTS = {
         tgt: "str",
         /** `stack`, `rune`, `pull`, `rune_detour`, `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason) or `aggro` (aggro_row.ts: one draw, its phases `start`, `order`, `resume`, `end`). */
         job: "str",
-        /** `start` (`why=trigger`) or `end`. */
+        /** `start` (`why=trigger`) or `end`; `reserve` and `drop` (`job=creep`, a reserved right-click): the creep reserved at the go, and a reservation ended with no start. */
         phase: "str",
-        /** On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`. */
+        /** On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`. On `job=creep phase=drop`: `gone` (the creep left the read or died), `early` (no longer about to come due), `late` (not reachable before it dies), `row` (another task runs for the hero), `tower` (our tower now attacks it), `refused` (the runner refused the start), or the creep row's refusal kept from the last read (`Claim`'s, `claimed`, `wait`, `human`). */
         why: "str",
         /** The hosting mode's number. */
         host: "num",
@@ -1348,6 +1348,8 @@ export const EVENTS = {
         az: "num",
         /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
         am: "num",
+        /** `job=creep` start and drop: seconds from the reservation at the go to the start or the drop. Absent on a start that was not reserved. */
+        rv: "num",
         /** `job=creep k=sp` start (Ours.AimedCasts): where an aimed spell lands (`SpellAim.Geom`'s `k`: `a`, `l`, `r`, `s`); absent for a unit-target cast. */
         ag: "str",
         /** `job=creep k=sp` start, a cast that turns the hero first (`SpellSecure.Turns`): the aim's slack, radians either way (`SpellAim.Aim`'s `slack`). */

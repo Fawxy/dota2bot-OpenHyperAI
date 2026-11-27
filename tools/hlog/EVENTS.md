@@ -684,8 +684,8 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `aid` num: The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`.
 - `tgt` str: On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`) or `creep:<cid>` (`job=aggro`: our ranged creep the draw is for; its claim is keyed `draw:<cid>`). Absent for `job=rune`, whose lines log no rune id, and on `end`.
 - `job` str: `stack`, `rune`, `pull`, `rune_detour`, `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason) or `aggro` (aggro_row.ts: one draw, its phases `start`, `order`, `resume`, `end`).
-- `phase` str: `start` (`why=trigger`) or `end`.
-- `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
+- `phase` str: `start` (`why=trigger`) or `end`; `reserve` and `drop` (`job=creep`, a reserved right-click): the creep reserved at the go, and a reservation ended with no start.
+- `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`. On `job=creep phase=drop`: `gone` (the creep left the read or died), `early` (no longer about to come due), `late` (not reachable before it dies), `row` (another task runs for the hero), `tower` (our tower now attacks it), `refused` (the runner refused the start), or the creep row's refusal kept from the last read (`Claim`'s, `claimed`, `wait`, `human`).
 - `host` num: The hosting mode's number.
 - `hit` num: 1 when hero damage landed during the job.
 - `cut` str: On `end` of a decider row's job the engine ended because the host mode lost the hero (`why=preempted`): what took it, `retreat` (the decider let go for stock's retreat, or the retreat mode outbid the hold) or the mode's name; `late_back` (`job=creep`, `why=cancelled`; only in logs banked before the creep row held hard from the go: the row ended its own soft attempt because the hero came back too late).
@@ -698,6 +698,7 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `al` num: `job=creep k=sp` start: seconds from the go until the damage was to land (turn, cast point, flight: `SpellSecure.TimingOf`).
 - `az` num: `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`; an aimed cast's, its aim's).
 - `am` num: `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`).
+- `rv` num: `job=creep` start and drop: seconds from the reservation at the go to the start or the drop. Absent on a start that was not reserved.
 - `ag` str: `job=creep k=sp` start (Ours.AimedCasts): where an aimed spell lands (`SpellAim.Geom`'s `k`: `a`, `l`, `r`, `s`); absent for a unit-target cast.
 - `aw` num: `job=creep k=sp` start, a cast that turns the hero first (`SpellSecure.Turns`): the aim's slack, radians either way (`SpellAim.Aim`'s `slack`).
 - `aq` num: `job=creep k=sp` end, a cast that turns the hero first: seconds from the go until the hero faced the aim within the tolerance (-1 never: `why=timeout`, `msg=turn`).

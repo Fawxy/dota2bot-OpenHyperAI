@@ -75,6 +75,17 @@ export const SETTINGS = {
     EarlyLead: 3,
     /** The decider's round (s) as the row meets it: a gap between the row's steps longer than it means another mode had the hero (`tk`). */
     Round: 0.4,
+    /**
+     * A decider round's length, farm's `GetDesire` for one hero (offers-and-the-decider s4, measured 27/11/2026:
+     * median 0.316 s). A reserved start is offered at the round after which one more would leave less than `Margin`.
+     */
+    DeciderRound: 0.32,
+    /**
+     * Judgement: the spare (s) a reserved start keeps past the walk. The walk's error once the wait between rounds is
+     * taken out, 90th percentile 0.41 s (cores) and 0.51 s (supports), plus the start inside a round, about 0.1 s (`wt`'s 10th
+     * percentile); read 27/11/2026 over the ckpt3 and ckpt3m on arms (2,157 attempts).
+     */
+    Margin: 0.6,
     /** The most plain attacks (pre-hits) an attempt orders before its last hit; `Verdict` asks for at most two. */
     MaxPreHits: 2,
     /** Seconds past the estimated landing of a pre-hit before the verdict is asked again on the creep's HP. `judgement`. */
@@ -419,12 +430,115 @@ interface Pending {
     now: number;
     seen: Seen;
     tr?: TowerRead;
+    /** A reserved attempt's start: when the reservation was taken (the start line's `rv`). */
+    rvAt?: number;
 }
 
 const pending: Record<number, Pending | undefined> = {};
 
+/**
+ * An attempt reserved at its go. `pd` is the latest read's view of the creep (each read refreshes it), `at` when
+ * it was reserved, `why` the latest read's refusal of the creep that waits for the start round (`acting`, `held`) or is asked again
+ * there (a claim's refusal).
+ */
+interface Reservation {
+    cid: number;
+    pd: Pending;
+    at: number;
+    why?: string;
+}
+
+const reserved: Record<number, Reservation | undefined> = {};
+
+/** A reservation's refusals that wait: the start is not offered while one stands, and it drops only once late. */
+const WAITS: Record<string, boolean> = { acting: true, held: true, fight: true };
+
+/** An attempt the row reserves rather than starts: a right-click with no tower read (the leftover rule's pre-hits start before due). */
+function reserves(k: Pending["k"], tr: TowerRead | undefined): boolean {
+    return k !== "sp" && tr === undefined;
+}
+
+/** The spare (s) left now past the hero's walk to the reserved creep, from the latest read's need and its due (or `at`, its death). */
+function slackOf(pd: Pending, now: number, at: number = pd.best.t.due): number {
+    return at - pd.need - (now - pd.now);
+}
+
+/** The reservation ends without a start: the claim goes, the creep's try is not spent, and the line says why. */
+function drop(bot: Unit, pid: number, rv: Reservation, why: string): void {
+    reserved[pid] = undefined;
+    if (pending[pid]?.rvAt !== undefined) pending[pid] = undefined;
+    Decider.Unreserve(bot, ROW);
+    if (!Telemetry.IsEnabled()) return;
+    Telemetry.Event("job", [
+        ["pid", pid],
+        ["job", "creep"],
+        ["k", rv.pd.k],
+        ["phase", "drop"],
+        ["why", why],
+        ["host", HOST],
+        ["cid", rv.cid],
+        ["rv", r2(DotaTime() - rv.at)],
+    ]);
+}
+
+/**
+ * A read with a reservation: the creep is read again as any candidate (`whys`), and the reservation drops when the creep is gone
+ * from the read (`gone`), no longer about to come due (`early`), not reachable before it dies (`late`: Consider's on-time test reads
+ * the reserved creep's death, not its due), another task runs for
+ * the hero (`row`), or our tower now attacks it (`tower`: the leftover rule starts at once, so the next read offers it). Any other
+ * refusal is kept for the start round. Else the read's view replaces the reservation's. True while it stands.
+ */
+function keep(bot: Unit, pid: number, rv: Reservation, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, reads: Record<number, TowerRead | undefined>, recs: Record<number, Seen>, lead: number, now: number): boolean {
+    const c = cands.find((x) => x.cid === rv.cid);
+    const why = c === undefined ? "gone" : whys[c.cid];
+    let out: string | undefined;
+    if (c === undefined) out = "gone";
+    else if (why === "early" || why === "kind") out = "early";
+    else if (why !== undefined && string.sub(why, 1, 6) === "notime") out = "late";
+    else if (why === "row") out = "row";
+    else if (reads[c.cid] !== undefined) out = "tower";
+    if (out !== undefined) {
+        drop(bot, pid, rv, out);
+        return false;
+    }
+    rv.why = why;
+    rv.pd = { ...rv.pd, best: c!, need: Need(bot, c!.creep), lead, now, seen: recs[c!.cid] };
+    if (why === undefined) c!.note(false, "reserved");
+    return true;
+}
+
+/**
+ * The decider's round with a reservation: the start is offered (as `pending`, which `rowBegin` takes) once one more round would
+ * leave less than `Margin`, unless a waiting refusal stands; past its due it is still offered until the hero's walk would end after
+ * the creep dies (rig ladder-support dire, 27/11/2026: 9 of 14 `late` drops with no other mode were started by the same hero within 2 s, most
+ * already in range, a start refused at its round having let the due pass). Late, gone, or a claim's refusal kept from the last read: dropped.
+ * The creep's handle is read only through `IsNull` and `IsAlive`: the read that listed it may be a round old.
+ */
+function startDue(bot: Unit, pid: number, rv: Reservation): Decider.Offer | undefined {
+    // A begin refused at an earlier round left its reason with the decider; the reservation's own `why` carries what matters now.
+    Decider.Refusal(bot, ROW.name);
+    const now = DotaTime();
+    const creep = rv.pd.best.creep as Unit & { IsNull?(this: Unit): boolean };
+    if ((creep.IsNull?.() ?? false) || !creep.IsAlive()) {
+        drop(bot, pid, rv, "gone");
+        return undefined;
+    }
+    if (slackOf(rv.pd, now, rv.pd.best.t.dies) < 0) {
+        drop(bot, pid, rv, "late");
+        return undefined;
+    }
+    if (slackOf(rv.pd, now) > SETTINGS.DeciderRound + SETTINGS.Margin) return undefined;
+    if (rv.why !== undefined) {
+        if (WAITS[rv.why] !== true) drop(bot, pid, rv, rv.why);
+        return undefined;
+    }
+    const pd: Pending = { ...rv.pd, rvAt: rv.at };
+    pending[pid] = pd;
+    return offerOf(bot, pd);
+}
+
 export function ResetCache(): void {
-    for (const t of [running, lastCid, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+    for (const t of [running, lastCid, pending, reserved] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
     CreepClaim.ResetCache();
     Claims.ResetCache();
 }
@@ -517,8 +631,10 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
  * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
  * creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
+ * A reserved start carries `rv`, the seconds from the reservation to the start; its walk, need and `sa` are the latest
+ * read's, its due that read's less the time since.
  */
-function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" | "sp"; oc: number; tr?: TowerRead; cast?: SpellSecure.Answer }): void {
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { rv?: number; need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" | "sp"; oc: number; tr?: TowerRead; cast?: SpellSecure.Answer }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["aid", aid],
@@ -549,6 +665,7 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
         ["al", g.cast === undefined ? undefined : r2(g.cast.timing.land)],
         ["az", g.cast?.also],
         ["am", g.cast === undefined ? undefined : math.floor(g.cast.over + 0.5)],
+        ["rv", g.rv === undefined ? undefined : r2(g.rv)],
         ["ag", g.cast === undefined || g.cast.aim === undefined ? undefined : SpellSecure.GeomOf(g.cast.spell).k],
         ["aw", g.cast !== undefined && SpellSecure.Turns(g.cast.spell) ? r2(g.cast.aim!.slack ?? 0) : undefined],
     ]);
@@ -659,7 +776,11 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const now = DotaTime();
     const lead = Lead(bot);
     const recs = touch(pid, cands, now);
-    if (cands.length === 0) return;
+    if (cands.length === 0) {
+        const rv = reserved[pid];
+        if (rv !== undefined) drop(bot, pid, rv, "gone");
+        return;
+    }
     if (running[pid] !== undefined) {
         for (const c of cands) {
             const r = recs[c.cid];
@@ -711,7 +832,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         else if (notarget) why = "notarget";
         else if (tr?.why !== undefined) why = tr.why;
         else if (!pre && !dueNow(bot, c, r, lead, now)) why = "early";
-        else if (!pre && !OnTime(Need(bot, c.creep), c.t.due)) why = noTime(r, first);
+        else if (!pre && !OnTime(Need(bot, c.creep), reserved[pid]?.cid === c.cid ? c.t.dies : c.t.due)) why = noTime(r, first);
         else if (busy) why = "acting";
         else if (other) why = "row";
         else if (held) why = "held";
@@ -729,6 +850,16 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         if (why !== undefined) c.note(false, why);
         else if (best === undefined || c.t.eta < best.t.eta) best = c;
     }
+    const rv = reserved[pid];
+    if (rv !== undefined && keep(bot, pid, rv, cands, whys, reads, recs, lead, now)) {
+        // The hero has its plan, as when an attempt runs: no other creep and no cast.
+        for (const c of cands) {
+            if (c.cid === rv.cid || whys[c.cid] !== undefined || kindOf(bot, c) === undefined) continue;
+            c.note(false, "busy");
+            recs[c.cid].why = "busy";
+        }
+        return;
+    }
     if (best === undefined) {
         // A creep the row does not attack is refused `kind` before the hero's own gates are asked, so the cast asks them here. With the
         // switch off the pass runs as the cast's shadow: the reference arm logs where it would have cast.
@@ -741,10 +872,34 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         recs[c.cid].why = "other";
         recs[c.cid].ok = "other";
     }
-    pending[pid] = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid], tr: reads[best.cid] };
-    Decider.Offer(bot, ROW);
-    if (pending[pid] === undefined) return;
-    pending[pid] = undefined;
+    const pd: Pending = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid], tr: reads[best.cid] };
+    // With a lower row's task running (the draw) the attempt goes now and takes the hero from it (no-creep-unpaid s6b's hand-over):
+    // a reservation would leave that task holding the hero and its claim.
+    if (reserves(pd.k, pd.tr) && cur === undefined && slackOf(pd, now) > SETTINGS.DeciderRound + SETTINGS.Margin) {
+        if (Decider.Reserve(bot, ROW, offerOf(bot, pd))) {
+            reserved[pid] = { cid: best.cid, pd, at: now };
+            best.note(false, "reserved");
+            // The go as the reference arm's start line counts it (a start), so a rate per creep gone on reads the same in both arms.
+            if (Telemetry.IsEnabled()) {
+                Telemetry.Event("job", [
+                    ["pid", pid],
+                    ["job", "creep"],
+                    ["k", pd.k],
+                    ["phase", "reserve"],
+                    ["host", HOST],
+                    ["cid", best.cid],
+                    ["gd", r2(best.t.due)],
+                    ["gn", r2(pd.need)],
+                ]);
+            }
+            return;
+        }
+    } else {
+        pending[pid] = pd;
+        Decider.Offer(bot, ROW);
+        if (pending[pid] === undefined) return;
+        pending[pid] = undefined;
+    }
     // `fight`: the decider refused the start because the hero is in a fight (Ours.FightFirst). Like `held`, a later read may clear it:
     // no claim and no `tried` are set (rowBegin's), so the creep is offered again at the next read while it is still on time.
     if (Decider.Refusal(bot, ROW.name) === "fight") {
@@ -958,8 +1113,11 @@ function rowBegin(bot: Unit): boolean {
     pending[pid] = undefined;
     if (pd === undefined) return false;
     const { best, k, need, lead, now, tr, cast } = pd;
+    const rv = pd.rvAt !== undefined ? reserved[pid] : undefined;
     const t = best.t;
     const creep = t.creep;
+    // A reserved start comes at a round after the read that last saw the creep: its due and eta are that much nearer.
+    const age = DotaTime() - now;
     const ability = cast === undefined ? undefined : bot.GetAbilityByName(cast.spell.name);
     if (k === "sp" && (ability === undefined || ability === null)) {
         best.noteCast(false, "refused");
@@ -968,7 +1126,7 @@ function rowBegin(bot: Unit): boolean {
     const turn: Turn | undefined = k === "sp" && SpellSecure.Turns(cast!.spell) ? {} : undefined;
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
         if (k === "sp") return castOn(ctx, bot, ability as unknown as Lib.TaskAbility, cast!, creep as unknown as Unit, turn ?? {});
-        const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || yieldNow(pid, best.cid) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
+        const opts = { target: creep, maxWait: math.max(0, t.eta - age) + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || yieldNow(pid, best.cid) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
         if (tr === undefined) return ctx.lastHit(opts);
         return towerAttempt(ctx, bot, pid, creep as unknown as Unit, opts);
@@ -979,8 +1137,10 @@ function rowBegin(bot: Unit): boolean {
             best.note(false, "refused");
             pd.seen.why = "refused";
         }
+        if (rv !== undefined) drop(bot, pid, rv, "refused");
         return false;
     }
+    if (rv !== undefined) reserved[pid] = undefined;
     const aid = Telemetry.NextAid(pid);
     if (k === "sp") best.noteCast(true, undefined, aid);
     else best.note(true, undefined, aid);
@@ -1006,7 +1166,7 @@ function rowBegin(bot: Unit): boolean {
     let oc = 0;
     for (const c of Claims.ClaimsOn(Claims.CreepTarget(best.cid))) if (c.pid !== pid) oc++;
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc, tr, cast });
+    startLine(bot, best.cid, aid, { walk: t.walk, due: t.due - age }, { rv: pd.rvAt === undefined ? undefined : t0 - pd.rvAt, need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc, tr, cast });
     return true;
 }
 
@@ -1027,7 +1187,7 @@ function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
 
 /**
  * The row's `wants`: an offer while an attempt runs (the latch), and while Consider offers its chosen creep to the decider. The
- * row decides at the read (Consider), never at the decider's round.
+ * row decides at the read (Consider); a reserved attempt's start is offered at the decider's round (`startDue`).
  */
 function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (!On(bot)) return undefined;
@@ -1035,6 +1195,12 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
     const a = running[pid];
     if (a !== undefined) return { tgt: `creep:${a.cid}` };
+    const rv = reserved[pid];
+    if (rv !== undefined) {
+        // A start offered at an earlier round and refused there is asked afresh.
+        pending[pid] = undefined;
+        return startDue(bot, pid, rv);
+    }
     const pd = pending[pid];
     if (pd === undefined) return undefined;
     return offerOf(bot, pd);
@@ -1055,7 +1221,9 @@ function offerOf(bot: Unit, pd: Pending): Decider.Offer {
     // attack from the stand spot at the verb's reach (the offer read's), until the swing is due or the walk is done, whichever is later.
     const me = bot.GetLocation();
     let at = me;
-    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due);
+    // Aged from the read: a reserved start is offered rounds after it.
+    const age = math.max(0, DotaTime() - pd.now);
+    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due - age);
     if (k !== "sp") {
         const c = best.creep.GetLocation();
         if (c !== null && c !== undefined) {
