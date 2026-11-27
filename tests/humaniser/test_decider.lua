@@ -406,9 +406,11 @@ do -- each begin names the mode Valve had the hero in at that moment, read befor
 		and lines[2]:find("bfrom=attack", 1, true), table.concat(lines, " | "))
 	local quiet = capture(function()
 		T = T + 0.2
+		bot.mode = BotMode.Laning -- a change of `win` writes a line with no begin
 		desire()
 	end)
-	check("bfrom: a line with no begin carries none", #quiet == 0 or not quiet[1]:find("bfrom=", 1, true), table.concat(quiet, " | "))
+	check("bfrom: a line with no begin carries none", #quiet == 1 and not quiet[1]:find("beg=", 1, true) and not quiet[1]:find("bfrom=", 1, true),
+		table.concat(quiet, " | "))
 end
 
 do -- a lower row that wants the hero while a higher row holds it is not begun, in the round or at a read's offer
