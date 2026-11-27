@@ -856,7 +856,9 @@ function ____exports.Consider(bot, cands)
         return
     end
     local busy = acting(bot)
-    local other = Tasks.Running(bot) ~= nil
+    local ____opt_50 = Tasks.Running(bot)
+    local cur = ____opt_50 and ____opt_50.name
+    local other = cur ~= nil and not Decider.Below(____exports.ROW, cur)
     local mode = bot:GetActiveMode()
     local held = Decider.LetGo(bot) or mode == BotMode.Retreat
     local best
@@ -875,13 +877,13 @@ function ____exports.Consider(bot, cands)
                 towers = ownTowers(bot)
             end
             local tw = attackerOf(towers, c.creep)
-            local ____temp_50
+            local ____temp_52
             if tw == nil then
-                ____temp_50 = nil
+                ____temp_52 = nil
             else
-                ____temp_50 = towerRead(bot, c.creep, tw, 0)
+                ____temp_52 = towerRead(bot, c.creep, tw, 0)
             end
-            tr = ____temp_50
+            tr = ____temp_52
             reads[c.cid] = tr
             notarget = tr == nil and c.ck ~= "r"
         end
@@ -917,13 +919,13 @@ function ____exports.Consider(bot, cands)
         elseif lastCid[pid] == c.cid then
             why = "tried"
         else
-            local ____temp_55
+            local ____temp_57
             if k == "lh" then
-                ____temp_55 = ____exports.FreeFor(bot, c.cid, now)
+                ____temp_57 = ____exports.FreeFor(bot, c.cid, now)
             else
-                ____temp_55 = nil
+                ____temp_57 = nil
             end
-            why = ____temp_55
+            why = ____temp_57
             if why == nil then
                 why = ____exports.Claim(factsOf(bot, c))
             end

@@ -9,6 +9,11 @@
  * check, and `want` 1 when some read failed none. The line also closes when the hero dies or a drill holds it. Our ranged creep's height
  * stands in for the hand-over spot's (250 behind it; a place has no height in the bot API but a unit's location z). The danger
  * read is asked read-only (`remember: false`). Facts measured in `docs/reference/specifics/engine-physics.md`, "The draw".
+ *
+ * With the draw's row on (aggro_row.ts, Ours.LaneAggro) the same line is the row's own (`src=own`): `go` 1 and the attempt's `aid`
+ * when a draw was ordered on that opportunity (`NoteGo`), else `why` the first failed check of the kept read, or `nogo` when every
+ * check passed and the row did not go (a row above held the hero, the row's rest, or a refused begin). The row asks `ReadNow` for a
+ * fresh read at its go, which counts nothing.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { Unit, UnitType } from "bots/ts_libs/dota";
@@ -18,6 +23,7 @@ import * as LaneHits from "bots/FunLib/humaniser/lane_hits";
 import * as LaneOffers from "bots/FunLib/humaniser/lane_offers";
 import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Offer from "bots/FunLib/humaniser/offer";
+import * as Ours from "bots/FunLib/humaniser/ours";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
@@ -147,8 +153,8 @@ export function Checks(this: void, f: Facts): string[] {
     return out;
 }
 
-/** One read as the line writes it. */
-interface Snap {
+/** One read as the line writes it, and the plan a draw would follow. */
+export interface Snap {
     f: Facts;
     fails: string[];
     drawn: number;
@@ -158,6 +164,12 @@ interface Snap {
     pw: number;
     g: Given;
     danger: string;
+    /** The plan: the draw spot, the hand-over spot, the order's target (the nearest enemy hero our team sees) and the creeps the draw takes. */
+    spot: Vec;
+    hand: Vec;
+    target?: Unit;
+    drawnUnits: Unit[];
+    ranged: Unit;
 }
 
 interface Opp {
@@ -169,6 +181,8 @@ interface Opp {
     reads: number;
     wanted: number;
     okFrom?: number;
+    /** The draw's attempt on this opportunity (the row on): its aid. */
+    aid?: number;
 }
 
 const opps: Record<number, Opp | undefined> = {};
@@ -201,15 +215,23 @@ export function MayOffer(bot: Unit): boolean {
     return bot.IsBot() && TripTable.Does("aggro", LaneConfig.PositionOf(bot));
 }
 
+/** The draw's row is on for this hero's team (Ours.Team scopes it). */
+export function RowOn(): boolean {
+    return Ours.On("LaneAggro");
+}
+
 function line(bot: Unit, o: Opp): void {
     const s = o.snap;
+    const own = RowOn();
+    const go = own && o.aid !== undefined;
     Telemetry.Event("choice", [
         ["pid", bot.GetPlayerID()],
         ["kind", "aggro"],
-        ["go", 0],
+        ["aid", go ? o.aid : undefined],
+        ["go", go ? 1 : 0],
         ["want", o.okFrom !== undefined ? 1 : 0],
-        ["why", "off"],
-        ["src", "shadow"],
+        ["why", !own ? "off" : go ? undefined : s.fails.length > 0 ? s.fails[0] : "nogo"],
+        ["src", own ? "own" : "shadow"],
         ["lane", o.lane],
         ["slot", o.first],
         ["cid", o.cid],
@@ -255,6 +277,8 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
     const fight: Unit[] = [];
     let onR = 0;
     let cz = 0;
+    let cx = 0;
+    let cy = 0;
     for (const c of theirs) {
         const at = c.GetLocation();
         if (at === null || at === undefined || !c.IsAlive()) continue;
@@ -264,6 +288,8 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
         if (LaneRead.CreepKind(c.GetUnitName()) === "f" || dist(at, rAt) > SETTINGS.Clash) continue;
         fight.push(c);
         cz += at.z;
+        cx += at.x;
+        cy += at.y;
     }
     if (fight.length === 0) return undefined;
     const loc = bot.GetLocation();
@@ -281,11 +307,13 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     const walk = math.max(0, nd - SETTINGS.Reach) / speed;
     const drawnSet = new LuaTable<Unit, boolean>();
+    const drawnUnits: Unit[] = [];
     let drawn = 0;
     let melee = 0;
     for (const c of fight) {
         if (dist(spot, c.GetLocation()) > SETTINGS.Drawn) continue;
         drawnSet.set(c, true);
+        drawnUnits.push(c);
         drawn++;
         if (LaneRead.CreepKind(c.GetUnitName()) === "m") melee++;
     }
@@ -303,10 +331,17 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
     // Visible enemy heroes: the order's target, the cover on the draw spot, and who else is hitting our creeps.
     const enemies: Offer.PathEnemy[] = [];
     const hitters: Unit[] = [];
+    let target: Unit | undefined;
+    let td = math.huge;
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
+        const d = dist(hero, at);
+        if (d < td) {
+            td = d;
+            target = e;
+        }
         enemies.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: 1 });
         hitters.push(e);
     }
@@ -341,13 +376,66 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number
     const pid = bot.GetPlayerID();
     const hit = heroHitAt[pid];
     const f: Facts = { k, walk, onR, fh, rh, seen: enemies.length, tw, covering: path.covering, deadly: danger === "deadly", miss: g.miss, sinceHero: hit !== undefined ? now - hit : undefined };
-    return { f, fails: Checks(f), drawn, melee, rhp: ranged.GetHealth() / math.max(ranged.GetMaxHealth(), 1), pw: ours / math.max(theirsHp, 1), g, danger };
+    const hand = HandSpot(rAt, { x: cx / fight.length, y: cy / fight.length }, SETTINGS.Back);
+    return { f, fails: Checks(f), drawn, melee, rhp: ranged.GetHealth() / math.max(ranged.GetMaxHealth(), 1), pw: ours / math.max(theirsHp, 1), g, danger, spot, hand, target, drawnUnits, ranged };
 }
 
 function readFn(this: void, bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number): Snap | undefined {
     return read(bot, ranged, theirs, mine, now);
 }
 let timedRead: typeof readFn | undefined;
+
+/**
+ * The open opportunity's ranged creep while it is still listed; else our ranged creep nearest the hero. One line per creep: with
+ * two of ours in reach the nearest may swap, and the open one is kept until it dies or leaves the lists.
+ */
+function pickRanged(bot: Unit, mine: Unit[], open: Unit | undefined): Unit | undefined {
+    if (open !== undefined) for (const c of mine) if (c === open && c.IsAlive()) return c;
+    let ranged: Unit | undefined;
+    let rd = math.huge;
+    const loc = bot.GetLocation();
+    for (const c of mine) {
+        if (!c.IsAlive() || LaneRead.CreepKind(c.GetUnitName()) !== "r") continue;
+        const at = c.GetLocation();
+        if (at === null || at === undefined) continue;
+        const d = dist(loc, at);
+        if (d < rd) {
+            rd = d;
+            ranged = c;
+        }
+    }
+    return ranged;
+}
+
+/**
+ * A fresh read for the draw's row at its go and after its walk-in (rule 5): the same read as the line's, on the open opportunity's
+ * ranged creep or the nearest; counts nothing and writes no line. Undefined with no ranged creep of ours or no clash near it.
+ */
+export function ReadNow(bot: Unit): Snap | undefined {
+    const now = DotaTime();
+    noteHeroTarget(bot, now);
+    const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
+    const ranged = pickRanged(bot, mine, opps[bot.GetPlayerID()]?.ranged);
+    if (ranged === undefined) return undefined;
+    return read(bot, ranged, bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true), mine, now);
+}
+
+/** The draw's row went on our ranged creep `ranged`: the open opportunity on it carries the attempt's aid to its line. */
+export function NoteGo(bot: Unit, ranged: Unit, aid: number): void {
+    const o = opps[bot.GetPlayerID()];
+    if (o !== undefined && o.ranged === ranged && o.aid === undefined) o.aid = aid;
+}
+
+/** The hero ordered an attack on an enemy hero now (the draw's order): the cooldown runs from it. */
+export function NoteHeroHit(bot: Unit): void {
+    heroHitAt[bot.GetPlayerID()] = DotaTime();
+}
+
+/** The cooldown's clock: the hero's attack target is an enemy hero now. */
+function noteHeroTarget(bot: Unit, now: number): void {
+    const tg = bot.GetAttackTarget();
+    if (tg !== null && tg !== undefined && tg.IsHero() && tg.GetTeam() !== bot.GetTeam()) heroHitAt[bot.GetPlayerID()] = now;
+}
 
 /**
  * The reference arm's denominator: the draw's chance read and logged (`src=shadow go=0 why=off`) for every core the trip table
@@ -362,27 +450,10 @@ export function Shadow(bot: Unit): void {
         close(bot, pid);
         return;
     }
-    const tg = bot.GetAttackTarget();
-    if (tg !== null && tg !== undefined && tg.IsHero() && tg.GetTeam() !== bot.GetTeam()) heroHitAt[pid] = now;
+    noteHeroTarget(bot, now);
 
-    // The open opportunity's ranged creep while it is still listed; else our ranged creep nearest the hero. One line per
-    // creep: with two of ours in reach the nearest may swap, and the open one is kept until it dies or leaves the lists.
-    let ranged: Unit | undefined;
-    let rd = math.huge;
-    const loc = bot.GetLocation();
     const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
-    const open = opps[pid];
-    if (open !== undefined) for (const c of mine) if (c === open.ranged && c.IsAlive()) ranged = c;
-    if (ranged === undefined) for (const c of mine) {
-        if (!c.IsAlive() || LaneRead.CreepKind(c.GetUnitName()) !== "r") continue;
-        const at = c.GetLocation();
-        if (at === null || at === undefined) continue;
-        const d = dist(loc, at);
-        if (d < rd) {
-            rd = d;
-            ranged = c;
-        }
-    }
+    const ranged = pickRanged(bot, mine, opps[pid]?.ranged);
     let o = opps[pid];
     if (o !== undefined && o.ranged !== ranged) {
         close(bot, pid);

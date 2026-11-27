@@ -1,5 +1,32 @@
 --[[ Generated with https://github.com/TypeScriptToLua/TypeScriptToLua ]]
+-- Lua Library inline imports
+local function __TS__CountVarargs(...)
+    return select("#", ...)
+end
+
+local function __TS__SparseArrayNew(...)
+    local sparseArray = {...}
+    sparseArray.sparseLength = __TS__CountVarargs(...)
+    return sparseArray
+end
+
+local function __TS__SparseArrayPush(sparseArray, ...)
+    local args = {...}
+    local argsLen = __TS__CountVarargs(...)
+    local listLen = sparseArray.sparseLength
+    for i = 1, argsLen do
+        sparseArray[listLen + i] = args[i]
+    end
+    sparseArray.sparseLength = listLen + argsLen
+end
+
+local function __TS__SparseArraySpread(sparseArray)
+    local _unpack = unpack or table.unpack
+    return _unpack(sparseArray, 1, sparseArray.sparseLength)
+end
+-- End of Lua Library inline imports
 local ____exports = {}
+local noteHeroTarget, heroHitAt
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local UnitType = ____dota.UnitType
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
@@ -8,11 +35,18 @@ local LaneHits = require(GetScriptDirectory().."/FunLib/humaniser/lane_hits")
 local LaneOffers = require(GetScriptDirectory().."/FunLib/humaniser/lane_offers")
 local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local Offer = require(GetScriptDirectory().."/FunLib/humaniser/offer")
+local Ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local TripTable = require(GetScriptDirectory().."/FunLib/humaniser/states/trip_table")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function noteHeroTarget(bot, now)
+    local tg = bot:GetAttackTarget()
+    if tg ~= nil and tg ~= nil and tg:IsHero() and tg:GetTeam() ~= bot:GetTeam() then
+        heroHitAt[bot:GetPlayerID()] = now
+    end
+end
 ____exports.SETTINGS = {
     Every = 0.2,
     Reach = 450,
@@ -110,7 +144,7 @@ function ____exports.Checks(f)
 end
 local opps = {}
 local readAt = {}
-local heroHitAt = {}
+heroHitAt = {}
 function ____exports.ResetCache()
     for k in pairs(opps) do
         opps[k] = nil
@@ -143,69 +177,97 @@ function ____exports.MayOffer(bot)
         LaneConfig.PositionOf(bot)
     )
 end
+--- The draw's row is on for this hero's team (Ours.Team scopes it).
+function ____exports.RowOn()
+    return Ours.On("LaneAggro")
+end
 local function line(bot, o)
     local s = o.snap
-    Telemetry.Event(
-        "choice",
+    local own = ____exports.RowOn()
+    local go = own and o.aid ~= nil
+    local ____Telemetry_Event_4 = Telemetry.Event
+    local ____array_3 = __TS__SparseArrayNew(
         {
-            {
-                "pid",
-                bot:GetPlayerID()
-            },
-            {"kind", "aggro"},
-            {"go", 0},
-            {"want", o.okFrom ~= nil and 1 or 0},
-            {"why", "off"},
-            {"src", "shadow"},
-            {"lane", o.lane},
-            {"slot", o.first},
-            {"cid", o.cid},
-            {
-                "wo",
-                o.okFrom ~= nil and r1(o.okFrom - o.first) or nil
-            },
-            {"ak", s.f.k},
-            {
-                "arf",
-                #s.fails > 0 and table.concat(s.fails, ",") or "-"
-            },
-            {"ard", o.reads},
-            {"awr", o.wanted},
-            {
-                "walk",
-                r2(s.f.walk)
-            },
-            {"an", s.drawn},
-            {"am", s.melee},
-            {"ao", s.f.onR},
-            {
-                "af",
-                math.floor(s.f.fh + 0.5)
-            },
-            {
-                "ar",
-                math.floor(s.f.rh + 0.5)
-            },
-            {
-                "arp",
-                r2(s.rhp)
-            },
-            {
-                "apw",
-                r2(s.pw)
-            },
-            {"aes", s.f.seen},
-            {
-                "atw",
-                s.f.tw ~= nil and math.floor(s.f.tw) or nil
-            },
-            {"eh", s.f.covering},
-            {"adl", s.danger},
-            {"ag0", s.g.all},
-            {"ag1", s.g.miss},
-            {"agr", s.g.dr},
-            {"agm", s.g.dm}
-        }
+            "pid",
+            bot:GetPlayerID()
+        },
+        {"kind", "aggro"}
+    )
+    local ____go_0
+    if go then
+        ____go_0 = o.aid
+    else
+        ____go_0 = nil
+    end
+    __TS__SparseArrayPush(____array_3, {"aid", ____go_0}, {"go", go and 1 or 0}, {"want", o.okFrom ~= nil and 1 or 0})
+    local ____temp_2
+    if not own then
+        ____temp_2 = "off"
+    else
+        local ____go_1
+        if go then
+            ____go_1 = nil
+        else
+            ____go_1 = #s.fails > 0 and s.fails[1] or "nogo"
+        end
+        ____temp_2 = ____go_1
+    end
+    __TS__SparseArrayPush(
+        ____array_3,
+        {"why", ____temp_2},
+        {"src", own and "own" or "shadow"},
+        {"lane", o.lane},
+        {"slot", o.first},
+        {"cid", o.cid},
+        {
+            "wo",
+            o.okFrom ~= nil and r1(o.okFrom - o.first) or nil
+        },
+        {"ak", s.f.k},
+        {
+            "arf",
+            #s.fails > 0 and table.concat(s.fails, ",") or "-"
+        },
+        {"ard", o.reads},
+        {"awr", o.wanted},
+        {
+            "walk",
+            r2(s.f.walk)
+        },
+        {"an", s.drawn},
+        {"am", s.melee},
+        {"ao", s.f.onR},
+        {
+            "af",
+            math.floor(s.f.fh + 0.5)
+        },
+        {
+            "ar",
+            math.floor(s.f.rh + 0.5)
+        },
+        {
+            "arp",
+            r2(s.rhp)
+        },
+        {
+            "apw",
+            r2(s.pw)
+        },
+        {"aes", s.f.seen},
+        {
+            "atw",
+            s.f.tw ~= nil and math.floor(s.f.tw) or nil
+        },
+        {"eh", s.f.covering},
+        {"adl", s.danger},
+        {"ag0", s.g.all},
+        {"ag1", s.g.miss},
+        {"agr", s.g.dr},
+        {"agm", s.g.dm}
+    )
+    ____Telemetry_Event_4(
+        "choice",
+        {__TS__SparseArraySpread(____array_3)}
     )
 end
 local function close(bot, pid)
@@ -226,32 +288,36 @@ local function read(bot, ranged, theirs, mine, now)
     local fight = {}
     local onR = 0
     local cz = 0
+    local cx = 0
+    local cy = 0
     for ____, c in ipairs(theirs) do
         do
-            local __continue40
+            local __continue41
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil or not c:IsAlive() then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 local tg = c:GetAttackTarget()
                 if not sameTeam(tg, team) then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 if tg == ranged then
                     onR = onR + 1
                 end
                 if LaneRead.CreepKind(c:GetUnitName()) == "f" or dist(at, rAt) > ____exports.SETTINGS.Clash then
-                    __continue40 = true
+                    __continue41 = true
                     break
                 end
                 fight[#fight + 1] = c
                 cz = cz + at.z
-                __continue40 = true
+                cx = cx + at.x
+                cy = cy + at.y
+                __continue41 = true
             until true
-            if not __continue40 then
+            if not __continue41 then
                 break
             end
         end
@@ -280,27 +346,29 @@ local function read(bot, ranged, theirs, mine, now)
     )
     local walk = math.max(0, nd - ____exports.SETTINGS.Reach) / speed
     local drawnSet = {}
+    local drawnUnits = {}
     local drawn = 0
     local melee = 0
     for ____, c in ipairs(fight) do
         do
-            local __continue50
+            local __continue51
             repeat
                 if dist(
                     spot,
                     c:GetLocation()
                 ) > ____exports.SETTINGS.Drawn then
-                    __continue50 = true
+                    __continue51 = true
                     break
                 end
                 drawnSet[c] = true
+                drawnUnits[#drawnUnits + 1] = c
                 drawn = drawn + 1
                 if LaneRead.CreepKind(c:GetUnitName()) == "m" then
                     melee = melee + 1
                 end
-                __continue50 = true
+                __continue51 = true
             until true
-            if not __continue50 then
+            if not __continue51 then
                 break
             end
         end
@@ -321,18 +389,25 @@ local function read(bot, ranged, theirs, mine, now)
     end
     local enemies = {}
     local hitters = {}
+    local target
+    local td = math.huge
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue59
+            local __continue60
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue59 = true
+                    __continue60 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue59 = true
+                    __continue60 = true
                     break
+                end
+                local d = dist(hero, at)
+                if d < td then
+                    td = d
+                    target = e
                 end
                 enemies[#enemies + 1] = {
                     x = at.x,
@@ -344,9 +419,9 @@ local function read(bot, ranged, theirs, mine, now)
                     spa = 1
                 }
                 hitters[#hitters + 1] = e
-                __continue59 = true
+                __continue60 = true
             until true
-            if not __continue59 then
+            if not __continue60 then
                 break
             end
         end
@@ -355,11 +430,11 @@ local function read(bot, ranged, theirs, mine, now)
     local hull = bot:GetBoundingRadius()
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true) or ({})) do
         do
-            local __continue63
+            local __continue65
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue63 = true
+                    __continue65 = true
                     break
                 end
                 local gap = dist(spot, at) - (t:GetAttackRange() + t:GetBoundingRadius() + hull)
@@ -367,9 +442,9 @@ local function read(bot, ranged, theirs, mine, now)
                     tw = gap
                 end
                 hitters[#hitters + 1] = t
-                __continue63 = true
+                __continue65 = true
             until true
-            if not __continue63 then
+            if not __continue65 then
                 break
             end
         end
@@ -388,10 +463,10 @@ local function read(bot, ranged, theirs, mine, now)
     local offers = Tasks.Verbs().laneTargets(bot, {radius = LaneHits.READER_RADIUS, within = window})
     for ____, t in ipairs(offers) do
         do
-            local __continue67
+            local __continue69
             repeat
                 if t.kind == "prehit" or not LaneOffers.Reachable(t) then
-                    __continue67 = true
+                    __continue69 = true
                     break
                 end
                 local c = t.creep
@@ -416,9 +491,9 @@ local function read(bot, ranged, theirs, mine, now)
                     undrawn = undrawn,
                     feed = c == ranged
                 }
-                __continue67 = true
+                __continue69 = true
             until true
-            if not __continue67 then
+            if not __continue69 then
                 break
             end
         end
@@ -444,6 +519,7 @@ local function read(bot, ranged, theirs, mine, now)
         miss = g.miss,
         sinceHero = hit ~= nil and now - hit or nil
     }
+    local hand = ____exports.HandSpot(rAt, {x = cx / #fight, y = cy / #fight}, ____exports.SETTINGS.Back)
     return {
         f = f,
         fails = ____exports.Checks(f),
@@ -455,7 +531,12 @@ local function read(bot, ranged, theirs, mine, now)
         ),
         pw = ours / math.max(theirsHp, 1),
         g = g,
-        danger = danger
+        danger = danger,
+        spot = spot,
+        hand = hand,
+        target = target,
+        drawnUnits = drawnUnits,
+        ranged = ranged
     }
 end
 local function readFn(bot, ranged, theirs, mine, now)
@@ -468,6 +549,78 @@ local function readFn(bot, ranged, theirs, mine, now)
     )
 end
 local timedRead
+--- The open opportunity's ranged creep while it is still listed; else our ranged creep nearest the hero. One line per creep: with
+-- two of ours in reach the nearest may swap, and the open one is kept until it dies or leaves the lists.
+local function pickRanged(bot, mine, open)
+    if open ~= nil then
+        for ____, c in ipairs(mine) do
+            if c == open and c:IsAlive() then
+                return c
+            end
+        end
+    end
+    local ranged
+    local rd = math.huge
+    local loc = bot:GetLocation()
+    for ____, c in ipairs(mine) do
+        do
+            local __continue85
+            repeat
+                if not c:IsAlive() or LaneRead.CreepKind(c:GetUnitName()) ~= "r" then
+                    __continue85 = true
+                    break
+                end
+                local at = c:GetLocation()
+                if at == nil or at == nil then
+                    __continue85 = true
+                    break
+                end
+                local d = dist(loc, at)
+                if d < rd then
+                    rd = d
+                    ranged = c
+                end
+                __continue85 = true
+            until true
+            if not __continue85 then
+                break
+            end
+        end
+    end
+    return ranged
+end
+--- A fresh read for the draw's row at its go and after its walk-in (rule 5): the same read as the line's, on the open opportunity's
+-- ranged creep or the nearest; counts nothing and writes no line. Undefined with no ranged creep of ours or no clash near it.
+function ____exports.ReadNow(bot)
+    local now = DotaTime()
+    noteHeroTarget(bot, now)
+    local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
+    local ____pickRanged_8 = pickRanged
+    local ____bot_7 = bot
+    local ____opt_5 = opps[bot:GetPlayerID()]
+    local ranged = ____pickRanged_8(____bot_7, mine, ____opt_5 and ____opt_5.ranged)
+    if ranged == nil then
+        return nil
+    end
+    return read(
+        bot,
+        ranged,
+        bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true),
+        mine,
+        now
+    )
+end
+--- The draw's row went on our ranged creep `ranged`: the open opportunity on it carries the attempt's aid to its line.
+function ____exports.NoteGo(bot, ranged, aid)
+    local o = opps[bot:GetPlayerID()]
+    if o ~= nil and o.ranged == ranged and o.aid == nil then
+        o.aid = aid
+    end
+end
+--- The hero ordered an attack on an enemy hero now (the draw's order): the cooldown runs from it.
+function ____exports.NoteHeroHit(bot)
+    heroHitAt[bot:GetPlayerID()] = DotaTime()
+end
 --- The reference arm's denominator: the draw's chance read and logged (`src=shadow go=0 why=off`) for every core the trip table
 -- covers. Reads and logs; nothing is ordered.
 function ____exports.Shadow(bot)
@@ -483,49 +636,12 @@ function ____exports.Shadow(bot)
         close(bot, pid)
         return
     end
-    local tg = bot:GetAttackTarget()
-    if tg ~= nil and tg ~= nil and tg:IsHero() and tg:GetTeam() ~= bot:GetTeam() then
-        heroHitAt[pid] = now
-    end
-    local ranged
-    local rd = math.huge
-    local loc = bot:GetLocation()
+    noteHeroTarget(bot, now)
     local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
-    local open = opps[pid]
-    if open ~= nil then
-        for ____, c in ipairs(mine) do
-            if c == open.ranged and c:IsAlive() then
-                ranged = c
-            end
-        end
-    end
-    if ranged == nil then
-        for ____, c in ipairs(mine) do
-            do
-                local __continue88
-                repeat
-                    if not c:IsAlive() or LaneRead.CreepKind(c:GetUnitName()) ~= "r" then
-                        __continue88 = true
-                        break
-                    end
-                    local at = c:GetLocation()
-                    if at == nil or at == nil then
-                        __continue88 = true
-                        break
-                    end
-                    local d = dist(loc, at)
-                    if d < rd then
-                        rd = d
-                        ranged = c
-                    end
-                    __continue88 = true
-                until true
-                if not __continue88 then
-                    break
-                end
-            end
-        end
-    end
+    local ____pickRanged_12 = pickRanged
+    local ____bot_11 = bot
+    local ____opt_9 = opps[pid]
+    local ranged = ____pickRanged_12(____bot_11, mine, ____opt_9 and ____opt_9.ranged)
     local o = opps[pid]
     if o ~= nil and o.ranged ~= ranged then
         close(bot, pid)

@@ -577,8 +577,10 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const busy = acting(bot);
     // Starting a task replaces the hero's running one (the engine's `replaced`): a pull or stack in progress is not ours to take. The
     // runner's current task is asked, not the decider's Held: Held names the row that held the hero at its last round, while the runner's
-    // task is what Start would replace, whichever row or job started it.
-    const other = Tasks.Running(bot) !== undefined;
+    // task is what Start would replace, whichever row or job started it. A lower row's task is the row's to take (the draw hands its
+    // drawn creeps over mid-walk: no-creep-unpaid s6b), as a round of the decider would.
+    const cur = Tasks.Running(bot)?.name;
+    const other = cur !== undefined && !Decider.Below(ROW, cur);
     // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
     // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
     const mode = bot.GetActiveMode();

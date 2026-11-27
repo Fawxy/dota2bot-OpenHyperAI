@@ -56,6 +56,11 @@ export const DEFAULTS = {
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
      *  the next checkpoint batch against an arm with it off and every other switch on, and the flag deleted there either way. */
     TowerStay: true,
+    /** The draw (protective aggro), a decider row (aggro_row.ts, slice oha-lane-aggro; no-creep-unpaid proposal s6b): a core (pos 1 to 3)
+     *  beside our ranged creep while their lane creeps fight ours gives one attack order on the nearest enemy hero our team sees and walks
+     *  back past our ranged creep, so the drawn creeps take it when the draw lets go. Off: the read logs every chance as a shadow and
+     *  stock plays. Off until its batch: the on arm sets it; deleted if it does not beat the reference arm. */
+    LaneAggro: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

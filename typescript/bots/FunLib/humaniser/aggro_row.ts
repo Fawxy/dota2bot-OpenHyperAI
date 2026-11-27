@@ -1,0 +1,296 @@
+/**
+ * The draw (protective aggro; no-creep-unpaid proposal s6b, doctrine D15), a decider row below the creep row, switch Ours.LaneAggro.
+ * A core (`aggro_offer` MayOffer: the trip table's `aggro` row) beside our ranged creep while their lane creeps fight ours gives one
+ * attack order on the nearest enemy hero our team sees and walks back to the hand-over spot, 250 behind our ranged creep away from the
+ * clash, so the creeps it drew take that creep when the draw lets go. The deny is stock's or the deny row's: nothing here locks the creep.
+ *
+ * The go rule is the offer read's checks (`AggroOffer.Checks`), asked on a fresh read (`ReadNow`) at the go and again after the walk-in.
+ * Phases and holds (ARCHITECTURE rules 8 to 10):
+ * 1. `walk`, soft: to the draw spot (at most `MaxWalk` of walk, the read's own bound). Valve's attack, item, evasive, defend-ally and
+ *    retreat may take the hero; the runner then ends the task `preempted` and a later round asks the go rule afresh. Before the order the
+ *    phase looks at whether an action of the hero's is under way and does not order over it (rule 9).
+ * 2. The order, the commit point: `Action_AttackUnit(target, once)`, then the hold is hard (`hs=hard` from the next round, `phase=order`
+ *    on the job line). No swing of its own and no release order: a release turns the nearest chaser back onto the hero (measured).
+ * 3. `back`, hard: a straight walk to the hand-over spot, `OrderGap` after the order. Ends `ok` when no drawn creep has the hero as its
+ *    target any more (from `Switch` after the order: creeps switch 0.4 to 0.8 s after it), `missed nodraw` when none ever had, and
+ *    `timeout` at `Backstop` (a logged backstop). The hero is then the next row's: stock's laning, the creep row, the deny row.
+ *
+ * The hand-over: a drawn creep that comes due mid-walk is the creep row's, which sits above; its begin replaces this task (the runner's
+ * `cancelled replaced`, `cut=replaced` on the end line). The attempt lives in this row's memo, not its task: while the memo is open (an
+ * order went and the task was replaced or preempted), the order is under `Backstop` old and a drawn creep still has the hero as its
+ * target, `wants` offers the walk back again (`phase=resume`, the same `aid`) unless the danger read at the hero's place is deadly.
+ *
+ * Lines: the offer read's `ev=choice kind=aggro src=own` (aggro_offer.ts: `go` 1 with the `aid` on the opportunity the row started on);
+ * `ev=job job=aggro` start, order, resume and end.
+ */
+import type * as Lib from "bots/FunLib/engine/tasks";
+import { BotMode, Unit } from "bots/ts_libs/dota";
+import * as AggroOffer from "bots/FunLib/humaniser/aggro_offer";
+import * as Decider from "bots/FunLib/humaniser/decider";
+import type { Reads } from "bots/FunLib/humaniser/reads";
+import * as Drill from "bots/FunLib/humaniser/drill";
+import * as HDebug from "bots/FunLib/humaniser/debug";
+import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
+import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
+import * as Telemetry from "bots/FunLib/humaniser/telemetry";
+
+export const SETTINGS = {
+    /** Seconds from the order to the walk back's first move: the probe walked off 0.1 s after and drew as with none (8 of 8). */
+    OrderGap: 0.1,
+    /** Seconds after the order before "no drawn creep on the hero" ends the draw: they switch 0.4 to 0.8 s after it (measured, about 70). */
+    Switch: 1.0,
+    /** The logged backstop (s from the order): the draw lets go at about 2.3 s (melee) and 2.85 (ranged), measured; s6b's 3.5. */
+    Backstop: 3.5,
+    /** The walk-in's tolerance (world units) and its cap past the read's walk (s; judgement). */
+    Tolerance: 50,
+    WalkSlack: 0.5,
+    /** Seconds the row yields after an attempt ends before a new one may start (as the rune detour's Rest: the decider's FRESH). */
+    Rest: 0.5,
+};
+
+/** The task's host: the decider's (farm). */
+const HOST = BotMode.Farm;
+
+/** The modes a draw may start from: a hero laning, farming or idle (judgement: any other is a higher rule's, as the rune detour's). */
+const FROM: Record<number, boolean> = { [BotMode.None]: true, [BotMode.Laning]: true, [BotMode.Farm]: true };
+
+interface Attempt {
+    aid: number;
+    t0: number;
+    cid: number;
+    ranged: Unit;
+    target: Unit;
+    drawn: Unit[];
+    hand: AggroOffer.Vec;
+    phase: "walk" | "back";
+    orderAt?: number;
+    /** The most drawn creeps on the hero at one step, and when none were on it any more after one had been (s from the order). */
+    peak: number;
+    letAt?: number;
+    resumes: number;
+    hp0: number;
+}
+
+/** pid -> the attempt whose task runs. */
+const running: Record<number, Attempt | undefined> = {};
+/** pid -> the last attempt while it can resume (an order went, the task was replaced or preempted). */
+const memo: Record<number, Attempt | undefined> = {};
+const endedAt: Record<number, number | undefined> = {};
+/** pid -> what `wants` decided this round, for `begin`: a fresh start's read, or the attempt to resume. */
+const pending: Record<number, { snap?: AggroOffer.Snap; resume?: Attempt } | undefined> = {};
+
+export function ResetCache(): void {
+    for (const t of [running, memo, endedAt, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
+}
+
+export function On(bot: Unit): boolean {
+    return AggroOffer.RowOn() && AggroOffer.MayOffer(bot) && !Drill.Held(bot) && LaneConfig.InLaningPhase();
+}
+
+function dist(a: AggroOffer.Vec, b: AggroOffer.Vec): number {
+    return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
+}
+
+function r1(x: number): number {
+    return math.floor(x * 10 + 0.5) / 10;
+}
+
+/** Drawn creeps alive with the hero as their attack target, and of them those on our ranged creep (the hand-over's count). */
+function onHero(bot: Unit, a: Attempt): number {
+    let n = 0;
+    for (const c of a.drawn) if (!c.IsNull() && c.IsAlive() && c.GetAttackTarget() === bot) n++;
+    return n;
+}
+
+function onRanged(a: Attempt): number {
+    if (a.ranged.IsNull() || !a.ranged.IsAlive()) return 0;
+    let n = 0;
+    for (const c of a.drawn) if (!c.IsNull() && c.IsAlive() && c.GetAttackTarget() === a.ranged) n++;
+    return n;
+}
+
+function jobLine(bot: Unit, a: Attempt, phase: string, why: string, extra: Telemetry.Fields<"job"> = []): void {
+    const fields: Telemetry.Fields<"job"> = [
+        ["pid", bot.GetPlayerID()],
+        ["job", "aggro"],
+        ["aid", a.aid],
+        ["phase", phase],
+        ["why", why],
+        ["host", HOST],
+        ["cid", a.cid],
+    ];
+    for (const f of extra) fields.push(f);
+    Telemetry.Event("job", fields);
+}
+
+/** Whether an open attempt may take the hero back for its walk (s6b's resume). */
+function resumable(bot: Unit, a: Attempt, now: number): boolean {
+    if (a.orderAt === undefined || now - a.orderAt >= SETTINGS.Backstop || !bot.IsAlive()) return false;
+    if (onHero(bot, a) === 0) return false;
+    return SafeGather.At(bot, bot.GetLocation(), { remember: false }).level !== "deadly";
+}
+
+/** The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone. */
+function* back(ctx: Lib.Ctx, bot: Unit, a: Attempt): Lib.TaskBody {
+    const orderAt = a.orderAt!;
+    while (ctx.now() < orderAt + SETTINGS.OrderGap) yield;
+    while (true) {
+        if (!bot.IsAlive()) return ctx.fail("dead");
+        const t = ctx.now() - orderAt;
+        const n = onHero(bot, a);
+        if (n > a.peak) a.peak = n;
+        if (t >= SETTINGS.Switch && n === 0) {
+            a.letAt = t;
+            return a.peak > 0 ? ctx.ok() : ctx.fail("missed", "nodraw");
+        }
+        if (t >= SETTINGS.Backstop) return ctx.fail("timeout");
+        const me = bot.GetLocation();
+        if (dist(me, a.hand) > SETTINGS.Tolerance) bot.Action_MoveToLocation(Vector(a.hand.x, a.hand.y, me.z));
+        yield;
+    }
+}
+
+/** A fresh attempt: the soft walk-in, the go rule again, the order (the commit point), then the walk back. */
+function* draw(ctx: Lib.Ctx, bot: Unit, a: Attempt, spot: AggroOffer.Vec, walk: number): Lib.TaskBody {
+    if (dist(bot.GetLocation(), spot) > SETTINGS.Tolerance) {
+        const me = bot.GetLocation();
+        const r = yield* ctx.walkTo(Vector(spot.x, spot.y, me.z), { tolerance: SETTINGS.Tolerance, timeout: walk + SETTINGS.WalkSlack });
+        if (!r.success) return r;
+    }
+    const s = AggroOffer.ReadNow(bot);
+    if (s === undefined) return ctx.fail("cancelled", "noclash");
+    if (s.fails.length > 0) return ctx.fail("cancelled", s.fails[0]);
+    if (s.target === undefined) return ctx.fail("cancelled", "unseen");
+    // Rule 9: an action of the hero's already under way is not ordered over.
+    if (bot.NumQueuedActions() > 0 || bot.IsChanneling() || bot.IsUsingAbility() || bot.IsCastingAbility()) return ctx.fail("cancelled", "acting");
+    a.target = s.target;
+    a.drawn = s.drawnUnits;
+    a.hand = s.hand;
+    bot.Action_AttackUnit(s.target, true);
+    a.orderAt = ctx.now();
+    a.phase = "back";
+    AggroOffer.NoteHeroHit(bot);
+    jobLine(bot, a, "order", "go", [
+        ["ot", r1(a.orderAt - a.t0)],
+        ["an", s.drawnUnits.length],
+    ]);
+    return yield* back(ctx, bot, a);
+}
+
+function finish(bot: Unit, res: Lib.Result): void {
+    const pid = bot.GetPlayerID();
+    const a = running[pid];
+    running[pid] = undefined;
+    endedAt[pid] = DotaTime();
+    if (a === undefined) return;
+    const replaced = res.reason === "cancelled" && res.message === "replaced";
+    const cut = replaced ? "replaced" : res.reason === "preempted" ? (Decider.LetGo(bot) ? "retreat" : HDebug.ModeName(bot.GetActiveMode())) : undefined;
+    // Open for the resume only when another row or mode took the hero after the order.
+    memo[pid] = a.orderAt !== undefined && (replaced || res.reason === "preempted") ? a : undefined;
+    jobLine(bot, a, "end", res.success ? "ok" : res.reason, [
+        ["msg", res.message],
+        ["cut", cut],
+        ["ot", a.orderAt !== undefined ? r1(a.orderAt - a.t0) : -1],
+        ["lt", a.letAt !== undefined ? r1(a.letAt) : a.orderAt !== undefined ? r1(DotaTime() - a.orderAt) : undefined],
+        ["an", a.drawn.length],
+        ["ah", a.peak],
+        ["ar", onRanged(a)],
+        ["rs", a.resumes],
+        ["hp0", a.hp0],
+        ["hp1", math.floor(bot.GetHealth())],
+    ]);
+}
+
+/** The row's `wants`: an offer while an attempt runs, when an open one should resume, or when a fresh read passes the go rule now. */
+function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
+    const pid = bot.GetPlayerID();
+    pending[pid] = undefined;
+    if (!On(bot)) {
+        memo[pid] = undefined;
+        return undefined;
+    }
+    Tasks.Tick(bot);
+    const a = running[pid];
+    if (a !== undefined) return { tgt: `creep:${a.cid}` };
+    if (Tasks.Jobs() === undefined) return undefined;
+    const now = DotaTime();
+    const m = memo[pid];
+    if (m !== undefined) {
+        if (resumable(bot, m, now)) {
+            pending[pid] = { resume: m };
+            return { tgt: `creep:${m.cid}`, by: m.orderAt! + SETTINGS.Backstop };
+        }
+        memo[pid] = undefined;
+    }
+    const ended = endedAt[pid];
+    if (ended !== undefined && now - ended < SETTINGS.Rest) return undefined;
+    // Another task (a job no row started) is not this row's to replace; a row above would have answered first.
+    if (Tasks.Running(bot) !== undefined || FROM[bot.GetActiveMode()] !== true) return undefined;
+    const s = AggroOffer.ReadNow(bot);
+    if (s === undefined || s.fails.length > 0 || s.target === undefined) return undefined;
+    pending[pid] = { snap: s };
+    return { tgt: `creep:${Telemetry.CreepId(s.ranged)}` };
+}
+
+/** The row's `begin`: starts the attempt `rowWants` decided (a fresh draw, or the walk back of an open one). */
+function rowBegin(bot: Unit): boolean {
+    const pid = bot.GetPlayerID();
+    const pd = pending[pid];
+    pending[pid] = undefined;
+    if (pd === undefined) return false;
+    const opts = { name: "aggro", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r: Lib.Result) => finish(bot, r) };
+    if (pd.resume !== undefined) {
+        const m = pd.resume;
+        const ok = Tasks.Start(bot, opts, (ctx: Lib.Ctx) => back(ctx, bot, m));
+        if (!ok) return false;
+        memo[pid] = undefined;
+        m.resumes++;
+        running[pid] = m;
+        jobLine(bot, m, "resume", "drawn", [["ah", onHero(bot, m)]]);
+        return true;
+    }
+    const s = pd.snap!;
+    const walk = s.f.walk;
+    const a: Attempt = {
+        aid: 0,
+        t0: DotaTime(),
+        cid: Telemetry.CreepId(s.ranged),
+        ranged: s.ranged,
+        target: s.target!,
+        drawn: s.drawnUnits,
+        hand: s.hand,
+        phase: "walk",
+        peak: 0,
+        resumes: 0,
+        hp0: math.floor(bot.GetHealth()),
+    };
+    const spot = s.spot;
+    const ok = Tasks.Start(bot, opts, (ctx: Lib.Ctx) => draw(ctx, bot, a, spot, walk));
+    if (!ok) return false;
+    a.aid = Telemetry.NextAid(pid);
+    memo[pid] = undefined;
+    running[pid] = a;
+    AggroOffer.NoteGo(bot, s.ranged, a.aid);
+    jobLine(bot, a, "start", "go", [
+        ["tgt", `creep:${a.cid}`],
+        ["gw", r1(walk)],
+        ["an", s.drawn],
+        ["k", s.f.k],
+    ]);
+    return true;
+}
+
+/** The row's verb: one frame of the attempt; true once it has ended. */
+function rowStep(bot: Unit): boolean {
+    Tasks.Step(bot, HOST);
+    return running[bot.GetPlayerID()] === undefined;
+}
+
+/** Soft while walking in; hard from the order (the commit point). */
+function rowSoft(bot: Unit): boolean {
+    return running[bot.GetPlayerID()]?.phase === "walk";
+}
+
+/** The decider's row (registered in index.ts, below the creep row, so the decider imports no row). */
+export const ROW: Decider.Row = { name: "aggro", wants: rowWants, begin: rowBegin, step: rowStep, soft: rowSoft };
