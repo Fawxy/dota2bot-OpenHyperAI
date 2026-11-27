@@ -88,8 +88,12 @@ do -- slice oha-aimed-flight: a circle around the hero whose damage flies out (D
 		radius = 500, half = 0, speed = 400, length = 0, delay = 0, offset = 0 }
 	local still = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 0, vy = 0 }, {}, {})
 	check("it lands after the flight to the creep, 400 at 400 a second, and no turn", near(still.timing.land, 1.0), still.timing.land)
-	-- Walking away at 300, the creep is 700 off a second on: placed at the landing it would be outside the circle.
+	-- The pulse chases: a creep walking off at 300 is caught at the closing speed of 100, one walking in at 700.
 	local away = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = 300, vy = 0 }, { { x = -450, y = 0, hull = 24, vx = -300, vy = 0 } }, {})
+	check("a creep walking off is caught 400 / (400 - 300) s on", near(away.timing.land, 4.0), away.timing.land)
+	local toward = S.Aimed(pulse, hero, 300, 0.1, { x = 400, y = 0, hull = 16, vx = -300, vy = 0 }, {}, {})
+	check("a creep walking in, 400 / 700 s on", near(toward.timing.land, 400 / 700), toward.timing.land)
+	-- Four seconds on, both would be 1,200 farther off: placed at the landing neither is inside the circle.
 	check("the creep and the foe are placed at the cast: no walk, and the foe walking out is hit", away.timing.gap == 0 and away.aim.also == 1, away.timing.gap)
 end
 

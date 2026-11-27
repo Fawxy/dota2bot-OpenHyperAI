@@ -22,6 +22,14 @@ export interface Moving extends Foe {
     vy: number;
 }
 
+export const SETTINGS = {
+    /**
+     * judgement: the least closing speed of a homing flight, as a share of the projectile's, so a creep walking off faster
+     * than it (none in lane) reads a long flight rather than none.
+     */
+    ChaseFloor: 0.2,
+};
+
 function dist(a: Place, b: Place): number {
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
@@ -109,11 +117,17 @@ function movedBy(u: Moving, t: number): Moving {
 /**
  * A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
  * where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
- * homes on them, so they are placed `flight` before the landing.
+ * homes on them, so they are placed `flight` before the landing, and its flight is a chase: the creep's speed away from where it
+ * casts slows the closing (a lane creep's 325 is 0.81 of Death Pulse's 400).
  */
-function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Place, heroSpeed: number, turn: number): { timing: Timing; flight: number } {
+function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Moving, heroSpeed: number, turn: number): { timing: Timing; flight: number } {
     const walk = aim.gap / math.max(100, heroSpeed);
-    const flight = s.speed > 0 ? dist(aim.from, g.k === "l" || g.k === "s" ? creep : aim.at) / s.speed : 0;
+    let flight = 0;
+    if (s.speed > 0 && g.k === "s") {
+        const d = dist(aim.from, creep);
+        const away = d > 0 ? ((creep.x - aim.from.x) * creep.vx + (creep.y - aim.from.y) * creep.vy) / d : 0;
+        flight = d / math.max(s.speed * SETTINGS.ChaseFloor, s.speed - away);
+    } else if (s.speed > 0) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
     return { timing: { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay }, flight };
 }
 

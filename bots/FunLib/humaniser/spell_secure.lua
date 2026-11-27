@@ -27,6 +27,7 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local SpellAim = require(GetScriptDirectory().."/FunLib/humaniser/spell_aim")
+____exports.SETTINGS = {ChaseFloor = 0.2}
 local function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -128,10 +129,18 @@ local function movedBy(u, t)
 end
 --- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from
 -- where it casts, the delay. `flight` is returned apart: an `s` spell with a speed (Death Pulse) picks its units at the cast and
--- homes on them, so they are placed `flight` before the landing.
+-- homes on them, so they are placed `flight` before the landing, and its flight is a chase: the creep's speed away from where it
+-- casts slows the closing (a lane creep's 325 is 0.81 of Death Pulse's 400).
 local function aimedTiming(s, g, aim, creep, heroSpeed, turn)
     local walk = aim.gap / math.max(100, heroSpeed)
-    local flight = s.speed > 0 and dist(aim.from, (g.k == "l" or g.k == "s") and creep or aim.at) / s.speed or 0
+    local flight = 0
+    if s.speed > 0 and g.k == "s" then
+        local d = dist(aim.from, creep)
+        local away = d > 0 and ((creep.x - aim.from.x) * creep.vx + (creep.y - aim.from.y) * creep.vy) / d or 0
+        flight = d / math.max(s.speed * ____exports.SETTINGS.ChaseFloor, s.speed - away)
+    elseif s.speed > 0 then
+        flight = dist(aim.from, g.k == "l" and creep or aim.at) / s.speed
+    end
     return {timing = {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}, flight = flight}
 end
 --- Seconds from now until the spell's units are placed: at the landing, or at the cast for a homing `s` spell.
@@ -204,18 +213,18 @@ function ____exports.Best(as)
     local best
     for ____, a in ipairs(as) do
         do
-            local __continue29
+            local __continue31
             repeat
                 if best == nil then
                     best = a
-                    __continue29 = true
+                    __continue31 = true
                     break
                 end
                 if a.kill ~= best.kill then
                     if a.kill then
                         best = a
                     end
-                    __continue29 = true
+                    __continue31 = true
                     break
                 end
                 if a.kill then
@@ -237,9 +246,9 @@ function ____exports.Best(as)
                 elseif short(a) < short(best) then
                     best = a
                 end
-                __continue29 = true
+                __continue31 = true
             until true
-            if not __continue29 then
+            if not __continue31 then
                 break
             end
         end
@@ -323,23 +332,23 @@ function ____exports.CastPick(as, o)
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue58
+            local __continue60
             repeat
                 local why = castWhyOf(a, o)
                 if why == nil then
                     if pick == nil or castBefore(a, pick) then
                         pick = a
                     end
-                    __continue58 = true
+                    __continue60 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue58 = true
+                __continue60 = true
             until true
-            if not __continue58 then
+            if not __continue60 then
                 break
             end
         end
