@@ -301,6 +301,11 @@ function finish(bot: Unit, res: Lib.Result): void {
     ]);
 }
 
+/** The offer's target and so the hero's claim: a draw for our ranged creep, a key of its own, since the draw is no attempt on the creep (a `creep:` claim is a last hit's or a deny's). */
+function target(cid: number): string {
+    return `draw:${cid}`;
+}
+
 /** The row's `wants`: an offer while an attempt runs, when an open one should resume, or when a fresh read passes the go rule now. */
 function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
@@ -311,14 +316,14 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     }
     Tasks.Tick(bot);
     const a = running[pid];
-    if (a !== undefined) return { tgt: `creep:${a.cid}` };
+    if (a !== undefined) return { tgt: target(a.cid) };
     if (Tasks.Jobs() === undefined) return undefined;
     const now = DotaTime();
     const m = memo[pid];
     if (m !== undefined) {
         if (resumable(bot, m, now)) {
             pending[pid] = { resume: m };
-            return { tgt: `creep:${m.cid}`, by: m.orderAt! + SETTINGS.Backstop };
+            return { tgt: target(m.cid), by: m.orderAt! + SETTINGS.Backstop };
         }
         memo[pid] = undefined;
     }
@@ -329,7 +334,7 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const s = AggroOffer.ReadNow(bot);
     if (s === undefined || s.fails.length > 0 || s.target === undefined) return undefined;
     pending[pid] = { snap: s };
-    return { tgt: `creep:${Telemetry.CreepId(s.ranged)}` };
+    return { tgt: target(Telemetry.CreepId(s.ranged)) };
 }
 
 /** The row's `begin`: starts the attempt `rowWants` decided (a fresh draw, or the walk back of an open one). */

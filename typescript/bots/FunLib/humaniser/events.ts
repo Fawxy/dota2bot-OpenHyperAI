@@ -2967,7 +2967,7 @@ export const EVENTS = {
         beg: "str",
         /** kind=decider: the row whose begin the decider refused (Ours.FightFirst: the hero was in attack, roam or team roam), with `btgt` its offer's target, `bfrom` the mode and `why` the reason (`fight`); no `held`, `win` or `beg` on that line. Logged once per hero, row and target while the refusal repeats. */
         ref: "str",
-        /** kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
+        /** kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`, `draw:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour). */
         btgt: "str",
         bby: "num",
         /** kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran. */

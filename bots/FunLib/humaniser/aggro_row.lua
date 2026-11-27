@@ -458,6 +458,10 @@ local function finish(bot, res)
         }
     )
 end
+--- The offer's target and so the hero's claim: a draw for our ranged creep, a key of its own, since the draw is no attempt on the creep (a `creep:` claim is a last hit's or a deny's).
+local function target(cid)
+    return "draw:" .. tostring(cid)
+end
 --- The row's `wants`: an offer while an attempt runs, when an open one should resume, or when a fresh read passes the go rule now.
 local function rowWants(bot, _reads)
     local pid = bot:GetPlayerID()
@@ -469,7 +473,7 @@ local function rowWants(bot, _reads)
     Tasks.Tick(bot)
     local a = running[pid]
     if a ~= nil then
-        return {tgt = "creep:" .. tostring(a.cid)}
+        return {tgt = target(a.cid)}
     end
     if Tasks.Jobs() == nil then
         return nil
@@ -480,7 +484,7 @@ local function rowWants(bot, _reads)
         if resumable(bot, m, now) then
             pending[pid] = {resume = m}
             return {
-                tgt = "creep:" .. tostring(m.cid),
+                tgt = target(m.cid),
                 by = m.orderAt + ____exports.SETTINGS.Backstop
             }
         end
@@ -498,7 +502,7 @@ local function rowWants(bot, _reads)
         return nil
     end
     pending[pid] = {snap = s}
-    return {tgt = "creep:" .. tostring(Telemetry.CreepId(s.ranged))}
+    return {tgt = target(Telemetry.CreepId(s.ranged))}
 end
 --- The row's `begin`: starts the attempt `rowWants` decided (a fresh draw, or the walk back of an open one).
 local function rowBegin(bot)
