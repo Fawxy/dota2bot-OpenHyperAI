@@ -59,6 +59,16 @@ ____exports.TRIPS = {
             60,
             60
         )
+    },
+    {
+        kind = "aggro",
+        rank = by(
+            65,
+            65,
+            65,
+            nil,
+            nil
+        )
     }
 }
 local function rowOf(kind)

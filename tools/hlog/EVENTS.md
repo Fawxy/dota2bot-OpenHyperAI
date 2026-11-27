@@ -703,7 +703,9 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `yd` num: `job=creep` end: 1 when the attempt ended because a hero with a lower `creep` cell took a claim on the creep before this hero's swing was ordered (`why=interrupted`; creep_row `yieldsTo`, Ours.SupportCreeps). Absent otherwise.
 - `lf` num: `job=creep` start, when a tower of ours was attacking the creep (Ours.TowerCreeps, the leftover rule, creep_row `Verdict`): `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it after armour, `ts` the tower shots before that one, `vd` the verdict (`wait`, `prehit`; `none` is refused and never starts).
 - `ph` num: `job=creep` end, on an attempt the leftover rule covers: the plain attacks (pre-hits) ordered before the last hit.
-- `tl` str: `job=creep` end, when the leftover rule gave the attempt up: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's refusal (`nowindow`, `mates`, `none`). Absent otherwise.
+- `tl` str: `job=creep` end, the leftover rule's first refusal mid-attempt: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's (`nowindow`, `mates`, `none`). It ended the attempt unless `Ours.TowerStay`. Absent otherwise.
+- `tlt` num: `job=creep` end, with `tl`: seconds from the go to that refusal.
+- `tlc` num: `job=creep` end, with `tl`: 1 when our lane creeps were attacking the creep at that refusal (a wind-up seen or their attack target), else 0.
 - `cid` num: `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`).
 - `gw` num: `job=creep` start: the engine's walk into range and due (s) at the read that went.
 - `rng` num: `job=creep` start: the hero's attack range.
@@ -1448,7 +1450,7 @@ Slice support-lane: one sample per started pull per PullJob WatchLogEvery during
 
 Slice support-lane: one line per judgement decision (bot-structure s2). kind: the decision (pull); go 1|0; want: the reading asked for it; why: what held it back (a start check, partner, late) or `lane` when the reading did not want it; pull fields: slot (planned hit second), st (push state OUT|HOLD|IN), q (clash between the T1s, 0 ours 1 theirs), mv (clash move over 30 s from our side), own (the clash's distance from our T1 along the lane), tgt (the lane's target point, LanePush TargetOf; before slice pull-gate the pull was wanted when own + mv passed it by PullJob WantPast and st was not IN), cf (logs before slice pull-trigger only: the move with our walking wave removed), tw (tower rule decided), ms (cost); the camp as the API returns it at the decision: cn neutrals in its box, cs of them CanBeSeen, chp their health, cv the camp's origin visible (1|0), cfv its whole box visible (1|0; `one`/`empty` are read only then), cdmg its expected damage on the puller over the pull (PullJob CampDamage; set once the lane wants the pull), php the puller's HP. why empty | one (a seen camp down to one neutral; CampRead CampGate) | camp-dmg (cdmg would leave php under StartReserve) | enemy-site (se, the nearest enemy hero to the stand or meet point, within PullJob SiteEnemy; Ours.Threat off) | threat | missing (SafeGather.TripGate at the camp, `ev=threat who=pull_job`; Ours.Threat on).
 
-`pid` num, `bby` num, `rsrc` str, `rage` num, `ap` num, `rule` str
+`pid` num, `bby` num, `awr` num, `am` num, `ar` num, `ag1` num, `agr` num, `agm` num, `rsrc` str, `rage` num, `ap` num, `rule` str
 
 - `aid` num: The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing.
 - `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment).
@@ -1471,7 +1473,19 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `cid` num: `kind=creep`: the creep's id (`Telemetry.CreepId`, as on `creep_death` and `unit_seen`).
 - `ck` str: `kind=creep`: the creep's kind, `m` melee, `r` ranged, `s` siege, `f` flag (`LaneRead.CreepKind`).
 - `who` str: `kind=creep`: `t` their creep (a last hit), `o` ours (a deny).
-- `wo` num: `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was.
+- `wo` num: `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. `kind=aggro`: to the first read that failed no check.
+- `ak` str: kind=aggro (aggro_offer.ts, the draw's shadow, no-creep-unpaid s6b): one line per core of the trip table's `aggro` row and our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1 when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot, `eh` the enemy heroes covering it). `kind=aggro`: the case, `hg` (their fighting creeps on average higher than our ranged creep, by more than half a step: location z, AggroOffer Step) or `dn`.
+- `arf` str: `kind=aggro`: the failed checks, comma-joined (`-` none): onr (dn and their creeps already on our ranged creep), due (ag1 > 0), far, unseen (no enemy hero our team sees), etower, covered, danger (deadly at the draw spot), up (our ranged creep higher than their fighting creeps by more than half a step), cd (the hero attacked a hero within 3 s).
+- `ard` num: `kind=aggro`: reads of the chance, and how many of them failed no check.
+- `an` num: `kind=aggro`: their creeps drawn from the draw spot (within 500), and the melee among them.
+- `ao` num: `kind=aggro`: their creeps attacking our ranged creep.
+- `af` num: `kind=aggro`: the ground height (location z) of their fighting creeps on average and of our ranged creep (GetHeightLevel does not follow it: a smoke read level 4 at 128 and 2 at 256).
+- `apw` num: `kind=aggro`: our lane creeps' HP within 1,200 of our ranged creep over their fighting creeps' HP.
+- `arp` num: `kind=aggro`: our ranged creep's HP share.
+- `aes` num: `kind=aggro`: enemy heroes our team sees.
+- `atw` num: `kind=aggro`: the draw spot's gap to the nearest enemy tower's reach (attack range and both hulls; negative inside); absent with none within 2,500.
+- `adl` str: `kind=aggro`: the danger read's level at the draw spot (SafeGather.At).
+- `ag0` num: `kind=aggro`: last hits and denies due inside the window (twice the walk plus 2.5 s): ag0 all but our ranged creep; ag1 those the draw would cost (their creeps not drawn, drawn melee, our creeps an undrawn attacker hits); agr, agm their drawn ranged and melee.
 - `wl` num: `kind=creep`: seconds from the first read where arriving was possible to the last such read, gaps between them included; absent when it never was.
 - `walk` num: `kind=creep`: the engine's seconds to walk into attack range (centre distance less attack range, no hulls; the stand spot behind `pc` to `exs` adds the hulls).
 - `due` num: `kind=creep`: the engine's seconds until a swing ordered then is due.

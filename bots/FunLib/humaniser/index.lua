@@ -49,6 +49,7 @@ local PullJob = require(GetScriptDirectory().."/FunLib/humaniser/pull_job")
 local CampRead = require(GetScriptDirectory().."/FunLib/humaniser/camp_read")
 local RuneDetour = require(GetScriptDirectory().."/FunLib/humaniser/rune_detour")
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
+local AggroOffer = require(GetScriptDirectory().."/FunLib/humaniser/aggro_offer")
 local CreepRow = require(GetScriptDirectory().."/FunLib/humaniser/creep_row")
 local Chooser = require(GetScriptDirectory().."/FunLib/humaniser/chooser")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
@@ -115,6 +116,7 @@ local steps = {
     stackShadow = StackJob.Shadow,
     runeDetourShadow = RuneDetour.Shadow,
     creepOfferShadow = CreepOffer.Shadow,
+    aggroShadow = AggroOffer.Shadow,
     probe = ApiProbe.Tick,
     tasks = Tasks.Tick
 }
@@ -178,6 +180,7 @@ local function tick(bot)
     pcall(steps.stackShadow, bot)
     pcall(steps.runeDetourShadow, bot)
     pcall(steps.creepOfferShadow, bot)
+    pcall(steps.aggroShadow, bot)
     pcall(steps.probe, bot)
     pcall(VisionMap.Tick, bot)
     steps.tasks(bot)
@@ -272,6 +275,7 @@ if Telemetry.GuardsEnabled() then
 end
 if Telemetry.GuardsEnabled() then
     steps.creepOfferShadow = Telemetry.Guard("CreepOffer.Shadow", steps.creepOfferShadow)
+    steps.aggroShadow = Telemetry.Guard("AggroOffer.Shadow", steps.aggroShadow)
 end
 if Telemetry.GuardsEnabled() then
     for k, fn in pairs(steps) do

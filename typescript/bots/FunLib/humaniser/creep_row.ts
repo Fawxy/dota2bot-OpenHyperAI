@@ -233,8 +233,8 @@ function attackerOf(towers: Unit[], creep: Unit): Unit | undefined {
 }
 
 /**
- * One of our lane creeps attacks the creep: a creep's hit in the lane read (its wind-up was seen), or its attack target. Asked only for a creep
- * whose verdict is `prehit`: a pre-hit then would race our creeps for the leftover.
+ * One of our lane creeps attacks the creep: a creep's hit in the lane read (its wind-up was seen), or its attack target. Asked for a creep
+ * whose verdict is `prehit` (a pre-hit then would race our creeps for the leftover) and once at the rule's first refusal mid-attempt (`tlc`).
  */
 function creepsAttack(bot: Unit, creep: Unit): boolean {
     const row = LaneHits.Of(bot.GetTeam(), bot.GetAssignedLane(), creep);
@@ -349,8 +349,12 @@ interface Attempt {
     /** The tower that was attacking the creep at the go (the leftover rule applies to this attempt), and the pre-hits ordered so far (the end line's `ph`). */
     tower?: Unit;
     ph: number;
-    /** Why the leftover rule gave the attempt up (the end line's `tl`): `tgt` the tower's target is no longer the creep (or the tower is gone), else the verdict's refusal. */
+    /** The leftover rule's first refusal mid-attempt (the end line's `tl`): `tgt` the tower's target is no longer the creep (or the tower is gone), else the
+     *  verdict's. It ends the attempt unless `Ours.TowerStay`, which falls through to the plain last hit. */
     tl?: string;
+    /** Seconds from the go to that refusal (the end line's `tlt`), and whether our creeps were attacking the creep then (`tlc`). */
+    tlt?: number;
+    tlc?: boolean;
 }
 
 const running: Record<number, Attempt | undefined> = {};
@@ -524,6 +528,8 @@ function endLine(bot: Unit, a: Attempt | undefined, r: Lib.Result, cut: string |
         ["cid", a?.cid],
         ["ph", a?.tower === undefined ? undefined : a.ph],
         ["tl", a?.tl],
+        ["tlt", a?.tlt === undefined ? undefined : r2(a.tlt)],
+        ["tlc", a?.tlc === undefined ? undefined : a.tlc ? 1 : 0],
         ["so", a === undefined ? undefined : a.so !== undefined ? r2(a.so) : -1],
         ["tk", a?.tk],
         ["tks", a === undefined ? undefined : r2(a.tks)],
@@ -748,28 +754,40 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
     best.noteCast(false, "refused");
 }
 
-/** The leftover rule ends a running attempt: the verdict is `none` now and the swing is not yet ordered. */
+/**
+ * The leftover rule's refusal of a running attempt before its swing is ordered: the verdict is `none` now, or the tower left the creep. Noted
+ * once (`refuse`); it ends the attempt only with `Ours.TowerStay` off.
+ */
 function towerLost(bot: Unit, pid: number): boolean {
     const a = running[pid];
-    if (a === undefined || a.tower === undefined || a.so !== undefined) return false;
-    if (towerGone(a.tower) || a.tower.GetAttackTarget() !== a.creep) {
-        a.tl = "tgt";
-        return true;
-    }
+    if (a === undefined || a.tower === undefined || a.so !== undefined || a.tl !== undefined) return false;
+    if (towerGone(a.tower) || a.tower.GetAttackTarget() !== a.creep) return refuse(bot, a, "tgt");
     const tr = towerRead(bot, a.creep, a.tower, a.ph);
     if (tr.v.vd !== "none") return false;
-    a.tl = tr.why ?? "none";
-    return true;
+    return refuse(bot, a, tr.why ?? "none");
+}
+
+/**
+ * Notes the leftover rule's first refusal on the attempt, and whether our creeps were attacking the creep then (`tlc`: with the tower alone the
+ * leftover cannot change, so a flip without them is the tower's damage spread or another hero); true when it ends the attempt (`Ours.TowerStay` off).
+ */
+function refuse(bot: Unit, a: Attempt, why: string): boolean {
+    if (a.tl === undefined) {
+        a.tl = why;
+        a.tlt = DotaTime() - a.t0;
+        a.tlc = a.creep.IsAlive() && creepsAttack(bot, a.creep);
+    }
+    return !Ours.On("TowerStay");
 }
 
 function towerGone(tower: Unit): boolean {
     return tower.IsNull() || !tower.IsAlive();
 }
 
-/** The pre-hit's interrupt: the tower left the creep (or fell); flags the attempt so its end line says so. */
-function towerLeft(a: Attempt, creep: Unit): boolean {
+/** The pre-hit's interrupt: the tower left the creep (or fell); notes the refusal and always cuts the pre-hit. */
+function towerLeft(bot: Unit, a: Attempt, creep: Unit): boolean {
     if (a.tower === undefined || (!towerGone(a.tower) && a.tower.GetAttackTarget() === creep)) return false;
-    a.tl = "tgt";
+    refuse(bot, a, "tgt");
     return true;
 }
 
@@ -782,9 +800,15 @@ function* towerAttempt(ctx: Lib.Ctx, bot: Unit, pid: number, creep: Unit, opts: 
     while (true) {
         const a = running[pid];
         if (a === undefined || a.tower === undefined || !creep.IsAlive()) break;
-        if (a.tower.GetAttackTarget() !== creep) return ctx.fail("interrupted", "nowindow");
+        if (towerGone(a.tower) || a.tower.GetAttackTarget() !== creep) {
+            if (refuse(bot, a, "tgt")) return ctx.fail("interrupted", "nowindow");
+            break;
+        }
         const tr = towerRead(bot, creep, a.tower, a.ph);
-        if (tr.v.vd === "none") return ctx.fail("interrupted", tr.why);
+        if (tr.v.vd === "none") {
+            if (refuse(bot, a, tr.why ?? "none")) return ctx.fail("interrupted", tr.why);
+            break;
+        }
         if (tr.v.vd === "wait") break;
         const walk = Need(bot, creep);
         const hitIn = Tasks.Verbs()!.ownHitTime(bot as unknown as Lib.TaskUnit, creep as unknown as Lib.TaskCreep);
@@ -795,10 +819,11 @@ function* towerAttempt(ctx: Lib.Ctx, bot: Unit, pid: number, creep: Unit, opts: 
             confirmFor: walk + hitIn + SETTINGS.PreHitSlack,
             aggroConfirms: false,
             hold: "creep_prehit",
-            interruptIf: () => mateTakes(bot, creep) || towerLeft(a, creep),
+            interruptIf: () => mateTakes(bot, creep) || towerLeft(bot, a, creep),
         });
         bot.Action_MoveToLocation(bot.GetLocation());
-        if (!r.success) return r;
+        if (!r.success && !(a.tl === "tgt" && Ours.On("TowerStay"))) return r;
+        if (!r.success) break;
         while (ctx.now() < landAt && creep.IsAlive()) yield;
     }
     return yield* ctx.lastHit(opts);

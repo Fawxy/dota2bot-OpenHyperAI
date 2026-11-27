@@ -1361,8 +1361,12 @@ export const EVENTS = {
         vd: "str",
         /** `job=creep` end, on an attempt the leftover rule covers: the plain attacks (pre-hits) ordered before the last hit. */
         ph: "num",
-        /** `job=creep` end, when the leftover rule gave the attempt up: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's refusal (`nowindow`, `mates`, `none`). Absent otherwise. */
+        /** `job=creep` end, the leftover rule's first refusal mid-attempt: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's (`nowindow`, `mates`, `none`). It ended the attempt unless `Ours.TowerStay`. Absent otherwise. */
         tl: "str",
+        /** `job=creep` end, with `tl`: seconds from the go to that refusal. */
+        tlt: "num",
+        /** `job=creep` end, with `tl`: 1 when our lane creeps were attacking the creep at that refusal (a wind-up seen or their attack target), else 0. */
+        tlc: "num",
         /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
         cid: "num",
         /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */
@@ -2962,8 +2966,42 @@ export const EVENTS = {
         ck: "str",
         /** `kind=creep`: `t` their creep (a last hit), `o` ours (a deny). */
         who: "str",
-        /** `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. */
+        /** `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. `kind=aggro`: to the first read that failed no check. */
         wo: "num",
+        // kind=aggro (aggro_offer.ts, the draw's shadow, no-creep-unpaid s6b): one line per core of the trip table's `aggro` row and
+        // our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1
+        // when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot,
+        // `eh` the enemy heroes covering it).
+        /** `kind=aggro`: the case, `hg` (their fighting creeps on average higher than our ranged creep, by more than half a step: location z, AggroOffer Step) or `dn`. */
+        ak: "str",
+        /** `kind=aggro`: the failed checks, comma-joined (`-` none): onr (dn and their creeps already on our ranged creep), due (ag1 > 0), far, unseen (no enemy hero our team sees), etower, covered, danger (deadly at the draw spot), up (our ranged creep higher than their fighting creeps by more than half a step), cd (the hero attacked a hero within 3 s). */
+        arf: "str",
+        /** `kind=aggro`: reads of the chance, and how many of them failed no check. */
+        ard: "num",
+        awr: "num",
+        /** `kind=aggro`: their creeps drawn from the draw spot (within 500), and the melee among them. */
+        an: "num",
+        am: "num",
+        /** `kind=aggro`: their creeps attacking our ranged creep. */
+        ao: "num",
+        /** `kind=aggro`: the ground height (location z) of their fighting creeps on average and of our ranged creep (GetHeightLevel does not follow it: a smoke read level 4 at 128 and 2 at 256). */
+        af: "num",
+        ar: "num",
+        /** `kind=aggro`: our lane creeps' HP within 1,200 of our ranged creep over their fighting creeps' HP. */
+        apw: "num",
+        /** `kind=aggro`: our ranged creep's HP share. */
+        arp: "num",
+        /** `kind=aggro`: enemy heroes our team sees. */
+        aes: "num",
+        /** `kind=aggro`: the draw spot's gap to the nearest enemy tower's reach (attack range and both hulls; negative inside); absent with none within 2,500. */
+        atw: "num",
+        /** `kind=aggro`: the danger read's level at the draw spot (SafeGather.At). */
+        adl: "str",
+        /** `kind=aggro`: last hits and denies due inside the window (twice the walk plus 2.5 s): ag0 all but our ranged creep; ag1 those the draw would cost (their creeps not drawn, drawn melee, our creeps an undrawn attacker hits); agr, agm their drawn ranged and melee. */
+        ag0: "num",
+        ag1: "num",
+        agr: "num",
+        agm: "num",
         /** `kind=creep`: seconds from the first read where arriving was possible to the last such read, gaps between them included; absent when it never was. */
         wl: "num",
         /** `kind=creep`: the engine's seconds to walk into attack range (centre distance less attack range, no hulls; the stand spot behind `pc` to `exs` adds the hulls). */

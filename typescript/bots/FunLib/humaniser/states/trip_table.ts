@@ -11,12 +11,14 @@
  *   `deny`): their rows say only which positions the read covers and the row lets act, `creep` (last hits, Ours.LaneCreeps)
  *   and `deny` (our own creeps, Ours.CreepDeny). The `creep` cell also orders heroes on one creep, lower first (creep_claim
  *   `FreeFor`, creep_row's yield); a hero whose cell is above the lowest one (`Outranked`) needs Ours.SupportCreeps too.
+ * - The draw (`aggro`, no-creep-unpaid s6b) is no chooser job either: its row says which positions the draw's shadow read
+ *   (aggro_offer) covers, cores only for now.
  * - A job's own situation (a claim open, a window due) decides whether it wants the hero now; the table only orders the
  *   jobs that apply.
  */
 export type Pos = 1 | 2 | 3 | 4 | 5;
 /** The chooser's job names; logs and other modules read them. */
-export type TripKind = "stack" | "rune" | "pull" | "creep" | "deny";
+export type TripKind = "stack" | "rune" | "pull" | "creep" | "deny" | "aggro";
 
 export interface TripRow {
     kind: TripKind;
@@ -34,6 +36,7 @@ export const TRIPS: TripRow[] = [
     { kind: "stack", rank: by(undefined, undefined, undefined, 20, 20) },
     { kind: "creep", rank: by(60, 60, 60, 70, 70) },
     { kind: "deny", rank: by(undefined, undefined, undefined, 60, 60) },
+    { kind: "aggro", rank: by(65, 65, 65, undefined, undefined) },
 ];
 
 function rowOf(kind: TripKind): TripRow | undefined {

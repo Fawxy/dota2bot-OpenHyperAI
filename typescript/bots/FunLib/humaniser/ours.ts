@@ -56,6 +56,11 @@ export const DEFAULTS = {
      *  the mana of the hero's dearest other key spell is kept, and a key spell also hits an enemy hero (SpellSecure.CastPick); the creep free of
      *  our claims and of a teammate's hit. Off: the read logs the spell answers as a shadow and stock plays. */
     CreepSpells: false,
+    /** Slice oha-tower-fallthrough, a flag between two versions of our code: on, the leftover rule decides only whether to pre-hit, and
+     *  a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the rule ends the
+     *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
+     *  the next checkpoint batch against an arm with it off and every other switch on, and the flag deleted there either way. */
+    TowerStay: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
