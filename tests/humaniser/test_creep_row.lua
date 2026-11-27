@@ -49,6 +49,8 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepSpells = o.spells == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerStay = o.stay == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.CreepReserve = o.reserve == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = o.fight == true
 	CURRENT_TEAM = 2
 	T = 100
 	TOWERS_W = { [2] = {}, [3] = {} }
@@ -1384,6 +1386,112 @@ do -- the go rule's parts, pure
 	check("AttackCannot: a creep the row does not hit, refused for another target (given): not the cast's", CR.AttackCannot("kind", "given", true, true) == nil)
 	check("AttackCannot: not yet due and the hero cannot be in range in time", CR.AttackCannot("early", nil, false, false) == "notime")
 	check("AttackCannot: not yet due, the attack can still take it", CR.AttackCannot("early", nil, true, false) == nil)
+end
+
+do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and started at the decider round that leaves a round plus the margin
+	-- Looked up afresh: a world reloads the modules.
+	local function decider() return package.loaded["bots/FunLib/humaniser/decider"] end
+	local function host(w) return decider().Host(w.core, function() return 0.123 end)() end
+	-- In the verb's reach (range 150 and the hulls: 190), so the need is 0 and the spare is the due.
+	local function reserveWorld(o)
+		o = o or {}
+		local w = world({ reserve = o.reserve ~= false, fight = o.fight })
+		w.core.range = 150
+		w.c = ranged(100)
+		w.targets = { target(w.c, { walk = 0, due = o.due or 2.5 }) }
+		w.out = capture(function() w.CO.Shadow(w.core) end)
+		w.cid = cidOf(w.c)
+		return w
+	end
+	local function jobLines(fn) return lines(capture(fn), "job=creep") end
+
+	local w = reserveWorld()
+	check("reserve: a creep due in 2.5 s is not started at its go, but its claim is the hero's", w.starts == 0 and claimApi().HeldBy(1) == w.cid,
+		w.starts .. " " .. tostring(claimApi().HeldBy(1)))
+	check("reserve: at a round with 2.5 s spare the decider does not hold the hero", host(w) == 0.123 and w.starts == 0)
+	T = T + 1.5
+	check("reserve: 1.0 s spare, more than a round plus the margin: still not held", host(w) == 0.123 and w.starts == 0)
+	T = T + 0.1
+	local start
+	local st = lines(capture(function() start = host(w) end), "job=creep")[1]
+	check("reserve: 0.9 s spare: the round starts it and holds hard", start == decider().HARD and w.starts == 1 and lastHitOpts(w).target == w.c, tostring(start) .. " " .. w.starts)
+	check("reserve: the start line carries rv (1.6 s) and the due aged to the start", field(st, "phase") == "start" and field(st, "rv") == "1.600" and field(st, "gd") == "0.900", tostring(st))
+	check("reserve: the verb's wait counts from the start: the eta aged plus the slack", near(lastHitOpts(w).maxWait, 0.9 + 1.5), tostring(lastHitOpts(w).maxWait))
+	check("reserve: the claim is the started attempt's", claimApi().HeldBy(1) == w.cid)
+
+	w = reserveWorld({ reserve = false })
+	check("reserve off: the same creep starts at its go", w.starts == 1)
+
+	w = reserveWorld({ due = 0.8 })
+	local first = lines(w.out, "job=creep")[1]
+	check("control: a spare under a round plus the margin at the go starts at once, with no rv", w.starts == 1 and field(first, "rv") == nil, tostring(first))
+
+	w = reserveWorld()
+	local dropped = jobLines(function()
+		T = T + 0.2
+		kill(w.c)
+		w.targets = {}
+		w.CO.Shadow(w.core)
+	end)
+	check("drop: the creep gone from the read drops it, the claim goes, no start", #dropped == 1 and field(dropped[1], "phase") == "drop" and field(dropped[1], "why") == "gone"
+		and field(dropped[1], "rv") == "0.200" and claimApi().HeldBy(1) == nil and w.starts == 0, table.concat(dropped, " | "))
+
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 0.2
+		w.targets = { target(w.c, { walk = 0, due = 3.5 }) }
+		w.CO.Shadow(w.core)
+	end)
+	check("drop: a creep no longer about to come due drops it (early)", #dropped == 1 and field(dropped[1], "why") == "early" and claimApi().HeldBy(1) == nil, table.concat(dropped, " | "))
+	capture(function()
+		T = T + 0.2
+		w.targets = { target(w.c, { walk = 0, due = 0.5 }) }
+		w.CO.Shadow(w.core)
+	end)
+	check("drop: no try spent: the same creep coming due again starts", w.starts == 1, w.starts)
+
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 0.2
+		w.running = { name = "pull" }
+		w.CO.Shadow(w.core)
+	end)
+	check("drop: another task running for the hero drops it (row)", #dropped == 1 and field(dropped[1], "why") == "row", table.concat(dropped, " | "))
+
+	w = reserveWorld()
+	dropped = jobLines(function()
+		T = T + 2.6
+		host(w)
+	end)
+	check("drop: a round past the spare drops it late and starts nothing", #dropped == 1 and field(dropped[1], "why") == "late" and w.starts == 0 and claimApi().HeldBy(1) == nil,
+		table.concat(dropped, " | "))
+
+	w = reserveWorld()
+	capture(function()
+		T = T + 0.2
+		w.core.channeling = true
+		w.targets = { target(w.c, { walk = 0, due = 2.3 }) }
+		w.CO.Shadow(w.core)
+		T = T + 1.4
+		host(w)
+	end)
+	check("wait: the hero acting at the start round is not started, and the reservation stands", w.starts == 0 and claimApi().HeldBy(1) == w.cid, w.starts)
+	capture(function()
+		w.core.channeling = false
+		w.targets = { target(w.c, { walk = 0, due = 0.9 }) }
+		w.CO.Shadow(w.core)
+		host(w)
+	end)
+	check("wait: once it acts no more, the next round starts it", w.starts == 1, w.starts)
+
+	w = world({ reserve = true, fight = true })
+	w.core.range = 150
+	w.core.mode = 2
+	local c = ranged(100)
+	w.targets = { target(c, { walk = 0, due = 2.5 }) }
+	local out = capture(function() w.CO.Shadow(w.core) end)
+	check("fight: no reservation while Valve has the hero in attack; the creep reads fight", w.starts == 0 and claimApi().HeldBy(1) == nil
+		and #lines(out, "why=fight") > 0, table.concat(out, " | "))
 end
 
 finish()

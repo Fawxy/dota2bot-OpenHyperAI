@@ -145,6 +145,8 @@ interface HeroState {
     begun?: Begun;
     /** The row whose begin took the hero's claim (`Claims`), released when that row's task ends (`rowEnded`). */
     claimRow?: string;
+    /** The row and target of a reservation (`Reserve`): its claim is held with no task, until a begin or `Unreserve`. */
+    reserved?: { row: string; tgt: string };
     /** Per row, the last begin refused since the row read it (`Refusal`); a begin of that row clears it. */
     refused: Record<string, Refused | undefined>;
     /** The rows and targets refused since the hero was last out of a fight, so each refusal is logged once while it repeats. */
@@ -250,6 +252,8 @@ function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     }
     if (!ok) error(res, 0);
     if (res !== true) return false;
+    // Any begin ends a reservation: its own row's start took the claim again above, another row's replaced it.
+    s.reserved = undefined;
     s.refused[row.name] = undefined;
     s.begun = { row, offer, over, from, v };
     return true;
@@ -439,6 +443,40 @@ export function Offer(bot: Unit, row: Row): boolean {
     if (offer === undefined || cur === row.name || !begin(bot, s, row, offer)) return false;
     pcall(() => note(bot, s, row, isSoft(row, bot)));
     return true;
+}
+
+/**
+ * A reservation (slice oha-creep-reserve): a row that plans its start takes its target's claim now and the hero later. Valve's
+ * modes keep the hero meanwhile; the row's `wants` offers the start at the round it is due and `turn` begins it as for any polled
+ * row, so the start falls inside farm's round and pays no wait between rounds (an `Offer` acts only at the next round). Refused, as
+ * `Offer` is, while a row above runs, and by acceptance's refusals (the fight: `Refusal` keeps it for the row). True when the claim
+ * was taken.
+ */
+export function Reserve(bot: Unit, row: Row, offer: Offer): boolean {
+    const at = ROWS.indexOf(row);
+    if (at < 0 || offer.tgt === undefined) return false;
+    const s = stateOf(bot);
+    const cur = runningTask(bot);
+    for (let i = 0; i <= at; i++) if (cur === ROWS[i].name) return false;
+    const mode = bot.GetActiveMode();
+    const v = accept(bot, offer, mode);
+    if (v.no !== undefined) {
+        refuse(bot, s, { row: row.name, tgt: offer.tgt, why: v.no, mode: HDebug.ModeName(mode) });
+        return false;
+    }
+    const c = offer.claim;
+    Claims.Take(offer.tgt, { pid: bot.GetPlayerID(), rank: c?.rank, k: c?.k, due: c?.due, phase: c?.phase });
+    s.reserved = { row: row.name, tgt: offer.tgt };
+    return true;
+}
+
+/** The row drops its reservation: the claim goes, unless a begin since has taken the hero's claim (its own start's or another row's). */
+export function Unreserve(bot: Unit, row: Row): void {
+    const s = heroes[bot.GetPlayerID()];
+    const r = s?.reserved;
+    if (r === undefined || r.row !== row.name) return;
+    s.reserved = undefined;
+    if (Claims.HeldBy(bot.GetPlayerID()) === r.tgt) Claims.Release(bot.GetPlayerID());
 }
 
 /** One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running. */

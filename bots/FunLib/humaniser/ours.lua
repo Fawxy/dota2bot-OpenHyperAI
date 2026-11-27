@@ -75,6 +75,7 @@ ____exports.DEFAULTS = {
     CreepSpells = true,
     TowerStay = true,
     FightFirst = true,
+    CreepReserve = false,
     Threat = false,
     Retreat = false,
     MidWater = false,

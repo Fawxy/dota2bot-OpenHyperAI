@@ -217,6 +217,7 @@ local function begin(bot, s, row, offer)
     if res ~= true then
         return false
     end
+    s.reserved = nil
     s.refused[row.name] = nil
     s.begun = {
         row = row,
@@ -480,6 +481,68 @@ function ____exports.Offer(bot, row)
     ) end)
     return true
 end
+--- A reservation (slice oha-creep-reserve): a row that plans its start takes its target's claim now and the hero later. Valve's
+-- modes keep the hero meanwhile; the row's `wants` offers the start at the round it is due and `turn` begins it as for any polled
+-- row, so the start falls inside farm's round and pays no wait between rounds (an `Offer` acts only at the next round). Refused, as
+-- `Offer` is, while a row above runs, and by acceptance's refusals (the fight: `Refusal` keeps it for the row). True when the claim
+-- was taken.
+function ____exports.Reserve(bot, row, offer)
+    local at = __TS__ArrayIndexOf(____exports.ROWS, row)
+    if at < 0 or offer.tgt == nil then
+        return false
+    end
+    local s = stateOf(bot)
+    local cur = runningTask(bot)
+    do
+        local i = 0
+        while i <= at do
+            if cur == ____exports.ROWS[i + 1].name then
+                return false
+            end
+            i = i + 1
+        end
+    end
+    local mode = bot:GetActiveMode()
+    local v = accept(bot, offer, mode)
+    if v.no ~= nil then
+        refuse(
+            bot,
+            s,
+            {
+                row = row.name,
+                tgt = offer.tgt,
+                why = v.no,
+                mode = HDebug.ModeName(mode)
+            }
+        )
+        return false
+    end
+    local c = offer.claim
+    Claims.Take(
+        offer.tgt,
+        {
+            pid = bot:GetPlayerID(),
+            rank = c and c.rank,
+            k = c and c.k,
+            due = c and c.due,
+            phase = c and c.phase
+        }
+    )
+    s.reserved = {row = row.name, tgt = offer.tgt}
+    return true
+end
+--- The row drops its reservation: the claim goes, unless a begin since has taken the hero's claim (its own start's or another row's).
+function ____exports.Unreserve(bot, row)
+    local s = heroes[bot:GetPlayerID()]
+    local r = s and s.reserved
+    if r == nil or r.row ~= row.name then
+        return
+    end
+    s.reserved = nil
+    if Claims.HeldBy(bot:GetPlayerID()) == r.tgt then
+        Claims.Release(bot:GetPlayerID())
+    end
+end
 --- One row's turn as `Host` takes it, for that row alone (tests): true when it holds the hero, begun now or running.
 function ____exports.Ask(bot, row)
     local s = stateOf(bot)
@@ -493,13 +556,13 @@ function ____exports.LetGo(bot)
 end
 --- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
 function ____exports.Soft(bot)
-    local ____opt_23 = heroes[bot:GetPlayerID()]
-    return (____opt_23 and ____opt_23.soft) == true
+    local ____opt_33 = heroes[bot:GetPlayerID()]
+    return (____opt_33 and ____opt_33.soft) == true
 end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_25 = heroes[bot:GetPlayerID()]
-    return ____opt_25 and ____opt_25.held
+    local ____opt_35 = heroes[bot:GetPlayerID()]
+    return ____opt_35 and ____opt_35.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()
