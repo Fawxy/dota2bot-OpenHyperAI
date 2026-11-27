@@ -33,6 +33,9 @@ do
 	check("reach: seconds of the walk inside its range", r and r.exp > 0 and r.exp < 2, r and r.exp)
 	check("reach: its damage and the burst share", r and near(r.dmg, 300) and near(p.burst, 0.5), p.burst)
 	check("window: the offer's seconds", p.secs == 4, p.secs)
+	-- Read only: the seen speed the missing belief keeps is not written by the logged read (ResetCache clears it).
+	check("passive: the seen speed is left as it was", require("bots/FunLib/humaniser/threat").SeenSpeed(10) == nil,
+		require("bots/FunLib/humaniser/threat").SeenSpeed(10))
 end
 
 -- No seconds on the offer: the gate horizon. A hero far off is not in reach; out of sight heroes are listed nearest first
@@ -57,5 +60,10 @@ do
 	local f = {}
 	for _, kv in ipairs(Danger.Fields(p)) do f[kv[1]] = kv[2] end
 	check("fields: no reachers, the unseen as pid:tss:dist", f.dn == 0 and f.dre == nil and f.dun == "12:40:1000,11:1:4000" and f.dnos == 1, tostring(f.dun))
+	-- Each read of one Reader gets its own unseen list (rule 18): emptying one leaves the next whole.
+	local rd = require("bots/FunLib/humaniser/threat").Reader(bot, 4)
+	local first = rd(HERE, CAMP)
+	for k in pairs(first.uns) do first.uns[k] = nil end
+	check("copy: a read's unseen list is its own", #rd(HERE, CAMP).uns == 2)
 end
 finish()

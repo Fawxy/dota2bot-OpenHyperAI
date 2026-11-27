@@ -250,6 +250,11 @@ export interface ReadOpts {
     window?: number;
     /** An unseen hero left out of `missing` (slice kill-chase: the chased target, whose place is the walk's end). */
     exclude?: number;
+    /**
+     * Read only: the read leaves the seen speeds the missing belief keeps (`speeds`) as they were, so a logged read (the danger
+     * shadow, danger.ts) cannot change a later answer.
+     */
+    passive?: boolean;
 }
 
 /** One hero's reads that every reader of the frame shares (its run is per reader: the horizon and the reader's hull). */
@@ -388,7 +393,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
         const f = enemyOf(fixed, e);
         if (f === undefined) continue;
         visible[f.pid] = true;
-        if (f.sp !== undefined && f.sp > 0) speeds[f.pid] = f.sp;
+        if (opts?.passive !== true && f.sp !== undefined && f.sp > 0) speeds[f.pid] = f.sp;
         if (f.at === null || f.at === undefined) continue;
         enemies.push({ u: e, pid: f.pid, at: f.at, run: f.sp * horizon + f.range + f.hull + hull });
     }
@@ -502,7 +507,7 @@ export function Reader(bot: Unit, horizon: number, opts?: ReadOpts): (this: void
         const raw = s.WReach * reach.length + s.WMissing * missing + (tower ? s.WTower : 0) + s.WBurst * math.min(1, burst) - s.WAlly * near;
         const threat = math.max(0, math.min(1, raw));
         const lethal = burst >= 1 && reach.length > near && !escape;
-        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att, rows, uns, nos };
+        return { t: now, from, place, horizon, depth, reach, burst, allies: near, escape, tower, missing, mpids, mtss, mcut, threat, band: BandOf(threat, lethal), eng, att, rows, uns: [...uns], nos };
     };
 }
 

@@ -221,11 +221,14 @@ local function begin(bot, s, row, offer)
     end
     s.refused[row.name] = nil
     local d
+    local dfail
     if offer.at ~= nil and Telemetry.IsEnabled() then
         local at = offer.at
         local dok, dres = pcall(function() return Danger.At(bot, at, offer.secs) end)
         if dok then
             d = dres
+        else
+            dfail = true
         end
     end
     s.begun = {
@@ -234,7 +237,8 @@ local function begin(bot, s, row, offer)
         over = over,
         from = from,
         v = v,
-        d = d
+        d = d,
+        dfail = dfail
     }
     return true
 end
@@ -311,18 +315,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue47
+            local __continue48
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue47 = true
+                    __continue48 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue47 = true
+                __continue48 = true
             until true
-            if not __continue47 then
+            if not __continue48 then
                 break
             end
         end
@@ -401,6 +405,9 @@ local function note(bot, s, heldRow, softNow)
             for ____, f in ipairs(Danger.Fields(b.d)) do
                 fields[#fields + 1] = f
             end
+        end
+        if b.dfail == true then
+            fields[#fields + 1] = {"dfail", 1}
         end
     end
     Telemetry.Event("choice", fields)

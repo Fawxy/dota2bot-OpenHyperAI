@@ -560,7 +560,7 @@ function ____exports.Reader(bot, horizon, opts)
                     break
                 end
                 visible[f.pid] = true
-                if f.sp ~= nil and f.sp > 0 then
+                if (opts and opts.passive) ~= true and f.sp ~= nil and f.sp > 0 then
                     speeds[f.pid] = f.sp
                 end
                 if f.at == nil or f.at == nil then
@@ -795,7 +795,7 @@ function ____exports.Reader(bot, horizon, opts)
             eng = eng,
             att = att,
             rows = rows,
-            uns = uns,
+            uns = {unpack(uns)},
             nos = nos
         }
     end
@@ -834,8 +834,8 @@ function ____exports.Log(bot, consumer, r, decision)
         return false
     end
     logged[key] = {t = r.t, decision = decision}
-    local ____Telemetry_Event_10 = Telemetry.Event
-    local ____array_9 = __TS__SparseArrayNew(
+    local ____Telemetry_Event_12 = Telemetry.Event
+    local ____array_11 = __TS__SparseArrayNew(
         {"pid", pid},
         {"who", consumer},
         {"dec", decision},
@@ -871,15 +871,15 @@ function ____exports.Log(bot, consumer, r, decision)
         },
         {"ally", r.allies}
     )
-    local ____temp_8
+    local ____temp_10
     if #r.reach > 0 then
-        ____temp_8 = r.escape
+        ____temp_10 = r.escape
     else
-        ____temp_8 = nil
+        ____temp_10 = nil
     end
     __TS__SparseArrayPush(
-        ____array_9,
-        {"esc", ____temp_8},
+        ____array_11,
+        {"esc", ____temp_10},
         {"tower", r.tower},
         {
             "miss",
@@ -902,9 +902,9 @@ function ____exports.Log(bot, consumer, r, decision)
             ))
         }
     )
-    ____Telemetry_Event_10(
+    ____Telemetry_Event_12(
         "threat",
-        {__TS__SparseArraySpread(____array_9)}
+        {__TS__SparseArraySpread(____array_11)}
     )
     return true
 end

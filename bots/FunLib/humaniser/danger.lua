@@ -30,8 +30,15 @@ end
 function ____exports.At(bot, place, secs)
     local window = secs ~= nil and secs > 0 and secs or Threat.SETTINGS.GateHorizon
     local from = bot:GetLocation()
-    local r = Threat.Read(bot, from, place, window)
+    local r = Threat.Read(
+        bot,
+        from,
+        place,
+        window,
+        {passive = true}
+    )
     local enemies = {}
+    local dmgOf = {}
     for ____, row in ipairs(r.rows) do
         do
             local __continue4
@@ -41,13 +48,14 @@ function ____exports.At(bot, place, secs)
                     __continue4 = true
                     break
                 end
+                dmgOf[row.pid] = row.dmg
                 enemies[#enemies + 1] = {
                     x = row.at.x,
                     y = row.at.y,
                     pid = row.pid,
                     range = u:GetAttackRange(),
                     hull = u:GetBoundingRadius(),
-                    dmg = row.dmg,
+                    dmg = 0,
                     spa = 1
                 }
                 __continue4 = true
@@ -71,7 +79,7 @@ function ____exports.At(bot, place, secs)
     })
     local reach = {}
     for ____, e in ipairs(path.enemies) do
-        reach[#reach + 1] = {pid = e.pid, dist = e.dist, exp = e.exp, dmg = e.dmg}
+        reach[#reach + 1] = {pid = e.pid, dist = e.dist, exp = e.exp, dmg = dmgOf[e.pid] or 0}
     end
     local away = {}
     for ____, m in ipairs(r.uns) do

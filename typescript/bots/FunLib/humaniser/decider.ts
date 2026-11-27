@@ -136,6 +136,8 @@ interface Begun {
     v: Verdict;
     /** Danger at the offer's place (s4 step 4, `Danger.At`), asked at the begin and logged; undefined when the offer names no place or the read failed. */
     d?: Danger.Parts;
+    /** `Danger.At` raised an error at this begin (logged as `dfail`). */
+    dfail?: boolean;
 }
 
 /** A begin the decider refused: kept for the row to read (`Refusal`), and logged once per row and target. */
@@ -260,12 +262,14 @@ function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     s.refused[row.name] = undefined;
     // Asked for begun offers only (the shadow sets the parts against what happened after a start); a fault never blocks the begin.
     let d: Danger.Parts | undefined;
+    let dfail: boolean | undefined;
     if (offer.at !== undefined && Telemetry.IsEnabled()) {
         const at = offer.at;
         const [dok, dres] = pcall(() => Danger.At(bot, at, offer.secs));
         if (dok) d = dres;
+        else dfail = true;
     }
-    s.begun = { row, offer, over, from, v, d };
+    s.begun = { row, offer, over, from, v, d, dfail };
     return true;
 }
 
@@ -387,6 +391,7 @@ function note(bot: Unit, s: HeroState, heldRow = s.held, softNow = s.soft): void
         fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from], ["bway", b.offer.way], ["bacc", b.v.would], ["bcl", b.v.others > 0 ? b.v.others : undefined]);
         if (b.offer.at !== undefined) fields.push(["bpx", math.floor(b.offer.at.x)], ["bpy", math.floor(b.offer.at.y)]);
         if (b.d !== undefined) for (const f of Danger.Fields(b.d)) fields.push(f);
+        if (b.dfail === true) fields.push(["dfail", 1]);
     }
     Telemetry.Event("choice", fields);
 }

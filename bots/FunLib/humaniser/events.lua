@@ -1750,6 +1750,7 @@ ____exports.EVENTS = {
         dtw = "num",
         dun = "str",
         dnos = "num",
+        dfail = "num",
         go = "num",
         want = "num",
         why = "str",

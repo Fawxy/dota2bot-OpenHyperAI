@@ -2975,6 +2975,8 @@ export const EVENTS = {
         dtw: "num",
         dun: "str",
         dnos: "num",
+        /** kind=decider, with `beg` and a place: 1 when `Danger.At` raised an error, so the begin carries no danger parts (`bsec` absent). */
+        dfail: "num",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */

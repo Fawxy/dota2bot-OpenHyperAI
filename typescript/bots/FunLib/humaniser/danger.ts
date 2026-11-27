@@ -55,16 +55,19 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
 export function At(bot: Unit, place: Vector, secs?: number): Parts {
     const window = secs !== undefined && secs > 0 ? secs : Threat.SETTINGS.GateHorizon;
     const from = bot.GetLocation();
-    const r = Threat.Read(bot, from, place, window);
+    const r = Threat.Read(bot, from, place, window, { passive: true });
     const enemies: Offer.PathEnemy[] = [];
+    const dmgOf: Record<number, number> = {};
     for (const row of r.rows) {
         const u = row.u;
         if (u === undefined) continue;
-        enemies.push({ x: row.at.x, y: row.at.y, pid: row.pid, range: u.GetAttackRange(), hull: u.GetBoundingRadius(), dmg: row.dmg, spa: 1 });
+        dmgOf[row.pid] = row.dmg;
+        // PathCost's dmg and spa price a hit per second of exposure; only its exposure seconds are read here.
+        enemies.push({ x: row.at.x, y: row.at.y, pid: row.pid, range: u.GetAttackRange(), hull: u.GetBoundingRadius(), dmg: 0, spa: 1 });
     }
     const path = Offer.PathCost({ from, spot: place, speed: math.max(1, bot.GetCurrentMovementSpeed()), hull: bot.GetBoundingRadius(), creeps: [], towers: [], enemies });
     const reach: Reacher[] = [];
-    for (const e of path.enemies) reach.push({ pid: e.pid, dist: e.dist, exp: e.exp, dmg: e.dmg });
+    for (const e of path.enemies) reach.push({ pid: e.pid, dist: e.dist, exp: e.exp, dmg: dmgOf[e.pid] ?? 0 });
     const away: Away[] = [];
     for (const m of r.uns) away.push({ pid: m.pid, tss: m.tss, dist: dist(m.at, place) });
     away.sort((a, b) => a.dist - b.dist);

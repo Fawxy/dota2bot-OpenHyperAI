@@ -441,6 +441,43 @@ do -- a begun offer that names a place carries its place and the danger there (D
 		and not quiet[1]:find("dn=", 1, true), tostring(quiet[1]))
 end
 
+local function placedRow(F, name)
+	local row = taskRow(F, name, { want = true })
+	local inner = row.wants
+	row.wants = function(b)
+		local o = inner(b)
+		if o then o.at, o.secs = Vector(300, -200, 0), 6 end
+		return o
+	end
+	return row
+end
+
+do -- a Danger.At that raises never blocks the begin: the task runs, and the line says the parts failed (dfail=1, no bsec)
+	local H, bot, F = runnerWorld()
+	local Danger = require("bots/FunLib/humaniser/danger")
+	local at = Danger.At
+	Danger.At = function() error("boom") end
+	H.Decider.Add(placedRow(F, "placed"))
+	local lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	Danger.At = at
+	local l = lines[1] or ""
+	check("danger: a failed read leaves the begin standing", F.Running(bot) ~= nil and F.Running(bot).name == "placed", l)
+	check("danger: a failed read is marked, with no parts", l:find("beg=placed", 1, true) and l:find("dfail=1", 1, true) and not l:find("bsec=", 1, true), l)
+end
+
+do -- telemetry off: the danger read is not asked at all (it only feeds the line)
+	local H, bot, F = runnerWorld()
+	local Danger, Telemetry = require("bots/FunLib/humaniser/danger"), require("bots/FunLib/humaniser/telemetry")
+	local at, on = Danger.At, Telemetry.IsEnabled
+	local asked = 0
+	Danger.At = function(...) asked = asked + 1; return at(...) end
+	Telemetry.IsEnabled = function() return false end
+	H.Decider.Add(placedRow(F, "placed"))
+	H.Decider.Host(bot, function() return 0.4 end)()
+	Danger.At, Telemetry.IsEnabled = at, on
+	check("danger: telemetry off asks no danger read", asked == 0 and F.Running(bot) ~= nil, asked)
+end
+
 -- Ours.FightFirst (slice oha-no-start-over-fight): no row begins while Valve has the hero in attack, roam or team roam.
 local function fightWorld(flag)
 	local H, bot, F = runnerWorld()
