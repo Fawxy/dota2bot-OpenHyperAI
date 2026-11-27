@@ -4,7 +4,7 @@
  * Every default is off (plan s7, agreed 23/11/2026): none of these has beaten the reference arm, so the default build is
  * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
  * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
- * RuneDetour, TowerStay, CreepSpells. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
+ * RuneDetour, TowerStay, CreepSpells, FightFirst. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
  * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -65,8 +65,9 @@ export const DEFAULTS = {
     /** Slice oha-no-start-over-fight (offers-and-the-decider s10, slice A), a flag between two versions of our code: on, the decider
      *  refuses to begin any row while Valve has the hero in attack, roam or team roam (fights stay Valve's; a row already holding is not
      *  cut), and the row reads the refusal (`Decider.Refusal`: the creep row notes `fight`, the pull and stack take it as the slot's
-     *  reason). Off: a row begins from any mode. Deleted once judged. */
-    FightFirst: false,
+     *  reason). Off: a row begins from any mode. On: provisional (user 27/11/2026: the check before the batch could not read its
+     *  line at 6 pairs); read at the next checkpoint batch against ckpt3, and the flag deleted there either way. */
+    FightFirst: true,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
