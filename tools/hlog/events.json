@@ -953,6 +953,8 @@
    "vd": "str",
    "ph": "num",
    "tl": "str",
+   "tlt": "num",
+   "tlc": "num",
    "cid": "num",
    "gw": "num",
    "gd": "num",

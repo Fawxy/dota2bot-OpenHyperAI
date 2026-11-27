@@ -1350,8 +1350,12 @@ export const EVENTS = {
         vd: "str",
         /** `job=creep` end, on an attempt the leftover rule covers: the plain attacks (pre-hits) ordered before the last hit. */
         ph: "num",
-        /** `job=creep` end, when the leftover rule gave the attempt up: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's refusal (`nowindow`, `mates`, `none`). Absent otherwise. */
+        /** `job=creep` end, the leftover rule's first refusal mid-attempt: `tgt` the tower's target was no longer the creep (or the tower was gone), else the verdict's (`nowindow`, `mates`, `none`). It ended the attempt unless `Ours.TowerStay`. Absent otherwise. */
         tl: "str",
+        /** `job=creep` end, with `tl`: seconds from the go to that refusal. */
+        tlt: "num",
+        /** `job=creep` end, with `tl`: 1 when our lane creeps were attacking the creep at that refusal (a wind-up seen or their attack target), else 0. */
+        tlc: "num",
         /** `job=creep`: the creep's id (as the read's `ev=choice kind=creep` `cid` and the hero's team's `creep_death` `cid`). */
         cid: "num",
         /** `job=creep` start: the engine's walk into range and due (s) at the read that went. */
