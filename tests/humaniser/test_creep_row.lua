@@ -826,6 +826,20 @@ do -- the leftover rule in the row: the pre-hit, the claim, the controls
 		end
 	end
 
+	-- The tower turns off the creep after the go, before any pre-hit is ordered. Off, the attempt ends; on, it goes to the last hit.
+	for _, stay in ipairs({ false, true }) do
+		w = towered({ stay = stay })
+		capture(function() w.CO.Shadow(w.core) end)
+		w.tower.target = nil
+		out = capture(function() w.res = w.drive() w.onEnd(w.res) end)
+		local tl = field(lines(out, "phase=end")[1], "tl")
+		if stay then
+			check("stay: the tower leaving before the pre-hit goes to the last hit, tl=tgt", table.concat(w.order, ",") == "lasthit" and w.res.success == true and tl == "tgt", table.concat(w.order, ",") .. " | " .. tostring(tl))
+		else
+			check("leftover: the tower leaving before the pre-hit ends the attempt, tl=tgt", #w.order == 0 and w.res.reason == "interrupted" and tl == "tgt", table.concat(w.order, ",") .. " | " .. tostring(tl))
+		end
+	end
+
 	w = towered({ on = false })
 	ch = lines(readThenClose(w, { w.creep }), "kind=creep")
 	check("leftover: switch off, a melee creep under our tower is refused kind and the tower's target is not read", w.starts == 0 and field(ch[1], "why") == "kind" and w.tower.targetReads == 0, w.tower.targetReads .. " | " .. table.concat(ch, " | "))
