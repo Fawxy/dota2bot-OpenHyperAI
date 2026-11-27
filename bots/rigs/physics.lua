@@ -51,7 +51,7 @@
 -- Round 3e:
 --   clash   before 5:00, a real Dire wave stopped by a bait at a spot within 1,500 of their T1, ours, both or neither,
 --           and drawn there (kills the real Radiant lane creeps within 2,500 of the spot while it waits)
--- Round 3f:
+-- Round 3f (3g: our creep passive, so a chaser's HP drop is the hero's hit; the hero traced every 0.1 s from the swing):
 --   swingdraw the hand-over walk with one attack on the nearest chaser at 1.3 s (a landed hit, or a last hit at 40 HP),
 --           against no attack: whether the draw lasts longer and who the chasers take at its end
 -- Line of the main site: y=-2050 from x=-5700 to -4300 (flat 128, 1,280 or more from every tower, trees cleared).
@@ -1543,10 +1543,12 @@ end
 -- The draw: logs each creep's distance at the order and whether (and how soon) it took the hero.
 local function drawCheck(c, t)
 	for _, cr in ipairs(c.crs) do
-		local k = cr:entindex()
-		if c.drawn[k] == nil and on(cr, c.h) then
-			c.drawn[k] = t - c.tord
-			say(string.format("%s drawn %s after=%.2f", c.tag, L(cr), t - c.tord))
+		if not cr:IsNull() and cr:IsAlive() then
+			local k = cr:entindex()
+			if c.drawn[k] == nil and on(cr, c.h) then
+				c.drawn[k] = t - c.tord
+				say(string.format("%s drawn %s after=%.2f", c.tag, L(cr), t - c.tord))
+			end
 		end
 	end
 end
@@ -2021,7 +2023,7 @@ end
 local function nearestOf(c, onHero)
 	local best, bd
 	for _, cr in ipairs(c.crs) do
-		if cr:IsAlive() and (not onHero or on(cr, c.h)) then
+		if not cr:IsNull() and cr:IsAlive() and (not onHero or on(cr, c.h)) then
 			local d = d2(cr, c.h)
 			if bd == nil or d < bd then best, bd = cr, d end
 		end
@@ -2377,6 +2379,8 @@ local function swingDrawTrial(mode, rep)
 			c.crs = wave(c, V(-4400, Y), false)
 			c.own = creep("ranged", R, V(-4900, Y), "own")
 			tank(c.own)
+			-- Passive (round 3g): our creep must not hit the chasers, so a Dire creep's HP drop is the hero's hit.
+			passive(c.own)
 			c.step = 0
 		end,
 		tick = function(c, t)
@@ -2393,6 +2397,14 @@ local function swingDrawTrial(mode, rep)
 				watchTick(c, t)
 				drawCheck(c, t)
 				gaps(c, t)
+				if c.swing and not c.swing.done and t - (c.swing.lastH or -9) >= 0.1 then
+					c.swing.lastH = t
+					local att = false
+					pcall(function() att = c.h:IsAttacking() end)
+					local cr = c.swing.cr
+					say(string.format("%s hero rel=%.2f after_order=%.2f attack=%s attacking=%s d=%s tgt_hp=%s", c.tag, t, t - c.tord, L(c.h:GetAttackTarget()),
+						tostring(att), (not cr:IsNull() and cr:IsAlive()) and f0(d2(cr, c.h)) or "-", (not cr:IsNull() and cr:IsAlive()) and tostring(cr:GetHealth()) or "dead"))
+				end
 				if t - c.tord > 0.8 and not c.moved then
 					c.moved = true
 					moveOrder(c.h, V(-5150, Y))
@@ -2400,12 +2412,8 @@ local function swingDrawTrial(mode, rep)
 				if mode ~= "none" and not c.swing and t - c.tord >= 1.3 then
 					local cr = nearestOf(c, true)
 					if cr then
-						if mode == "kill" then
-							pcall(function()
-								cr:SetBaseHealthRegen(0)
-								cr:SetHealth(40)
-							end)
-						end
+						pcall(function() cr:SetBaseHealthRegen(0) end)
+						if mode == "kill" then pcall(function() cr:SetHealth(40) end) end
 						c.swing = { cr = cr, hp = cr:GetHealth(), t = t }
 						local parts = {}
 						for _, x in ipairs(c.crs) do
@@ -2418,7 +2426,7 @@ local function swingDrawTrial(mode, rep)
 				local s = c.swing
 				if s and not s.done then
 					local dead = s.cr:IsNull() or not s.cr:IsAlive()
-					if dead or s.cr:GetHealth() < s.hp or t - s.t > 2 then
+					if dead or s.cr:GetHealth() < s.hp or t - s.t > 3 then
 						s.done = true
 						local parts = {}
 						for _, x in ipairs(c.crs) do
