@@ -26,6 +26,7 @@ local function __TS__ArrayIndexOf(self, searchElement, fromIndex)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local SpellAim = require(GetScriptDirectory().."/FunLib/humaniser/spell_aim")
 local function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -103,6 +104,90 @@ function ____exports.AlsoHit(s, hero, creep, foes)
     end
     return n
 end
+--- Where a point or no-target spell lands (slice oha-spell-aim): SPELL_SHAPE's kind, else for a spell with no row the read before it
+-- (a line when it has a width, else an area at the point; a no-target spell around the hero).
+function ____exports.GeomOf(s)
+    local k = s.geom or (s.shape == "n" and "s" or (s.half > 0 and "l" or "a"))
+    return {
+        k = k,
+        range = s.range,
+        radius = k == "s" and s.radius <= 0 and s.range or s.radius,
+        half = s.half,
+        length = k == "l" and math.max(s.length, s.range) or 0,
+        offset = s.offset
+    }
+end
+local function movedBy(u, t)
+    return {
+        x = u.x + u.vx * t,
+        y = u.y + u.vy * t,
+        hull = u.hull,
+        vx = u.vx,
+        vy = u.vy
+    }
+end
+--- A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay.
+local function aimedTiming(s, g, aim, creep, heroSpeed, turn)
+    local walk = aim.gap / math.max(100, heroSpeed)
+    local flight = 0
+    if s.speed > 0 and (g.k == "l" or g.k == "a") then
+        flight = dist(aim.from, g.k == "l" and creep or aim.at) / s.speed
+    end
+    return {gap = aim.gap, walk = walk, land = walk + (g.k == "s" and 0 or turn) + s.cp + flight + s.delay}
+end
+--- A `p` or `n` spell aimed at the creep (spell_aim.ts): aimed at the creep and the foes where they are, then again where their
+-- velocities put them when that cast lands, and timed on the second aim. `others` (their other creeps) are counted where they are.
+-- `turn` is the turn to face the creep: a line or ring aimed off it to catch a hero turns at most its arc further (a hundredth
+-- of a second or two). `centre`: the foes the same cast hits aimed straight at the creep, for the line to show what the aim added.
+function ____exports.Aimed(s, hero, heroSpeed, turn, creep, foes, others)
+    local g = ____exports.GeomOf(s)
+    local first = SpellAim.AimAt(
+        g,
+        hero,
+        creep,
+        foes,
+        others
+    )
+    local t = aimedTiming(
+        s,
+        g,
+        first,
+        creep,
+        heroSpeed,
+        turn
+    ).land
+    local c2 = movedBy(creep, t)
+    local f2 = {}
+    for ____, f in ipairs(foes) do
+        f2[#f2 + 1] = movedBy(f, t)
+    end
+    local aim = SpellAim.AimAt(
+        g,
+        hero,
+        c2,
+        f2,
+        others
+    )
+    local centre = SpellAim.AimAt(
+        g,
+        hero,
+        c2,
+        {},
+        f2
+    ).others
+    return {
+        aim = aim,
+        timing = aimedTiming(
+            s,
+            g,
+            aim,
+            c2,
+            heroSpeed,
+            turn
+        ),
+        centre = centre
+    }
+end
 --- HP still to lose before the spell would kill.
 local function short(a)
     return a.hp - a.taken
@@ -113,18 +198,18 @@ function ____exports.Best(as)
     local best
     for ____, a in ipairs(as) do
         do
-            local __continue22
+            local __continue29
             repeat
                 if best == nil then
                     best = a
-                    __continue22 = true
+                    __continue29 = true
                     break
                 end
                 if a.kill ~= best.kill then
                     if a.kill then
                         best = a
                     end
-                    __continue22 = true
+                    __continue29 = true
                     break
                 end
                 if a.kill then
@@ -142,9 +227,9 @@ function ____exports.Best(as)
                 elseif short(a) < short(best) then
                     best = a
                 end
-                __continue22 = true
+                __continue29 = true
             until true
-            if not __continue22 then
+            if not __continue29 then
                 break
             end
         end
@@ -184,23 +269,23 @@ function ____exports.CastPick(as)
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue41
+            local __continue48
             repeat
                 local why = castWhyOf(a)
                 if why == nil then
                     if pick == nil or pick.spell.key and not a.spell.key or pick.spell.key == a.spell.key and a.spell.mana < pick.spell.mana then
                         pick = a
                     end
-                    __continue41 = true
+                    __continue48 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue41 = true
+                __continue48 = true
             until true
-            if not __continue41 then
+            if not __continue48 then
                 break
             end
         end

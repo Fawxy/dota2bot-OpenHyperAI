@@ -3082,9 +3082,13 @@ export const EVENTS = {
         sa: "num",
         /** `kind=creep`, `sk=1`: seconds from the first such read to the last. */
         sw: "num",
-        /** `kind=creep`, with `sp`: the creep's centre distance less the cast range (for `sx=n` its radius) at that read; above 0 the hero walks first. */
+        /**
+         * `kind=creep`, with `sp`: for `sx=u` the creep's centre distance less the cast range; for `sx=p` and `n` with `sq` (slice
+         * oha-spell-aim) the walk the aim needs before the cast can hit the creep (for `sq=r` towards or away), floored at 0; older
+         * logs without `sq`, the distance less the cast range (for `sx=n` its radius). Above 0 the hero walks first.
+         */
         sg: "num",
-        /** `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight). */
+        /** `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight; with `sq`, the spell's delay too). */
         sl: "num",
         /** `kind=creep`, with `sp`: the spell's damage after the creep's resistance. */
         sd: "num",
@@ -3096,10 +3100,25 @@ export const EVENTS = {
         sr: "num",
         /** `kind=creep`, with `sp`: the spell's cooldown (s). */
         sc: "num",
-        /** `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`). */
+        /**
+         * `kind=creep`, with `sp`: visible enemy heroes the cast would also hit. `sx=u`: aimed at the creep (its line, or its area around the
+         * creep). With `sq`: as the aim puts it (spell_aim.ts), the heroes where their velocities put them when it lands. Older logs, `sx=p`
+         * and `n`: aimed at the creep's centre, or around the hero for `n`.
+         */
         sz: "num",
         /** `kind=creep`, with `sp`: how many creep spells the hero held at that read. */
         sn: "num",
+        /**
+         * `kind=creep`, `sx=p` or `n` (slice oha-spell-aim): where the spell lands (SPELL_SHAPE, spell_aim.ts): `a` an area at a point in cast
+         * range, `l` a line from the hero, `r` a circle in front of the hero (Shadowraze), `s` a circle around the hero.
+         */
+        sq: "str",
+        /** `kind=creep`, with `sq`: the creep's distance from the aimed hit's centre (`l`: from the line's axis), when it lands. */
+        sv: "num",
+        /** `kind=creep`, with `sq`: their other lane creeps the aimed cast also hits, where they stand now. */
+        so: "num",
+        /** `kind=creep`, with `sq`: the enemy heroes the same cast hits aimed straight at the creep (the aim's gain is `sz` less this). */
+        su: "num",
         /**
          * `kind=creep`, their creep (slice oha-creep-spells, Ours.CreepSpells): 1 when the creep row cast on it (`aid` is the cast's
          * attempt), 0 when the row weighed a cast because the attack could not take the creep and did not cast. Absent: never weighed.

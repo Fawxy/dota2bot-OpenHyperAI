@@ -1524,15 +1524,19 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `sk` num: `kind=creep`, with `sp`: 1 when at some read the spell, cast then, would land with the creep alive and its damage after resistance at least the creep's forecast HP.
 - `sa` num: `kind=creep`, `sk=1`: seconds from `slot` to the first such read.
 - `sw` num: `kind=creep`, `sk=1`: seconds from the first such read to the last.
-- `sg` num: `kind=creep`, with `sp`: the creep's centre distance less the cast range (for `sx=n` its radius) at that read; above 0 the hero walks first.
-- `sl` num: `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight).
+- `sg` num: `kind=creep`, with `sp`: for `sx=u` the creep's centre distance less the cast range; for `sx=p` and `n` with `sq` (slice oha-spell-aim) the walk the aim needs before the cast can hit the creep (for `sq=r` towards or away), floored at 0; older logs without `sq`, the distance less the cast range (for `sx=n` its radius). Above 0 the hero walks first.
+- `sl` num: `kind=creep`, with `sp`: seconds from that read until the damage lands (walk, turn, cast point, flight; with `sq`, the spell's delay too).
 - `sd` num: `kind=creep`, with `sp`: the spell's damage after the creep's resistance.
 - `sf` num: `kind=creep`, with `sp`: the creep's forecast HP when the damage lands (its HP then, when over twice `sd`: no forecast); 0 or less, dead by then.
 - `sm` num: `kind=creep`, with `sp`: the spell's mana cost.
 - `sr` num: `kind=creep`, with `sp`: the hero's mana after the cast less the dearest of its other learned key spells (0 or more: the reserve is met).
 - `sc` num: `kind=creep`, with `sp`: the spell's cooldown (s).
-- `sz` num: `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`).
+- `sz` num: `kind=creep`, with `sp`: visible enemy heroes the cast would also hit. `sx=u`: aimed at the creep (its line, or its area around the creep). With `sq`: as the aim puts it (spell_aim.ts), the heroes where their velocities put them when it lands. Older logs, `sx=p` and `n`: aimed at the creep's centre, or around the hero for `n`.
 - `sn` num: `kind=creep`, with `sp`: how many creep spells the hero held at that read.
+- `sq` str: `kind=creep`, `sx=p` or `n` (slice oha-spell-aim): where the spell lands (SPELL_SHAPE, spell_aim.ts): `a` an area at a point in cast range, `l` a line from the hero, `r` a circle in front of the hero (Shadowraze), `s` a circle around the hero.
+- `sv` num: `kind=creep`, with `sq`: the creep's distance from the aimed hit's centre (`l`: from the line's axis), when it lands.
+- `so` num: `kind=creep`, with `sq`: their other lane creeps the aimed cast also hits, where they stand now.
+- `su` num: `kind=creep`, with `sq`: the enemy heroes the same cast hits aimed straight at the creep (the aim's gain is `sz` less this).
 - `cg` num: `kind=creep`, their creep (slice oha-creep-spells, Ours.CreepSpells): 1 when the creep row cast on it (`aid` is the cast's attempt), 0 when the row weighed a cast because the attack could not take the creep and did not cast. Absent: never weighed.
 - `cw` str: `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero); a hero holding no creep spell is not weighed (no field). The hero's, as the attack's: `acting`, `row`, `held`, `tried` (its last attempt was on this creep); the creep's: `claimed` (a hero of ours holds a claim on it, or one with a lower `creep` cell is still going for it), `mate` (a teammate's hit kills it first), `other` (another creep's cast went); `refused` (the runner); `off` (the switch off: the row would have cast on it, the cast's shadow).
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.

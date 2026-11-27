@@ -26,7 +26,7 @@ local function __TS__SparseArraySpread(sparseArray)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local r1, r2, dist, spellFields, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, spellAnswers, spellsOf, answersOf, partsOf, candidate, parts, rowLead, LANES
+local r1, r2, dist, spellFields, rowOf, heightAt, towersOf, ownTowersOf, creepsOf, enemiesOf, race, snapshot, spellAnswers, velocityOf, movingOf, moversOf, othersOf, spellsOf, answersOf, partsOf, candidate, parts, rowLead, LANES
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Lane = ____dota.Lane
 local UnitType = ____dota.UnitType
@@ -121,7 +121,14 @@ function spellFields(o)
             r1(p.cd)
         },
         {"sz", p.also},
-        {"sn", p.n}
+        {"sn", p.n},
+        {"sq", p.geom},
+        {
+            "sv",
+            p.off ~= nil and math.floor(p.off + 0.5) or nil
+        },
+        {"so", p.others},
+        {"su", p.centre}
     }
 end
 function rowOf(bot, creep)
@@ -257,6 +264,8 @@ function enemiesOf(f)
     end
     local out = {}
     local hs = {}
+    local units = {}
+    f.enemyUnits = units
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
             local __continue52
@@ -270,6 +279,7 @@ function enemiesOf(f)
                     __continue52 = true
                     break
                 end
+                units[#units + 1] = e
                 local ____at_x_13 = at.x
                 local ____at_y_14 = at.y
                 local ____temp_15 = e:GetPlayerID()
@@ -433,10 +443,31 @@ function spellAnswers(bot, f, creep)
     end
     local timings = {}
     local takens = {}
+    local aims = {}
     local band = false
     local horizon = 0
+    local moving
     for ____, s in ipairs(cs.spells) do
-        local timing = SpellSecure.TimingOf(s, d, f.speed, turn)
+        local timing
+        if s.shape == "u" then
+            timing = SpellSecure.TimingOf(s, d, f.speed, turn)
+            aims[#aims + 1] = nil
+        else
+            if moving == nil then
+                moving = movingOf(creep, at)
+            end
+            local r = SpellSecure.Aimed(
+                s,
+                f.hero,
+                f.speed,
+                turn,
+                moving,
+                moversOf(f),
+                othersOf(f, creep)
+            )
+            timing = r.timing
+            aims[#aims + 1] = r
+        end
         local taken = creep:GetActualIncomingDamage(s.dmg, s.dtype)
         timings[#timings + 1] = timing
         takens[#takens + 1] = taken
@@ -453,19 +484,94 @@ function spellAnswers(bot, f, creep)
             local timing = timings[i + 1]
             local taken = takens[i + 1]
             local hp = forecast ~= nil and hpNow <= taken * ____exports.SETTINGS.SpellBand and verbs.forecastHp(forecast, timing.land) or hpNow
-            answers[#answers + 1] = {
-                spell = s,
-                timing = timing,
-                taken = taken,
-                hp = hp,
-                kill = SpellSecure.Kills(hp, taken),
-                over = SpellSecure.OverReserve(mana, s, cs.keys),
-                also = SpellSecure.AlsoHit(s, f.hero, at, f.foes)
-            }
+            local kill = SpellSecure.Kills(hp, taken)
+            local over = SpellSecure.OverReserve(mana, s, cs.keys)
+            local aimed = aims[i + 1]
+            if aimed == nil then
+                answers[#answers + 1] = {
+                    spell = s,
+                    timing = timing,
+                    taken = taken,
+                    hp = hp,
+                    kill = kill,
+                    over = over,
+                    also = SpellSecure.AlsoHit(s, f.hero, at, f.foes)
+                }
+            else
+                answers[#answers + 1] = {
+                    spell = s,
+                    timing = timing,
+                    taken = taken,
+                    hp = hp,
+                    kill = kill,
+                    over = over,
+                    also = aimed.aim.also,
+                    aim = aimed.aim,
+                    centre = aimed.centre
+                }
+            end
             i = i + 1
         end
     end
     return answers
+end
+function velocityOf(u, at)
+    local ____this_20
+    ____this_20 = u
+    local ____opt_19 = ____this_20.GetExtrapolatedLocation
+    local ex = ____opt_19 and ____opt_19(____this_20, 1)
+    if ex == nil or ex == nil then
+        return {0, 0}
+    end
+    return {ex.x - at.x, ex.y - at.y}
+end
+function movingOf(u, at)
+    local vx, vy = unpack(velocityOf(u, at))
+    return {
+        x = at.x,
+        y = at.y,
+        hull = u:GetBoundingRadius(),
+        vx = vx,
+        vy = vy
+    }
+end
+function moversOf(f)
+    if f.movers ~= nil then
+        return f.movers
+    end
+    enemiesOf(f)
+    local out = {}
+    for ____, e in ipairs(f.enemyUnits) do
+        local at = e:GetLocation()
+        if at ~= nil and at ~= nil then
+            out[#out + 1] = movingOf(e, at)
+        end
+    end
+    f.movers = out
+    return out
+end
+function othersOf(f, creep)
+    if f.others == nil then
+        local all = {}
+        for ____, c in ipairs(f.enemyCreeps) do
+            local at = c:GetLocation()
+            if at ~= nil and at ~= nil then
+                all[c] = {
+                    x = at.x,
+                    y = at.y,
+                    hull = c:GetBoundingRadius()
+                }
+            end
+        end
+        f.others = all
+    end
+    local out = {}
+    for c, b in pairs(f.others) do
+        if c ~= creep then
+            out[#out + 1] = b
+        end
+    end
+    return out
 end
 function spellsOf(bot, f)
     if f.spells == nil then
@@ -820,19 +926,40 @@ local function spellRecord(o, answers, n, now)
     if not best.kill and not closer then
         return
     end
-    o.sp = {
-        name = best.spell.name,
-        shape = best.spell.shape,
-        key = best.spell.key,
-        gap = best.timing.gap,
-        land = best.timing.land,
-        taken = best.taken,
-        hp = best.hp,
-        over = best.over,
-        also = best.also,
-        mana = best.spell.mana,
-        cd = best.spell.cd,
-        n = n
+    local ____o_39 = o
+    local ____best_spell_name_25 = best.spell.name
+    local ____best_spell_shape_26 = best.spell.shape
+    local ____best_spell_key_27 = best.spell.key
+    local ____best_timing_gap_28 = best.timing.gap
+    local ____best_timing_land_29 = best.timing.land
+    local ____best_taken_30 = best.taken
+    local ____best_hp_31 = best.hp
+    local ____best_over_32 = best.over
+    local ____best_also_33 = best.also
+    local ____best_spell_mana_34 = best.spell.mana
+    local ____best_spell_cd_35 = best.spell.cd
+    local ____n_36 = n
+    local ____temp_37 = best.aim ~= nil and SpellSecure.GeomOf(best.spell).k or nil
+    local ____opt_21 = best.aim
+    local ____temp_38 = ____opt_21 and ____opt_21.off
+    local ____opt_23 = best.aim
+    ____o_39.sp = {
+        name = ____best_spell_name_25,
+        shape = ____best_spell_shape_26,
+        key = ____best_spell_key_27,
+        gap = ____best_timing_gap_28,
+        land = ____best_timing_land_29,
+        taken = ____best_taken_30,
+        hp = ____best_hp_31,
+        over = ____best_over_32,
+        also = ____best_also_33,
+        mana = ____best_spell_mana_34,
+        cd = ____best_spell_cd_35,
+        n = ____n_36,
+        geom = ____temp_37,
+        off = ____temp_38,
+        others = ____opt_23 and ____opt_23.others,
+        centre = best.centre
     }
     if best.kill then
         o.spFrom = now
@@ -868,24 +995,24 @@ function ____exports.Shadow(bot)
     if #targets == 0 and not hasOpen(pid) then
         return
     end
-    local ____P_lists_result_19 = P.lists(bot)
-    local listed = ____P_lists_result_19.listed
-    local theirs = ____P_lists_result_19.theirs
+    local ____P_lists_result_40 = P.lists(bot)
+    local listed = ____P_lists_result_40.listed
+    local theirs = ____P_lists_result_40.theirs
     local m = opps[pid]
     if m ~= nil then
         for cid, o in pairs(m) do
             do
-                local __continue106
+                local __continue125
                 repeat
                     if listed[o.creep] == true then
-                        __continue106 = true
+                        __continue125 = true
                         break
                     end
                     line(bot, o)
                     m[cid] = nil
-                    __continue106 = true
+                    __continue125 = true
                 until true
-                if not __continue106 then
+                if not __continue125 then
                     break
                 end
             end
@@ -917,12 +1044,12 @@ function ____exports.Shadow(bot)
     local spellTargets = {}
     for ____, t in ipairs(targets) do
         do
-            local __continue111
+            local __continue130
             repeat
                 local creep = t.creep
                 local here = creep:GetLocation()
                 if here == nil or here == nil then
-                    __continue111 = true
+                    __continue130 = true
                     break
                 end
                 local cid = Telemetry.CreepId(creep)
@@ -987,9 +1114,9 @@ function ____exports.Shadow(bot)
                         now
                     )
                 end
-                __continue111 = true
+                __continue130 = true
             until true
-            if not __continue111 then
+            if not __continue130 then
                 break
             end
         end

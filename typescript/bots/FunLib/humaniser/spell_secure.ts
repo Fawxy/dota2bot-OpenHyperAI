@@ -5,6 +5,7 @@
  * the creep offer's line; the creep row casts on `CastPick` of the same answers (Ours.CreepSpells).
  */
 import type { CreepSpell } from "bots/FunLib/humaniser/spell_ready";
+import * as SpellAim from "bots/FunLib/humaniser/spell_aim";
 
 export interface Place {
     x: number;
@@ -13,6 +14,12 @@ export interface Place {
 
 export interface Foe extends Place {
     hull: number;
+}
+
+/** A unit with its velocity (units a second), to place it when a cast lands. */
+export interface Moving extends Foe {
+    vx: number;
+    vy: number;
 }
 
 function dist(a: Place, b: Place): number {
@@ -83,6 +90,46 @@ export function AlsoHit(this: void, s: CreepSpell, hero: Place, creep: Place, fo
     return n;
 }
 
+/**
+ * Where a point or no-target spell lands (slice oha-spell-aim): SPELL_SHAPE's kind, else for a spell with no row the read before it
+ * (a line when it has a width, else an area at the point; a no-target spell around the hero).
+ */
+export function GeomOf(this: void, s: CreepSpell): SpellAim.Geom {
+    const k = s.geom ?? (s.shape === "n" ? "s" : s.half > 0 ? "l" : "a");
+    return { k, range: s.range, radius: k === "s" && s.radius <= 0 ? s.range : s.radius, half: s.half, length: k === "l" ? math.max(s.length, s.range) : 0, offset: s.offset };
+}
+
+function movedBy(u: Moving, t: number): Moving {
+    return { x: u.x + u.vx * t, y: u.y + u.vy * t, hull: u.hull, vx: u.vx, vy: u.vy };
+}
+
+/** A `p` or `n` spell's landing on an aim: the walk, the turn (not for a spell around the hero), the cast point, the flight from where it casts, the delay. */
+function aimedTiming(s: CreepSpell, g: SpellAim.Geom, aim: SpellAim.Aim, creep: Place, heroSpeed: number, turn: number): Timing {
+    const walk = aim.gap / math.max(100, heroSpeed);
+    let flight = 0;
+    if (s.speed > 0 && (g.k === "l" || g.k === "a")) flight = dist(aim.from, g.k === "l" ? creep : aim.at) / s.speed;
+    return { gap: aim.gap, walk, land: walk + (g.k === "s" ? 0 : turn) + s.cp + flight + s.delay };
+}
+
+/**
+ * A `p` or `n` spell aimed at the creep (spell_aim.ts): aimed at the creep and the foes where they are, then again where their
+ * velocities put them when that cast lands, and timed on the second aim. `others` (their other creeps) are counted where they are.
+ * `turn` is the turn to face the creep: a line or ring aimed off it to catch a hero turns at most its arc further (a hundredth
+ * of a second or two). `centre`: the foes the same cast hits aimed straight at the creep, for the line to show what the aim added.
+ */
+export function Aimed(this: void, s: CreepSpell, hero: Place, heroSpeed: number, turn: number, creep: Moving, foes: Moving[], others: Foe[]): { aim: SpellAim.Aim; timing: Timing; centre: number } {
+    const g = GeomOf(s);
+    const first = SpellAim.AimAt(g, hero, creep, foes, others);
+    const t = aimedTiming(s, g, first, creep, heroSpeed, turn).land;
+    const c2 = movedBy(creep, t);
+    const f2: Moving[] = [];
+    for (const f of foes) f2.push(movedBy(f, t));
+    const aim = SpellAim.AimAt(g, hero, c2, f2, others);
+    // Aimed with nobody wanted, the cast goes straight at the creep; the foes passed as `others` are then those it hits anyway.
+    const centre = SpellAim.AimAt(g, hero, c2, [], f2).others;
+    return { aim, timing: aimedTiming(s, g, aim, c2, heroSpeed, turn), centre };
+}
+
 /** One spell's answer on one creep at one read. */
 export interface Answer {
     spell: CreepSpell;
@@ -92,7 +139,11 @@ export interface Answer {
     hp: number;
     kill: boolean;
     over: number;
+    /** Enemy heroes also hit: for `u` AlsoHit, for `p` and `n` the aim's. */
     also: number;
+    /** `p` and `n`: the aim, and AlsoHit's count for the same spell aimed at the creep's centre (the read before the aim). */
+    aim?: SpellAim.Aim;
+    centre?: number;
 }
 
 /** HP still to lose before the spell would kill. */

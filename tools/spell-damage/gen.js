@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates typescript/bots/FunLib/humaniser/spell_damage_data.ts: for each hero ability that deals damage, the
-// AbilityValues key holding its damage (read live in game with GetSpecialValueFloat, so the level and patch are the
+// AbilityValues keys of its geometry (SPELL_SHAPE, shapeOf) and the key holding its damage (read live in game with GetSpecialValueFloat, so the level and patch are the
 // game's), whether that value is per second, and its damage type. Source: the client's own game files
 // (pak01_dir.vpk, scripts/npc/heroes/*.txt). Re-run after a patch:
 //   node tools/spell-damage/gen.js [path/to/pak01_dir.vpk]
@@ -128,12 +128,78 @@ function pick(name, ab) {
     return { key, dot: PER_SECOND.test(key), type };
 }
 
+// Geometry (slice oha-spell-aim): where a point or no-target spell lands, as AbilityValues keys read live in game. Valve's AOE
+// behaviour flag (a circle drawn at the target point) parts the point spells: with it an area at the point, without it a line
+// from the caster (Fissure's and Ice Path's half widths are named radii). A no-target spell with a `<x>_range` beside its
+// `<x>_radius` hits a circle that far in front of the caster (Shadowraze); else one around the caster. Unit-target spells get
+// no row: the target fixes where they land.
+const NOT_GEOMETRY = /vision|sight|aura|bonus|scepter|shard_distance|shard_push|pull|knockback|moved|echo|spine|inner|free_pathing|vector|reticle|application|search|spread|leash|slow|duration|stun|ally|heal|return|max_targets|tree|latch|attack|watch|break|min_|dead_zone|placement|self_|tooltip/i;
+// The flag misleads for these: a wave travelling from the caster with an area drawn at its end.
+const SHAPE_OVERRIDE = { venomancer_venomous_gale: 'l', shadow_demon_shadow_poison: 'l' };
+// The rule picks the wrong key: Whirling Axes' hit radius is each axe's; the axes fly out to max_range around Troll.
+const KEY_OVERRIDE = { troll_warlord_whirling_axes_melee: { radius: 'max_range' } };
+
+function geomKey(vals, re, how) {
+    let best;
+    let bv;
+    for (const k of Object.keys(vals)) {
+        if (!re.test(k) || NOT_GEOMETRY.test(k) || k === 'AbilityCastRange') continue;
+        const v = valueOf(vals[k]);
+        if (!(v > 0)) continue;
+        if (best === undefined || (how === 'min' ? v < bv : v > bv)) {
+            best = k;
+            bv = v;
+        }
+    }
+    return best;
+}
+
+function shapeOf(name, ab) {
+    const b = ab.AbilityBehavior || '';
+    if (b.includes('UNIT_TARGET')) return undefined;
+    const vals = ab.AbilityValues || {};
+    const radius = geomKey(vals, /damage_radius/i) ?? geomKey(vals, /(^|_)(radius|aoe|area_of_effect)$/i, 'max');
+    const r = radius === 'start_radius' || radius === 'end_radius' ? undefined : radius;
+    const out = {};
+    let k;
+    if (b.includes('POINT')) {
+        k = SHAPE_OVERRIDE[name] ?? (b.includes('_AOE') ? 'a' : 'l');
+        if (k === 'a') {
+            if (r !== undefined) out.radius = r;
+            const spd = geomKey(vals, /^(speed|projectile_speed)$/i, 'max');
+            if (spd !== undefined) out.speed = spd;
+        } else {
+            // The narrower end of a widening line or cone: the creep and the hero must both be inside it.
+            const width = geomKey(vals, /width/i, 'min');
+            const cone = vals.start_radius !== undefined && vals.end_radius !== undefined ? (valueOf(vals.start_radius) <= valueOf(vals.end_radius) ? 'start_radius' : 'end_radius') : undefined;
+            if (width !== undefined) out.width = width;
+            else if (cone !== undefined) out.half = cone;
+            else if (r !== undefined) out.half = r;
+            const spd = geomKey(vals, /speed$/i, 'max');
+            if (spd !== undefined && !/move|turn|drag|multiplier|pullback/i.test(spd)) out.speed = spd;
+            const len = geomKey(vals, /(^|_)(distance|length|range)$/i, 'max');
+            if (len !== undefined && !/cast|stun/i.test(len)) out.length = len;
+        }
+    } else if (b.includes('NO_TARGET')) {
+        const prefix = r !== undefined ? r.replace(/radius$/i, '') : undefined;
+        if (prefix && vals[`${prefix}range`] !== undefined && valueOf(vals[`${prefix}range`]) > 0) {
+            k = 'r';
+            out.offset = `${prefix}range`;
+        } else k = 's';
+        if (r !== undefined) out.radius = r;
+    } else return undefined;
+    const delay = geomKey(vals, /delay/i, 'max');
+    if (delay !== undefined && !/teleport|path|fade|formation|after/i.test(delay)) out.delay = delay;
+    return { k, ...out, ...KEY_OVERRIDE[name] };
+}
+
 function main() {
     const vpk = process.argv[2] || DEFAULT_VPK;
     const files = readVpk(vpk, 'scripts/npc/heroes/');
     const cover = JSON.parse(fs.readFileSync(COVERAGE, 'utf8'));
     const rows = [];
     const added = [];
+    const shapes = [];
     let damaging = 0;
     for (const [file, text] of Object.entries(files)) {
         if (!file.endsWith('.txt')) continue;
@@ -145,6 +211,8 @@ function main() {
                 const r = pick(name, ab);
                 if (r === undefined) continue;
                 damaging++;
+                const g = shapeOf(name, ab);
+                if (g !== undefined) shapes.push([name, g]);
                 const verdict = cover[name]?.verdict;
                 if (verdict === 'counted') rows.push([name, r]);
                 else added.push([name, r, verdict === 'left_out' ? 'left_out' : 'unknown']);
@@ -153,6 +221,7 @@ function main() {
     }
     rows.sort((a, b) => (a[0] < b[0] ? -1 : 1));
     added.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    shapes.sort((a, b) => (a[0] < b[0] ? -1 : 1));
     const steam = fs.readFileSync(path.join(path.dirname(vpk), 'steam.inf'), 'utf8').match(/ClientVersion=(\d+)/);
     const lines = [
         '// Generated by tools/spell-damage/gen.js from the game files (client ' + (steam ? steam[1] : '?') + '); do not edit.',
@@ -164,6 +233,11 @@ function main() {
         '/** Per damaging ability Valve\'s estimate is measured to leave out (left_out) or has never been measured (unknown): the same key, per-second flag and DamageType as SPELL_DAMAGE, and the status. A multi-hit or over-time spell whose key is a per-hit or per-tick value is counted once. An unknown spell may be one Valve\'s estimate already counts, so it can be counted twice until coverage.js measures it (of the nukes measured so far the estimate counts about two in three). */',
         'export const SPELL_ADDED: Record<string, [key: string, perSecond: boolean, damageType: number, status: "left_out" | "unknown"]> = {',
         ...added.map(([n, r, st]) => `    ${n}: [${JSON.stringify(r.key)}, ${r.dot}, ${r.type}, ${JSON.stringify(st)}],`),
+        '};',
+        '',
+        '/** Per damaging point or no-target ability, where it lands (gen.js shapeOf): `k` an area at the point (`a`), a line from the caster (`l`), a circle `offset` in front of the caster (`r`) or around it (`s`); each other field the AbilityValues key of that number (`width` a full width, `half` a half width). */',
+        'export const SPELL_SHAPE: Record<string, { k: "a" | "l" | "r" | "s"; radius?: string; width?: string; half?: string; length?: string; speed?: string; delay?: string; offset?: string }> = {',
+        ...shapes.map(([n, g]) => `    ${n}: { ${Object.entries(g).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')} },`),
         '};',
         '',
     ];
