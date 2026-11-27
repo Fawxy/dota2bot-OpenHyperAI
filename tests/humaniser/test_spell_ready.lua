@@ -137,6 +137,7 @@ do
 		a.GetManaCost = function() return o.mana or 100 end
 		a.GetCooldown = function() return o.cd or 8 end
 		a.GetTargetType = o.ttype and function() return o.ttype end or nil
+		a.GetTargetTeam = o.tteam and function() return o.tteam end or nil
 		a.GetSpecialValueFloat = function(_, k) return sv[k] or 0 end
 		return a
 	end
@@ -159,6 +160,18 @@ do
 	check("a line's half width and speed from its keys", by.bolt.half == 60 and by.bolt.speed == 1600 and by.bolt.radius == 0)
 	check("a cone reads as a line as wide as its far end", by.wave.half == 250 and by.wave.speed == 1050)
 	check("a key spell on cooldown still sets the reserve", got.keys.lion_voodoo == 125 and by.bolt.key == false)
+
+	T = T + 1
+	caster.abilities = {
+		[0] = cast("ally_shield", { dmg = 50, ttype = 3, tteam = 1 }), -- an ally's buff that damages around its target (Frost Shield)
+		[1] = cast("both_teams", { dmg = 60, ttype = 3, tteam = 3 }),
+		[2] = cast("enemy_nuke", { dmg = 70, ttype = 3, tteam = 2 }),
+	}
+	local teams = SpellReady.CreepSpellsOf(caster)
+	local tn = {}
+	for _, s in ipairs(teams.spells) do tn[s.name] = true end
+	check("a unit target only an ally may take is left out; one for either team or the enemy is kept",
+		#teams.spells == 2 and tn.both_teams and tn.enemy_nuke and not tn.ally_shield, #teams.spells)
 
 	T = T + 1
 	caster.abilities = {

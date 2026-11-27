@@ -215,6 +215,7 @@ const B_POINT = BotScriptEnums.ABILITY_BEHAVIOR_POINT ?? 16;
 const B_CHANNELLED = BotScriptEnums.ABILITY_BEHAVIOR_CHANNELLED ?? 128;
 const B_TOGGLE = BotScriptEnums.ABILITY_BEHAVIOR_TOGGLE ?? 512;
 const T_CREEP = BotScriptEnums.ABILITY_TARGET_TYPE_CREEP ?? 2;
+const T_ENEMY = BotScriptEnums.ABILITY_TARGET_TEAM_ENEMY ?? 2;
 
 /** Whether the power-of-two `flag` is set in `bits` (the build targets Lua 5.1, which has no bitwise operators). */
 function has(bits: number, flag: number): boolean {
@@ -235,6 +236,7 @@ interface CreepCastHandle extends CastHandle {
     GetManaCost(): number;
     GetCooldown(): number;
     GetTargetType?(): number;
+    GetTargetTeam?(): number;
 }
 
 /** A spell `bot` can cast now that can kill a lane creep in one cast (CreepSpells); the facts spell_secure.ts answers on. */
@@ -302,6 +304,9 @@ export function CreepSpellsOf(bot: Unit): CreepSpells {
         if (has(r.behavior, B_UNIT)) {
             const tt = a.GetTargetType?.();
             if (tt !== undefined && tt > 0 && !has(tt, T_CREEP)) continue;
+            // An ally's spell (Frost Shield) can name creeps among its targets: only one that may target an enemy is cast on their creep.
+            const team = a.GetTargetTeam?.();
+            if (team !== undefined && team > 0 && !has(team, T_ENEMY)) continue;
             shape = "u";
         } else if (has(r.behavior, B_POINT)) shape = "p";
         else if (has(r.behavior, B_NO_TARGET) && r.range > 0) shape = "n";
