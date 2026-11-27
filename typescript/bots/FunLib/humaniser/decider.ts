@@ -324,9 +324,16 @@ function turn(bot: Unit, s: HeroState, row: Row): Offer | undefined {
     return undefined;
 }
 
-/** A refused begin passes the turn to the next row. */
+/**
+ * A refused begin passes the turn to the next row. A reservation stops the turns at its row: a row below would take the hero and
+ * the reserved claim before the start it is waiting for.
+ */
 function pick(bot: Unit, s: HeroState): Row | undefined {
-    for (const row of ROWS) if (turn(bot, s, row) !== undefined) return row;
+    const rv = s.reserved?.row;
+    for (const row of ROWS) {
+        if (turn(bot, s, row) !== undefined) return row;
+        if (row.name === rv) return undefined;
+    }
     return undefined;
 }
 

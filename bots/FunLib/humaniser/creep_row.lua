@@ -623,7 +623,11 @@ function offerOf(bot, pd)
     local due = pd.now + (k == "sp" and pd.cast.timing.land or best.t.due)
     local me = bot:GetLocation()
     local at = me
-    local secs = k == "sp" and pd.cast.timing.land or math.max(pd.need, best.t.due)
+    local age = math.max(
+        0,
+        DotaTime() - pd.now
+    )
+    local secs = k == "sp" and pd.cast.timing.land or math.max(pd.need, best.t.due - age)
     if k ~= "sp" then
         local c = best.creep:GetLocation()
         if c ~= nil and c ~= nil then
@@ -1451,7 +1455,7 @@ function ____exports.Consider(bot, cands)
         seen = recs[best.cid],
         tr = reads[best.cid]
     }
-    if reserves(pd.k, pd.tr) and slackOf(pd, now) > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
+    if reserves(pd.k, pd.tr) and cur == nil and slackOf(pd, now) > ____exports.SETTINGS.DeciderRound + ____exports.SETTINGS.Margin then
         if Decider.Reserve(
             bot,
             ____exports.ROW,

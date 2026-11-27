@@ -873,7 +873,9 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
         recs[c.cid].ok = "other";
     }
     const pd: Pending = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid], tr: reads[best.cid] };
-    if (reserves(pd.k, pd.tr) && slackOf(pd, now) > SETTINGS.DeciderRound + SETTINGS.Margin) {
+    // With a lower row's task running (the draw) the attempt goes now and takes the hero from it (no-creep-unpaid s6b's hand-over):
+    // a reservation would leave that task holding the hero and its claim.
+    if (reserves(pd.k, pd.tr) && cur === undefined && slackOf(pd, now) > SETTINGS.DeciderRound + SETTINGS.Margin) {
         if (Decider.Reserve(bot, ROW, offerOf(bot, pd))) {
             reserved[pid] = { cid: best.cid, pd, at: now };
             best.note(false, "reserved");
@@ -1219,7 +1221,9 @@ function offerOf(bot: Unit, pd: Pending): Decider.Offer {
     // attack from the stand spot at the verb's reach (the offer read's), until the swing is due or the walk is done, whichever is later.
     const me = bot.GetLocation();
     let at = me;
-    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due);
+    // Aged from the read: a reserved start is offered rounds after it.
+    const age = math.max(0, DotaTime() - pd.now);
+    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due - age);
     if (k !== "sp") {
         const c = best.creep.GetLocation();
         if (c !== null && c !== undefined) {

@@ -1532,6 +1532,7 @@ do -- The reservation: the creep is reserved at the go (claim, no hold) and star
 		w.core.range = 150
 		w.c = ranged(100)
 		w.targets = { target(w.c, { walk = 0, due = o.due or 2.5 }) }
+		w.running = o.running
 		w.out = capture(function() w.CO.Shadow(w.core) end)
 		w.cid = cidOf(w.c)
 		return w
@@ -1549,11 +1550,32 @@ do -- The reservation: the creep is reserved at the go (claim, no hold) and star
 	check("reserve: 1.0 s spare, more than a round plus the margin: still not held", host(w) == 0.123 and w.starts == 0)
 	T = T + 0.1
 	local start
-	local st = lines(capture(function() start = host(w) end), "job=creep")[1]
+	local all = capture(function() start = host(w) end)
+	local st = lines(all, "job=creep")[1]
+	local beg = lines(all, "bsec=")[1]
+	check("reserve: the start's danger window is aged to the start (0.9 s, not the 2.5 s at the go)", field(beg, "bsec") == "0.900", tostring(beg))
 	check("reserve: 0.9 s spare: the round starts it and holds hard", start == decider().HARD and w.starts == 1 and lastHitOpts(w).target == w.c, tostring(start) .. " " .. w.starts)
 	check("reserve: the start line carries rv (1.6 s) and the due aged to the start", field(st, "phase") == "start" and field(st, "rv") == "1.600" and field(st, "gd") == "0.900", tostring(st))
 	check("reserve: the verb's wait counts from the start: the eta aged plus the slack", near(lastHitOpts(w).maxWait, 0.9 + 1.5), tostring(lastHitOpts(w).maxWait))
 	check("reserve: the claim is the started attempt's", claimApi().HeldBy(1) == w.cid)
+
+	-- The draw (a row below) asked at each round: a reservation keeps it from beginning, which would take the hero and the claim.
+	local function drawAsked(w)
+		local n = 0
+		for _, r in ipairs(decider().ROWS) do
+			if r.name == "aggro" then r.wants = function() n = n + 1 return nil end end
+		end
+		host(w)
+		return n
+	end
+	w = reserveWorld()
+	check("reserve: while it stands a lower row (the draw) is not asked at the round", drawAsked(w) == 0 and claimApi().HeldBy(1) == w.cid)
+	w = world({ reserve = true })
+	capture(function() w.CO.Shadow(w.core) end)
+	check("control: with no reservation the draw is asked at the round", drawAsked(w) == 1)
+
+	w = reserveWorld({ running = { name = "aggro" } })
+	check("reserve: over a lower row's task (the draw) the attempt goes at once and takes the hero, no reservation", w.starts == 1 and w.running.name == "creep" and #lines(w.out, "phase=reserve") == 0, table.concat(w.out, " | "))
 
 	w = reserveWorld({ due = 0.8 })
 	local first = lines(w.out, "job=creep")[1]
