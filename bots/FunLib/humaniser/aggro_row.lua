@@ -462,6 +462,14 @@ end
 local function target(cid)
     return "draw:" .. tostring(cid)
 end
+--- A place of the read as the offer's `at`, at the hero's height.
+local function place(bot, p)
+    return Vector(
+        p.x,
+        p.y,
+        bot:GetLocation().z
+    )
+end
 --- The row's `wants`: an offer while an attempt runs, when an open one should resume, or when a fresh read passes the go rule now.
 local function rowWants(bot, _reads)
     local pid = bot:GetPlayerID()
@@ -485,7 +493,9 @@ local function rowWants(bot, _reads)
             pending[pid] = {resume = m}
             return {
                 tgt = target(m.cid),
-                by = m.orderAt + ____exports.SETTINGS.Backstop
+                by = m.orderAt + ____exports.SETTINGS.Backstop,
+                at = place(bot, m.hand),
+                secs = m.orderAt + ____exports.SETTINGS.Backstop - now
             }
         end
         memo[pid] = nil
@@ -502,7 +512,11 @@ local function rowWants(bot, _reads)
         return nil
     end
     pending[pid] = {snap = s}
-    return {tgt = target(Telemetry.CreepId(s.ranged))}
+    return {
+        tgt = target(Telemetry.CreepId(s.ranged)),
+        at = place(bot, s.spot),
+        secs = s.f.walk + AggroOffer.SETTINGS.Draw
+    }
 end
 --- The row's `begin`: starts the attempt `rowWants` decided (a fresh draw, or the walk back of an open one).
 local function rowBegin(bot)

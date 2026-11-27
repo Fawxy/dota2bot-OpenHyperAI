@@ -40,6 +40,7 @@ local refuse
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local Claims = require(GetScriptDirectory().."/FunLib/humaniser/claims")
+local Danger = require(GetScriptDirectory().."/FunLib/humaniser/danger")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local OursOn = ____ours.On
@@ -148,7 +149,8 @@ end
 -- hero. 1a, the fight (Ours.FightFirst), refuses. 2, the claim (another hero holds the target, `holds`), and 3, the go-by (the
 -- time to go by has passed), are asked and logged and refuse nothing: each still lives in its row (the creep row's `FreeFor`,
 -- each row's own `by`) and refuses here once the conversion that removes the row's own check (route step 3) shows its shadow at 0.
--- 4, danger at the place, is not asked yet; 5, the order, is `pick`'s.
+-- 4, danger at the place, is `begin`'s once the begin went (`Danger.At`, logged only, until its shadow is graded); 5, the order,
+-- is `pick`'s.
 local function accept(bot, offer, mode)
     if FIGHT[mode] == true and OursOn("FightFirst") then
         return {no = "fight", others = 0}
@@ -218,12 +220,25 @@ local function begin(bot, s, row, offer)
         return false
     end
     s.refused[row.name] = nil
+    local d
+    local dfail
+    if offer.at ~= nil and Telemetry.IsEnabled() then
+        local at = offer.at
+        local dok, dres = pcall(function() return Danger.At(bot, at, offer.secs) end)
+        if dok then
+            d = dres
+        else
+            dfail = true
+        end
+    end
     s.begun = {
         row = row,
         offer = offer,
         over = over,
         from = from,
-        v = v
+        v = v,
+        d = d,
+        dfail = dfail
     }
     return true
 end
@@ -300,18 +315,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue44
+            local __continue48
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue44 = true
+                    __continue48 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue44 = true
+                __continue48 = true
             until true
-            if not __continue44 then
+            if not __continue48 then
                 break
             end
         end
@@ -373,6 +388,27 @@ local function note(bot, s, heldRow, softNow)
             {"bacc", b.v.would},
             {"bcl", b.v.others > 0 and b.v.others or nil}
         )
+        if b.offer.at ~= nil then
+            __TS__ArrayPush(
+                fields,
+                {
+                    "bpx",
+                    math.floor(b.offer.at.x)
+                },
+                {
+                    "bpy",
+                    math.floor(b.offer.at.y)
+                }
+            )
+        end
+        if b.d ~= nil then
+            for ____, f in ipairs(Danger.Fields(b.d)) do
+                fields[#fields + 1] = f
+            end
+        end
+        if b.dfail == true then
+            fields[#fields + 1] = {"dfail", 1}
+        end
     end
     Telemetry.Event("choice", fields)
 end
@@ -450,8 +486,9 @@ end
 -- own `wants` is asked for the offer. True when the row was begun; a row not in ROWS is never begun.
 -- What a row wants (offers-and-the-decider s3), every field optional and logged when the row is begun: its target (a name or id,
 -- the claim's key), the game time it must go by, how it is taken (`way`: `attack`, `deny`, `spell`; absent where a row has one
--- way) and what its claim carries (`claim`: the creep row's rank, kind, due time and phase). The other fields of s3 (place,
--- seconds, gain, phases, end) arrive with the first code that reads each.
+-- way), what its claim carries (`claim`: the creep row's rank, kind, due time and phase), where the hero stands to act (`at`) and
+-- the seconds it is held (`secs`, the walk back included where the row knows it): the danger at the place is asked for those
+-- (`Danger.At`). The other fields of s3 (gain, phases, end) arrive with the first code that reads each.
 function ____exports.Offer(bot, row)
     local at = __TS__ArrayIndexOf(____exports.ROWS, row)
     if at < 0 then

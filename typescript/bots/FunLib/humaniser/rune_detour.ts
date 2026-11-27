@@ -77,6 +77,8 @@ interface Read {
     dr: number;
     /** Seconds the path by the rune adds to the walk to the hero's lane front. */
     ex: number;
+    /** Seconds of the walk to the rune, at the speed `ex` is read with: what the detour holds the hero for. */
+    wr: number;
 }
 
 const passes: Record<number, Pass | undefined> = {};
@@ -150,7 +152,7 @@ export function ReadPass(bot: Unit, now: number = DotaTime()): Read | undefined 
     const front = GetLaneFrontLocation(bot.GetTeam(), lane, 0);
     const speed = math.max(100, bot.GetCurrentMovementSpeed());
     const ex = math.max(0, dr + dist(at, front) - dist(me, front)) / speed;
-    return { rune, at, spawn, dr, ex };
+    return { rune, at, spawn, dr, ex, wr: dr / speed };
 }
 
 /**
@@ -286,7 +288,7 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
         return undefined;
     }
     pending[pid] = r;
-    return { tgt: `rune:${r.rune}` };
+    return { tgt: `rune:${r.rune}`, at: r.at, secs: r.wr };
 }
 
 /** The row's `begin`: starts the walk `rowWants` decided this round. */

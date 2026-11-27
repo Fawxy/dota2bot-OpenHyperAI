@@ -17,8 +17,9 @@
  * chooser and the shadow line say nothing for that time. A row is re-picked every round and is not told when another mode
  * takes the hero, so its verb must cope with being cut off between any two steps.
  */
-import { BotMode, Unit } from "bots/ts_libs/dota";
+import { BotMode, Unit, Vector } from "bots/ts_libs/dota";
 import * as Claims from "bots/FunLib/humaniser/claims";
+import * as Danger from "bots/FunLib/humaniser/danger";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import { On as OursOn } from "bots/FunLib/humaniser/ours";
 import { READS } from "bots/FunLib/humaniser/reads";
@@ -29,14 +30,17 @@ import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 /**
  * What a row wants (offers-and-the-decider s3), every field optional and logged when the row is begun: its target (a name or id,
  * the claim's key), the game time it must go by, how it is taken (`way`: `attack`, `deny`, `spell`; absent where a row has one
- * way) and what its claim carries (`claim`: the creep row's rank, kind, due time and phase). The other fields of s3 (place,
- * seconds, gain, phases, end) arrive with the first code that reads each.
+ * way), what its claim carries (`claim`: the creep row's rank, kind, due time and phase), where the hero stands to act (`at`) and
+ * the seconds it is held (`secs`, the walk back included where the row knows it): the danger at the place is asked for those
+ * (`Danger.At`). The other fields of s3 (gain, phases, end) arrive with the first code that reads each.
  */
 export interface Offer {
     tgt?: string;
     by?: number;
     way?: string;
     claim?: Omit<Claims.Claim, "pid">;
+    at?: Vector;
+    secs?: number;
 }
 
 export interface Row {
@@ -130,6 +134,10 @@ interface Begun {
     from: string;
     /** Acceptance's answer (`accept`). */
     v: Verdict;
+    /** Danger at the offer's place (s4 step 4, `Danger.At`), asked at the begin and logged; undefined when the offer names no place or the read failed. */
+    d?: Danger.Parts;
+    /** `Danger.At` raised an error at this begin (logged as `dfail`). */
+    dfail?: boolean;
 }
 
 /** A begin the decider refused: kept for the row to read (`Refusal`), and logged once per row and target. */
@@ -210,7 +218,8 @@ function holds(c: Claims.Claim, mine: Offer["claim"]): boolean {
  * hero. 1a, the fight (Ours.FightFirst), refuses. 2, the claim (another hero holds the target, `holds`), and 3, the go-by (the
  * time to go by has passed), are asked and logged and refuse nothing: each still lives in its row (the creep row's `FreeFor`,
  * each row's own `by`) and refuses here once the conversion that removes the row's own check (route step 3) shows its shadow at 0.
- * 4, danger at the place, is not asked yet; 5, the order, is `pick`'s.
+ * 4, danger at the place, is `begin`'s once the begin went (`Danger.At`, logged only, until its shadow is graded); 5, the order,
+ * is `pick`'s.
  */
 function accept(bot: Unit, offer: Offer, mode: number): Verdict {
     if (FIGHT[mode] === true && OursOn("FightFirst")) return { no: "fight", others: 0 };
@@ -251,7 +260,16 @@ function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     if (!ok) error(res, 0);
     if (res !== true) return false;
     s.refused[row.name] = undefined;
-    s.begun = { row, offer, over, from, v };
+    // Asked for begun offers only (the shadow sets the parts against what happened after a start); a fault never blocks the begin.
+    let d: Danger.Parts | undefined;
+    let dfail: boolean | undefined;
+    if (offer.at !== undefined && Telemetry.IsEnabled()) {
+        const at = offer.at;
+        const [dok, dres] = pcall(() => Danger.At(bot, at, offer.secs));
+        if (dok) d = dres;
+        else dfail = true;
+    }
+    s.begun = { row, offer, over, from, v, d, dfail };
     return true;
 }
 
@@ -369,7 +387,12 @@ function note(bot: Unit, s: HeroState, heldRow = s.held, softNow = s.soft): void
     ];
     if (heldRow !== undefined) fields.push(["hs", soft ? "soft" : "hard"]);
     if (s.letAt !== undefined) fields.push(["let", "retreat"], ["d_retreat", s.letAt]);
-    if (b !== undefined) fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from], ["bway", b.offer.way], ["bacc", b.v.would], ["bcl", b.v.others > 0 ? b.v.others : undefined]);
+    if (b !== undefined) {
+        fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from], ["bway", b.offer.way], ["bacc", b.v.would], ["bcl", b.v.others > 0 ? b.v.others : undefined]);
+        if (b.offer.at !== undefined) fields.push(["bpx", math.floor(b.offer.at.x)], ["bpy", math.floor(b.offer.at.y)]);
+        if (b.d !== undefined) for (const f of Danger.Fields(b.d)) fields.push(f);
+        if (b.dfail === true) fields.push(["dfail", 1]);
+    }
     Telemetry.Event("choice", fields);
 }
 

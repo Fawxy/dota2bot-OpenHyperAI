@@ -85,6 +85,14 @@ end
 
 local function ask(w) return w.D.Ask(w.core, w.AR.ROW) end
 
+do -- the offer's place and seconds (the danger asked at each begin): the draw spot, the walk and the draw
+	local w = world()
+	local o
+	capture(function() o = w.AR.ROW.wants(w.core) end)
+	check("offer: at the draw spot, 200 from their nearest fighting creep; secs the draw's 2.5 with no walk past it", o ~= nil and o.at ~= nil and math.abs(o.at.x - 100) < 5 and math.abs(o.secs - (100 / w.core:GetCurrentMovementSpeed() + 2.5)) < 0.01,
+		o and (tostring(o.at and o.at.x) .. " " .. tostring(o.secs)))
+end
+
 do -- off: the row never wants the hero; the read stays the shadow's
 	local w = world({ on = false })
 	check("off: no offer", w.AR.ROW.wants(w.core) == nil and w.starts == 0)

@@ -2913,7 +2913,9 @@ local function rowOffer(bot, reads)
     rowPending[pid] = {slot = slot, known = known, a = a, plan = plan}
     return {
         tgt = "camp:" .. tostring(slot.data.campIdx),
-        by = by
+        by = by,
+        at = slot.stand,
+        secs = slot.aggroAt - now + slot.walk
     }
 end
 --- The row's `begin`: starts the stack `rowOffer` decided this round.

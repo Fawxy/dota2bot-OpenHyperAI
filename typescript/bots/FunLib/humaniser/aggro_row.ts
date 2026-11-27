@@ -307,6 +307,11 @@ function target(cid: number): string {
     return `draw:${cid}`;
 }
 
+/** A place of the read as the offer's `at`, at the hero's height. */
+function place(bot: Unit, p: AggroOffer.Vec) {
+    return Vector(p.x, p.y, bot.GetLocation().z);
+}
+
 /** The row's `wants`: an offer while an attempt runs, when an open one should resume, or when a fresh read passes the go rule now. */
 function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const pid = bot.GetPlayerID();
@@ -324,7 +329,8 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (m !== undefined) {
         if (resumable(bot, m, now)) {
             pending[pid] = { resume: m };
-            return { tgt: target(m.cid), by: m.orderAt! + SETTINGS.Backstop };
+            // The walk back: to the hand-over spot, for what is left of the draw's backstop.
+            return { tgt: target(m.cid), by: m.orderAt! + SETTINGS.Backstop, at: place(bot, m.hand), secs: m.orderAt! + SETTINGS.Backstop - now };
         }
         memo[pid] = undefined;
     }
@@ -335,7 +341,8 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     const s = AggroOffer.ReadNow(bot);
     if (s === undefined || s.fails.length > 0 || s.target === undefined) return undefined;
     pending[pid] = { snap: s };
-    return { tgt: target(Telemetry.CreepId(s.ranged)) };
+    // The draw spot, where the order is given; held for the walk there and the draw (the offer read's window less its second walk).
+    return { tgt: target(Telemetry.CreepId(s.ranged)), at: place(bot, s.spot), secs: s.f.walk + AggroOffer.SETTINGS.Draw };
 }
 
 /** The row's `begin`: starts the attempt `rowWants` decided (a fresh draw, or the walk back of an open one). */

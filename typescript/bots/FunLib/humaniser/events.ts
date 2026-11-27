@@ -2985,6 +2985,28 @@ export const EVENTS = {
         bacc: "str",
         /** kind=decider, with `beg`: how many other heroes of ours held a claim on the offer's target at the begin; absent when none. */
         bcl: "num",
+        /** kind=decider, with `beg`: where the offer says the hero stands to act (`Decider.Offer.at`), rounded down; absent where the row names no place, and on logs before oha-offer-danger. */
+        bpx: "num",
+        bpy: "num",
+        /**
+         * kind=decider, with `beg` and a place: danger at the place (offers-and-the-decider s5, `Danger.At`; logged, refuses nothing). `bsec`
+         * the window asked: the offer's seconds held (`Decider.Offer.secs`), else Threat GateHorizon. `dn` the visible enemy heroes who can
+         * reach the walk from the hero to the place within it, `dre` each as `pid:dist:exp:dmg` (centre distance to the place; seconds of
+         * the straight walk inside its attack range and both hulls; its damage on the hero over the threat read's burst window). `dbu`
+         * their summed damage as a share of the hero's HP; `dal` our other heroes who can reach the place within the window; `dtw` 1 when
+         * the place is inside a live enemy tower's reach. `dun` every enemy hero out of sight with a sighting, nearest first, as
+         * `pid:tss:dist` (seconds unseen; its last place to the place); `dnos` those never sighted. Joined to what happened: `q @offer_danger`.
+         */
+        bsec: "num",
+        dn: "num",
+        dre: "str",
+        dbu: "num",
+        dal: "num",
+        dtw: "num",
+        dun: "str",
+        dnos: "num",
+        /** kind=decider, with `beg` and a place: 1 when `Danger.At` raised an error, so the begin carries no danger parts (`bsec` absent). */
+        dfail: "num",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */
