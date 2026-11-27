@@ -24,8 +24,8 @@ export interface Moving extends Foe {
 
 export const SETTINGS = {
     /**
-     * judgement: the least closing speed of a homing flight, as a share of the projectile's, so a creep walking off faster
-     * than it (none in lane) reads a long flight rather than none.
+     * judgement: the least closing speed of a homing flight, as a share of the projectile's, so a unit walking off as fast as
+     * it reads a long flight rather than none (a lane creep walking straight off from Death Pulse reads 80, not 75).
      */
     ChaseFloor: 0.2,
 };
