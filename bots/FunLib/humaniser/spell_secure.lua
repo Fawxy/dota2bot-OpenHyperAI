@@ -192,7 +192,7 @@ end
 local function short(a)
     return a.hp - a.taken
 end
---- The best of a read's answers: a kill before none, then the reserve met, then the cheaper. With no kill: the creep alive when it
+--- The best of a read's answers (the line's, nothing decides on it): a kill before none, then the reserve met, then no walk, then the cheaper. With no kill: the creep alive when it
 -- lands before dead by then, then the one with the least HP still to lose.
 function ____exports.Best(as)
     local best
@@ -215,6 +215,10 @@ function ____exports.Best(as)
                 if a.kill then
                     if a.over >= 0 ~= (best.over >= 0) then
                         if a.over >= 0 then
+                            best = a
+                        end
+                    elseif a.timing.gap <= 0 ~= (best.timing.gap <= 0) then
+                        if a.timing.gap <= 0 then
                             best = a
                         end
                     elseif a.spell.mana < best.spell.mana then
@@ -269,23 +273,23 @@ function ____exports.CastPick(as)
     local far = -1
     for ____, a in ipairs(as) do
         do
-            local __continue48
+            local __continue50
             repeat
                 local why = castWhyOf(a)
                 if why == nil then
                     if pick == nil or pick.spell.key and not a.spell.key or pick.spell.key == a.spell.key and a.spell.mana < pick.spell.mana then
                         pick = a
                     end
-                    __continue48 = true
+                    __continue50 = true
                     break
                 end
                 local at = __TS__ArrayIndexOf(CAST_STAGES, why)
                 if at > far then
                     far = at
                 end
-                __continue48 = true
+                __continue50 = true
             until true
-            if not __continue48 then
+            if not __continue50 then
                 break
             end
         end

@@ -155,7 +155,7 @@ function short(a: Answer): number {
 }
 
 /**
- * The best of a read's answers: a kill before none, then the reserve met, then the cheaper. With no kill: the creep alive when it
+ * The best of a read's answers (the line's, nothing decides on it): a kill before none, then the reserve met, then no walk, then the cheaper. With no kill: the creep alive when it
  * lands before dead by then, then the one with the least HP still to lose.
  */
 export function Best(this: void, as: Answer[]): Answer | undefined {
@@ -172,6 +172,9 @@ export function Best(this: void, as: Answer[]): Answer | undefined {
         if (a.kill) {
             if (a.over >= 0 !== best.over >= 0) {
                 if (a.over >= 0) best = a;
+            } else if (a.timing.gap <= 0 !== best.timing.gap <= 0) {
+                // Slice oha-spell-aim: three razes cost the same, and the cheaper-first order kept Raze 1 where Raze 2 hits from the spot.
+                if (a.timing.gap <= 0) best = a;
             } else if (a.spell.mana < best.spell.mana) best = a;
         } else if (a.hp > 0 !== best.hp > 0) {
             if (a.hp > 0) best = a;

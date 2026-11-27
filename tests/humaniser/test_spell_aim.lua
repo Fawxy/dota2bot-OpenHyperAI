@@ -71,4 +71,11 @@ do -- Aimed: the cast is timed on its delay, and aimed where a walking creep wil
 	check("a hero the centre would miss is caught by the aim, and `centre` says it would not have been", still.aim.also == 1 and still.centre == 0)
 end
 
+do -- the line's best answer: of two equal-cost kills, the one that needs no walk (Raze 2 at 450 before Raze 1)
+	local function ans(name, gap)
+		return { spell = { name = name, mana = 75 }, timing = { gap = gap, walk = 0, land = 0.6 }, taken = 90, hp = 60, kill = true, over = 10, also = 0 }
+	end
+	check("the raze that hits from the spot is the line's", S.Best({ ans("raze1", 120), ans("raze2", 0) }).spell.name == "raze2")
+end
+
 finish()
