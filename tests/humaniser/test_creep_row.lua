@@ -32,7 +32,6 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.LaneCreeps = o.on ~= false
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepDeny = o.deny == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
-	package.loaded["bots/FunLib/custom_loader"].Ours.TowerStay = o.stay == true
 	CURRENT_TEAM = 2
 	T = 100
 	TOWERS_W = { [2] = {}, [3] = {} }
@@ -632,10 +631,9 @@ end
 do -- the leftover rule in the row: the pre-hit, the claim, the controls
 	local MELEE = "npc_dota_creep_badguys_melee"
 	local function gen(fn) return { ____coroutine = coroutine.create(fn) } end
-	-- o.hp the creep's HP, o.attack what the tower attacks (default the creep, false none), o.mate an own creep attacking it, o.on the switch,
-	-- o.stay Ours.TowerStay.
+	-- o.hp the creep's HP, o.attack what the tower attacks (default the creep, false none), o.mate an own creep attacking it, o.on the switch.
 	local function towered(o)
-		local w = world({ tower = o.on ~= false, stay = o.stay })
+		local w = world({ tower = o.on ~= false })
 		local c = MakeCreep({ team = 3, x = 900, y = -5000, hp = o.hp or 550, name = MELEE })
 		local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
 		tw.loc, tw.dmg, tw.spa = c.loc, 80, 1.0
@@ -770,60 +768,6 @@ do -- the leftover rule in the row: the pre-hit, the claim, the controls
 	check("leftover: a dead tower interrupts the running attempt before a swing", w.lhOpts.interruptIf() == true)
 	out = capture(function() w.onEnd({ success = false, reason = "interrupted" }) end)
 	check("leftover: its end line says tl=tgt", field(lines(out, "phase=end")[1], "tl") == "tgt", table.concat(out, " | "))
-
-	-- Ours.TowerStay: the rule's refusal mid-attempt falls through to the plain last hit, noted once on the end line.
-	w = towered({ hp = 40, due = 1.2, stay = true })
-	capture(function() w.CO.Shadow(w.core) w.drive() end)
-	o = w.lhOpts
-	w.creep.hp = 62
-	T = T + 0.5
-	check("stay: the verdict turning none does not interrupt the last hit", o.interruptIf() == false and w.tower.target == w.creep)
-	w.tower.target = nil
-	check("stay: nor does the tower then leaving the creep", o.interruptIf() == false)
-	out = capture(function() w.onEnd({ success = true, reason = "ok" }) end)
-	local e = lines(out, "phase=end")[1]
-	check("stay: the end line keeps the first refusal, its time from the go, and no creep of ours on it", field(e, "tl") == "nowindow" and tonumber(field(e, "tlt")) == 0.5 and field(e, "tlc") == "0", table.concat(out, " | "))
-
-	local function noDamage(w)
-		w.ctx.attackAndConfirm = function()
-			return gen(function()
-				table.insert(w.order, "attack")
-				return { success = true, reason = "ok" }
-			end)
-		end
-	end
-	w = towered({ stay = true })
-	noDamage(w)
-	out = capture(function() w.CO.Shadow(w.core) w.res = w.drive() w.onEnd(w.res) end)
-	check("stay: a refused third pre-hit falls through to the last hit", table.concat(w.order, ",") == "attack,attack,lasthit" and w.res.success == true, table.concat(w.order, ","))
-	check("stay: that end line counts two pre-hits and the refusal", field(lines(out, "phase=end")[1], "ph") == "2" and field(lines(out, "phase=end")[1], "tl") == "nowindow", table.concat(out, " | "))
-
-	w = towered({ stay = true })
-	w.ctx.attackAndConfirm = function(_, opts)
-		return gen(function()
-			table.insert(w.order, "attack")
-			w.tower.alive = false
-			if opts.interruptIf() then return { success = false, reason = "interrupted" } end
-			return { success = true, reason = "ok" }
-		end)
-	end
-	out = capture(function() w.CO.Shadow(w.core) w.res = w.drive() w.onEnd(w.res) end)
-	check("stay: the tower falling cuts the pre-hit, then the last hit", table.concat(w.order, ",") == "attack,lasthit" and w.res.success == true, table.concat(w.order, ","))
-	check("stay: that end line says tl=tgt", field(lines(out, "phase=end")[1], "tl") == "tgt", table.concat(out, " | "))
-
-	-- Our creep turns onto the creep after the go: the pre-hit is refused (mates). Off, the attempt ends; on, it goes to the last hit.
-	for _, stay in ipairs({ false, true }) do
-		w = towered({ stay = stay })
-		capture(function() w.CO.Shadow(w.core) end)
-		MakeCreep({ team = 2, x = 850, y = -5000, hp = 300, target = w.creep })
-		out = capture(function() w.res = w.drive() w.onEnd(w.res) end)
-		local tl = field(lines(out, "phase=end")[1], "tl")
-		if stay then
-			check("stay: our creeps on it after the go skip the pre-hit and go to the last hit, tlc=1", table.concat(w.order, ",") == "lasthit" and w.res.success == true and tl == "mates" and field(lines(out, "phase=end")[1], "tlc") == "1", table.concat(w.order, ",") .. " | " .. tostring(tl))
-		else
-			check("leftover: our creeps on it after the go end the attempt, tl=mates", #w.order == 0 and w.res.reason == "interrupted" and tl == "mates", table.concat(w.order, ",") .. " | " .. tostring(tl))
-		end
-	end
 
 	w = towered({ on = false })
 	ch = lines(readThenClose(w, { w.creep }), "kind=creep")

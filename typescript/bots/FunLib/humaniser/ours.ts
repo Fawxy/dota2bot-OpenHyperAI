@@ -44,10 +44,6 @@ export const DEFAULTS = {
      *  last-hits their lane creep of any kind whose creep is inside our tower's attack range, as well as their ranged creep anywhere, and the
      *  `tower` refusal is lifted. Needs LaneCreeps. Off: the row takes their ranged creep outside our tower's range only. On: it beat the reference arm on its line (oha-tower-creeps' batch twc1). */
     TowerCreeps: true,
-    /** Slice oha-tower-stay, a flag between two versions of our code (deleted once judged): on, the leftover rule decides only whether to
-     *  pre-hit, and a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the
-     *  rule ends the attempt there (as merged with TowerCreeps). Both log the rule's first refusal mid-attempt (`tl`, `tlt`). */
-    TowerStay: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */
