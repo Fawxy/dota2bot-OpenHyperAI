@@ -23,6 +23,7 @@ ____exports.SETTINGS = {
     MaxWalk = 1,
     TowerMargin = 100,
     Cooldown = 3,
+    Step = 64,
     TowerRadius = 2500
 }
 local function dist(a, b)
@@ -99,7 +100,7 @@ function ____exports.Checks(f)
     if f.deadly then
         out[#out + 1] = "danger"
     end
-    if f.fh ~= nil and f.hh ~= nil and f.hh > f.fh then
+    if f.rh > f.fh + ____exports.SETTINGS.Step then
         out[#out + 1] = "up"
     end
     if f.sinceHero ~= nil and f.sinceHero < ____exports.SETTINGS.Cooldown then
@@ -134,13 +135,6 @@ local function r2(x)
 end
 local function r1(x)
     return math.floor(x * 10 + 0.5) / 10
-end
-local function heightAt(p)
-    local ok, h = pcall(
-        GetHeightLevel,
-        Vector(p.x, p.y, 0)
-    )
-    return ok and type(h) == "number" and h or nil
 end
 --- A hero the read covers: a bot whose position the trip table lets act on an `aggro` row.
 function ____exports.MayOffer(bot)
@@ -184,12 +178,21 @@ local function line(bot, o)
             {"an", s.drawn},
             {"am", s.melee},
             {"ao", s.f.onR},
-            {"af", s.f.fh},
-            {"ar", s.rh},
-            {"ah", s.f.hh},
+            {
+                "af",
+                math.floor(s.f.fh + 0.5)
+            },
+            {
+                "ar",
+                math.floor(s.f.rh + 0.5)
+            },
             {
                 "arp",
                 r2(s.rhp)
+            },
+            {
+                "apw",
+                r2(s.pw)
             },
             {"aes", s.f.seen},
             {
@@ -217,40 +220,38 @@ local function sameTeam(u, team)
     return u ~= nil and u ~= nil and u:GetTeam() == team
 end
 --- One read of the hero's chance: undefined when there is no clash near our ranged creep.
-local function read(bot, ranged, theirs, now)
+local function read(bot, ranged, theirs, mine, now)
     local team = bot:GetTeam()
     local rAt = ranged:GetLocation()
     local fight = {}
     local onR = 0
-    local cx = 0
-    local cy = 0
+    local cz = 0
     for ____, c in ipairs(theirs) do
         do
-            local __continue41
+            local __continue40
             repeat
                 local at = c:GetLocation()
                 if at == nil or at == nil or not c:IsAlive() then
-                    __continue41 = true
+                    __continue40 = true
                     break
                 end
                 local tg = c:GetAttackTarget()
                 if not sameTeam(tg, team) then
-                    __continue41 = true
+                    __continue40 = true
                     break
                 end
                 if tg == ranged then
                     onR = onR + 1
                 end
                 if LaneRead.CreepKind(c:GetUnitName()) == "f" or dist(at, rAt) > ____exports.SETTINGS.Clash then
-                    __continue41 = true
+                    __continue40 = true
                     break
                 end
                 fight[#fight + 1] = c
-                cx = cx + at.x
-                cy = cy + at.y
-                __continue41 = true
+                cz = cz + at.z
+                __continue40 = true
             until true
-            if not __continue41 then
+            if not __continue40 then
                 break
             end
         end
@@ -258,7 +259,6 @@ local function read(bot, ranged, theirs, now)
     if #fight == 0 then
         return nil
     end
-    local clash = {x = cx / #fight, y = cy / #fight}
     local loc = bot:GetLocation()
     local hero = {x = loc.x, y = loc.y}
     local near
@@ -284,13 +284,13 @@ local function read(bot, ranged, theirs, now)
     local melee = 0
     for ____, c in ipairs(fight) do
         do
-            local __continue51
+            local __continue50
             repeat
                 if dist(
                     spot,
                     c:GetLocation()
                 ) > ____exports.SETTINGS.Drawn then
-                    __continue51 = true
+                    __continue50 = true
                     break
                 end
                 drawnSet[c] = true
@@ -298,30 +298,40 @@ local function read(bot, ranged, theirs, now)
                 if LaneRead.CreepKind(c:GetUnitName()) == "m" then
                     melee = melee + 1
                 end
-                __continue51 = true
+                __continue50 = true
             until true
-            if not __continue51 then
+            if not __continue50 then
                 break
             end
         end
     end
-    local hand = ____exports.HandSpot(rAt, clash, ____exports.SETTINGS.Back)
-    local fh = heightAt(clash)
-    local hh = heightAt(hand)
-    local k = fh ~= nil and hh ~= nil and fh > hh and "hg" or "dn"
+    local fh = cz / #fight
+    local rh = rAt.z
+    local k = fh > rh + ____exports.SETTINGS.Step and "hg" or "dn"
+    local ours = 0
+    local theirsHp = 0
+    for ____, c in ipairs(fight) do
+        theirsHp = theirsHp + c:GetHealth()
+    end
+    for ____, c in ipairs(mine) do
+        local at = c:GetLocation()
+        if at ~= nil and at ~= nil and c:IsAlive() and dist(at, rAt) <= ____exports.SETTINGS.Clash then
+            ours = ours + c:GetHealth()
+        end
+    end
     local enemies = {}
     local hitters = {}
     for ____, e in ipairs(GetUnitList(UnitType.EnemyHeroes) or ({})) do
         do
-            local __continue55
+            local __continue59
             repeat
                 if not e:IsAlive() or e:IsIllusion() or not e:CanBeSeen() then
-                    __continue55 = true
+                    __continue59 = true
                     break
                 end
                 local at = e:GetLocation()
                 if at == nil or at == nil then
-                    __continue55 = true
+                    __continue59 = true
                     break
                 end
                 enemies[#enemies + 1] = {
@@ -334,9 +344,9 @@ local function read(bot, ranged, theirs, now)
                     spa = 1
                 }
                 hitters[#hitters + 1] = e
-                __continue55 = true
+                __continue59 = true
             until true
-            if not __continue55 then
+            if not __continue59 then
                 break
             end
         end
@@ -345,11 +355,11 @@ local function read(bot, ranged, theirs, now)
     local hull = bot:GetBoundingRadius()
     for ____, t in ipairs(bot:GetNearbyTowers(____exports.SETTINGS.TowerRadius, true)) do
         do
-            local __continue59
+            local __continue63
             repeat
                 local at = t:GetLocation()
                 if at == nil or at == nil then
-                    __continue59 = true
+                    __continue63 = true
                     break
                 end
                 local gap = dist(spot, at) - (t:GetAttackRange() + t:GetBoundingRadius() + hull)
@@ -357,9 +367,9 @@ local function read(bot, ranged, theirs, now)
                     tw = gap
                 end
                 hitters[#hitters + 1] = t
-                __continue59 = true
+                __continue63 = true
             until true
-            if not __continue59 then
+            if not __continue63 then
                 break
             end
         end
@@ -378,10 +388,10 @@ local function read(bot, ranged, theirs, now)
     local offers = Tasks.Verbs().laneTargets(bot, {radius = LaneHits.READER_RADIUS, within = window})
     for ____, t in ipairs(offers) do
         do
-            local __continue63
+            local __continue67
             repeat
                 if t.kind == "prehit" or not LaneOffers.Reachable(t) then
-                    __continue63 = true
+                    __continue67 = true
                     break
                 end
                 local c = t.creep
@@ -406,9 +416,9 @@ local function read(bot, ranged, theirs, now)
                     undrawn = undrawn,
                     feed = c == ranged
                 }
-                __continue63 = true
+                __continue67 = true
             until true
-            if not __continue63 then
+            if not __continue67 then
                 break
             end
         end
@@ -425,7 +435,7 @@ local function read(bot, ranged, theirs, now)
         walk = walk,
         onR = onR,
         fh = fh,
-        hh = hh,
+        rh = rh,
         seen = #enemies,
         tw = tw,
         covering = path.covering,
@@ -438,17 +448,23 @@ local function read(bot, ranged, theirs, now)
         fails = ____exports.Checks(f),
         drawn = drawn,
         melee = melee,
-        rh = heightAt(rAt),
         rhp = ranged:GetHealth() / math.max(
             ranged:GetMaxHealth(),
             1
         ),
+        pw = ours / math.max(theirsHp, 1),
         g = g,
         danger = danger
     }
 end
-local function readFn(bot, ranged, theirs, now)
-    return read(bot, ranged, theirs, now)
+local function readFn(bot, ranged, theirs, mine, now)
+    return read(
+        bot,
+        ranged,
+        theirs,
+        mine,
+        now
+    )
 end
 local timedRead
 --- The reference arm's denominator: the draw's chance read and logged (`src=shadow go=0 why=off`) for every core the trip table
@@ -473,17 +489,18 @@ function ____exports.Shadow(bot)
     local ranged
     local rd = math.huge
     local loc = bot:GetLocation()
-    for ____, c in ipairs(bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)) do
+    local mine = bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)
+    for ____, c in ipairs(mine) do
         do
-            local __continue79
+            local __continue83
             repeat
                 if not c:IsAlive() or LaneRead.CreepKind(c:GetUnitName()) ~= "r" then
-                    __continue79 = true
+                    __continue83 = true
                     break
                 end
                 local at = c:GetLocation()
                 if at == nil or at == nil then
-                    __continue79 = true
+                    __continue83 = true
                     break
                 end
                 local d = dist(loc, at)
@@ -491,9 +508,9 @@ function ____exports.Shadow(bot)
                     rd = d
                     ranged = c
                 end
-                __continue79 = true
+                __continue83 = true
             until true
-            if not __continue79 then
+            if not __continue83 then
                 break
             end
         end
@@ -513,6 +530,7 @@ function ____exports.Shadow(bot)
         bot,
         ranged,
         bot:GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true),
+        mine,
         now
     )
     if s == nil then

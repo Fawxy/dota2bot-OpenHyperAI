@@ -35,12 +35,12 @@ do -- given up: what the draw would cost, against the rule as first written
 end
 
 do -- the checks, in order
-	local ok = { k = "dn", walk = 0.5, onR = 0, fh = 1, hh = 1, seen = 1, tw = 500, covering = 0, deadly = false, miss = 0 }
+	local ok = { k = "dn", walk = 0.5, onR = 0, fh = 128, rh = 128, seen = 1, tw = 500, covering = 0, deadly = false, miss = 0 }
 	check("checks: a clean read fails none", #A.Checks(ok) == 0)
-	local bad = { k = "dn", walk = 1.5, onR = 2, fh = 0, hh = 1, seen = 0, tw = 50, covering = 1, deadly = true, miss = 1, sinceHero = 1 }
+	local bad = { k = "dn", walk = 1.5, onR = 2, fh = 0, rh = 128, seen = 0, tw = 50, covering = 1, deadly = true, miss = 1, sinceHero = 1 }
 	local got = table.concat(A.Checks(bad), ",")
 	check("checks: every one fails in s6b's order", got == "onr,due,far,unseen,etower,covered,danger,up,cd", got)
-	local hg = { k = "hg", walk = 0.5, onR = 2, fh = 2, hh = 1, seen = 1, covering = 0, deadly = false, miss = 0 }
+	local hg = { k = "hg", walk = 0.5, onR = 2, fh = 256, rh = 128, seen = 1, covering = 0, deadly = false, miss = 0 }
 	check("checks: their creeps on our ranged creep do not hold the high-ground case back; no tower near is no tower check", #A.Checks(hg) == 0, table.concat(A.Checks(hg), ","))
 end
 

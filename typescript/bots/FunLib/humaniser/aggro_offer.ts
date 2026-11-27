@@ -40,6 +40,8 @@ export const SETTINGS = {
     TowerMargin: 100,
     /** The per-hero cooldown of the draw after an attack on a hero (s; Lane_Creeps, Type 1). */
     Cooldown: 3,
+    /** A height difference (location z) under this is level ground: half the 128 step (judgement). */
+    Step: 64,
     /** Towers are read this far from the hero (as the creep offer's `TowerRadius`). */
     TowerRadius: 2500,
 };
@@ -110,14 +112,14 @@ export function GivenUp(this: void, ts: Target[], window: number): Given {
 
 /** One read's facts, as the checks read them. */
 export interface Facts {
-    /** `hg` (the clash higher than the hand-over spot) or `dn`. */
+    /** `hg` (their fighting creeps on average higher than our ranged creep by more than Step) or `dn`. */
     k: string;
     walk: number;
     /** Their creeps already attacking our ranged creep. */
     onR: number;
-    /** Heights of the clash's centre and the hand-over spot. */
-    fh?: number;
-    hh?: number;
+    /** Ground heights (location z) of their fighting creeps on average and of our ranged creep. */
+    fh: number;
+    rh: number;
     seen: number;
     /** The draw spot's gap to the nearest enemy tower's reach (negative inside); undefined with none near. */
     tw?: number;
@@ -138,7 +140,7 @@ export function Checks(this: void, f: Facts): string[] {
     if (f.tw !== undefined && f.tw < SETTINGS.TowerMargin) out.push("etower");
     if (f.covering > 0) out.push("covered");
     if (f.deadly) out.push("danger");
-    if (f.fh !== undefined && f.hh !== undefined && f.hh > f.fh) out.push("up");
+    if (f.rh > f.fh + SETTINGS.Step) out.push("up");
     if (f.sinceHero !== undefined && f.sinceHero < SETTINGS.Cooldown) out.push("cd");
     return out;
 }
@@ -149,8 +151,9 @@ interface Snap {
     fails: string[];
     drawn: number;
     melee: number;
-    rh?: number;
     rhp: number;
+    /** Our lane creeps' HP within Clash of our ranged creep over their fighting creeps'. */
+    pw: number;
     g: Given;
     danger: string;
 }
@@ -191,11 +194,6 @@ function r1(x: number): number {
     return math.floor(x * 10 + 0.5) / 10;
 }
 
-function heightAt(p: Vec): number | undefined {
-    const [ok, h] = pcall(GetHeightLevel, Vector(p.x, p.y, 0));
-    return ok && type(h) === "number" ? (h as number) : undefined;
-}
-
 /** A hero the read covers: a bot whose position the trip table lets act on an `aggro` row. */
 export function MayOffer(bot: Unit): boolean {
     return bot.IsBot() && TripTable.Does("aggro", LaneConfig.PositionOf(bot));
@@ -222,10 +220,10 @@ function line(bot: Unit, o: Opp): void {
         ["an", s.drawn],
         ["am", s.melee],
         ["ao", s.f.onR],
-        ["af", s.f.fh],
-        ["ar", s.rh],
-        ["ah", s.f.hh],
+        ["af", math.floor(s.f.fh + 0.5)],
+        ["ar", math.floor(s.f.rh + 0.5)],
         ["arp", r2(s.rhp)],
+        ["apw", r2(s.pw)],
         ["aes", s.f.seen],
         ["atw", s.f.tw !== undefined ? math.floor(s.f.tw) : undefined],
         ["eh", s.f.covering],
@@ -249,13 +247,12 @@ function sameTeam(u: Unit | null | undefined, team: number): boolean {
 }
 
 /** One read of the hero's chance: undefined when there is no clash near our ranged creep. */
-function read(bot: Unit, ranged: Unit, theirs: Unit[], now: number): Snap | undefined {
+function read(bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number): Snap | undefined {
     const team = bot.GetTeam();
     const rAt = ranged.GetLocation();
     const fight: Unit[] = [];
     let onR = 0;
-    let cx = 0;
-    let cy = 0;
+    let cz = 0;
     for (const c of theirs) {
         const at = c.GetLocation();
         if (at === null || at === undefined || !c.IsAlive()) continue;
@@ -264,11 +261,9 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], now: number): Snap | unde
         if (tg === ranged) onR++;
         if (LaneRead.CreepKind(c.GetUnitName()) === "f" || dist(at, rAt) > SETTINGS.Clash) continue;
         fight.push(c);
-        cx += at.x;
-        cy += at.y;
+        cz += at.z;
     }
     if (fight.length === 0) return undefined;
-    const clash = { x: cx / fight.length, y: cy / fight.length };
     const loc = bot.GetLocation();
     const hero = { x: loc.x, y: loc.y };
     let near: Vec | undefined;
@@ -292,10 +287,16 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], now: number): Snap | unde
         drawn++;
         if (LaneRead.CreepKind(c.GetUnitName()) === "m") melee++;
     }
-    const hand = HandSpot(rAt, clash, SETTINGS.Back);
-    const fh = heightAt(clash);
-    const hh = heightAt(hand);
-    const k = fh !== undefined && hh !== undefined && fh > hh ? "hg" : "dn";
+    const fh = cz / fight.length;
+    const rh = rAt.z;
+    const k = fh > rh + SETTINGS.Step ? "hg" : "dn";
+    let ours = 0;
+    let theirsHp = 0;
+    for (const c of fight) theirsHp += c.GetHealth();
+    for (const c of mine) {
+        const at = c.GetLocation();
+        if (at !== null && at !== undefined && c.IsAlive() && dist(at, rAt) <= SETTINGS.Clash) ours += c.GetHealth();
+    }
 
     // Visible enemy heroes: the order's target, the cover on the draw spot, and who else is hitting our creeps.
     const enemies: Offer.PathEnemy[] = [];
@@ -336,12 +337,12 @@ function read(bot: Unit, ranged: Unit, theirs: Unit[], now: number): Snap | unde
     const danger = SafeGather.At(bot, Vector(spot.x, spot.y, 0)).level;
     const pid = bot.GetPlayerID();
     const hit = heroHitAt[pid];
-    const f: Facts = { k, walk, onR, fh, hh, seen: enemies.length, tw, covering: path.covering, deadly: danger === "deadly", miss: g.miss, sinceHero: hit !== undefined ? now - hit : undefined };
-    return { f, fails: Checks(f), drawn, melee, rh: heightAt(rAt), rhp: ranged.GetHealth() / math.max(ranged.GetMaxHealth(), 1), g, danger };
+    const f: Facts = { k, walk, onR, fh, rh, seen: enemies.length, tw, covering: path.covering, deadly: danger === "deadly", miss: g.miss, sinceHero: hit !== undefined ? now - hit : undefined };
+    return { f, fails: Checks(f), drawn, melee, rhp: ranged.GetHealth() / math.max(ranged.GetMaxHealth(), 1), pw: ours / math.max(theirsHp, 1), g, danger };
 }
 
-function readFn(this: void, bot: Unit, ranged: Unit, theirs: Unit[], now: number): Snap | undefined {
-    return read(bot, ranged, theirs, now);
+function readFn(this: void, bot: Unit, ranged: Unit, theirs: Unit[], mine: Unit[], now: number): Snap | undefined {
+    return read(bot, ranged, theirs, mine, now);
 }
 let timedRead: typeof readFn | undefined;
 
@@ -365,7 +366,8 @@ export function Shadow(bot: Unit): void {
     let ranged: Unit | undefined;
     let rd = math.huge;
     const loc = bot.GetLocation();
-    for (const c of bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false)) {
+    const mine = bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, false);
+    for (const c of mine) {
         if (!c.IsAlive() || LaneRead.CreepKind(c.GetUnitName()) !== "r") continue;
         const at = c.GetLocation();
         if (at === null || at === undefined) continue;
@@ -382,7 +384,7 @@ export function Shadow(bot: Unit): void {
     }
     if (ranged === undefined) return;
     if (timedRead === undefined) timedRead = Telemetry.PerfStep("AO:read", readFn);
-    const s = timedRead(bot, ranged, bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true), now);
+    const s = timedRead(bot, ranged, bot.GetNearbyLaneCreeps(LaneHits.READER_RADIUS, true), mine, now);
     if (s === undefined) return;
     if (o === undefined) {
         o = { ranged, cid: Telemetry.CreepId(ranged), lane: bot.GetAssignedLane(), first: math.floor(now * 10) / 10, snap: s, reads: 0, wanted: 0 };

@@ -2957,9 +2957,9 @@ export const EVENTS = {
         // our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1
         // when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot,
         // `eh` the enemy heroes covering it).
-        /** `kind=aggro`: the case, `hg` (the clash's centre higher than the hand-over spot) or `dn`. */
+        /** `kind=aggro`: the case, `hg` (their fighting creeps on average higher than our ranged creep, by more than half a step: location z, AggroOffer Step) or `dn`. */
         ak: "str",
-        /** `kind=aggro`: the failed checks, comma-joined (`-` none): onr (dn and their creeps already on our ranged creep), due (ag1 > 0), far, unseen (no enemy hero our team sees), etower, covered, danger (deadly at the draw spot), up (the hand-over spot higher than the clash), cd (the hero attacked a hero within 3 s). */
+        /** `kind=aggro`: the failed checks, comma-joined (`-` none): onr (dn and their creeps already on our ranged creep), due (ag1 > 0), far, unseen (no enemy hero our team sees), etower, covered, danger (deadly at the draw spot), up (our ranged creep higher than their fighting creeps by more than half a step), cd (the hero attacked a hero within 3 s). */
         arf: "str",
         /** `kind=aggro`: reads of the chance, and how many of them failed no check. */
         ard: "num",
@@ -2969,10 +2969,11 @@ export const EVENTS = {
         am: "num",
         /** `kind=aggro`: their creeps attacking our ranged creep. */
         ao: "num",
-        /** `kind=aggro`: GetHeightLevel of the clash's centre, our ranged creep and the hand-over spot. */
+        /** `kind=aggro`: the ground height (location z) of their fighting creeps on average and of our ranged creep (GetHeightLevel does not follow it: a smoke read level 4 at 128 and 2 at 256). */
         af: "num",
         ar: "num",
-        ah: "num",
+        /** `kind=aggro`: our lane creeps' HP within 1,200 of our ranged creep over their fighting creeps' HP. */
+        apw: "num",
         /** `kind=aggro`: our ranged creep's HP share. */
         arp: "num",
         /** `kind=aggro`: enemy heroes our team sees. */
