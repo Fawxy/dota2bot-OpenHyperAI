@@ -11,7 +11,7 @@
  * key here, never called (BACKLOG 0.14).
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
-import { Lane, Unit, UnitType } from "bots/ts_libs/dota";
+import { Lane, Unit, UnitType, Vector as Vec } from "bots/ts_libs/dota";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
@@ -21,6 +21,7 @@ import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as Offer from "bots/FunLib/humaniser/offer";
 import * as SpellReady from "bots/FunLib/humaniser/spell_ready";
 import * as SpellSecure from "bots/FunLib/humaniser/spell_secure";
+import type * as SpellAim from "bots/FunLib/humaniser/spell_aim";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 
@@ -128,6 +129,11 @@ interface SpellSnap {
     cd: number;
     /** The spells the read weighed. */
     n: number;
+    /** `p` and `n` (slice oha-spell-aim): the geometry kind, the creep's distance from the aimed hit's centre, other creeps of theirs hit, heroes hit aimed straight at the creep. */
+    geom?: string;
+    off?: number;
+    others?: number;
+    centre?: number;
 }
 
 interface Opp {
@@ -325,6 +331,10 @@ function spellFields(o: Opp): Telemetry.Fields<"choice"> {
         ["sc", r1(p.cd)],
         ["sz", p.also],
         ["sn", p.n],
+        ["sq", p.geom],
+        ["sv", p.off !== undefined ? math.floor(p.off + 0.5) : undefined],
+        ["so", p.others],
+        ["su", p.centre],
     ];
 }
 
@@ -378,6 +388,11 @@ interface Frame {
     /** Each creep's spell answers this call (`answersOf`), shared by the row's cast pass and the shadow. */
     answers?: LuaTable<Unit, SpellSecure.Answer[]>;
     foes?: SpellSecure.Foe[];
+    /** The units behind `enemies`, in its order. */
+    enemyUnits?: Unit[];
+    /** Slice oha-spell-aim, read when a point or no-target spell is aimed: the seen enemy heroes with velocities, and their creeps' places. */
+    movers?: SpellSecure.Moving[];
+    others?: LuaTable<Unit, SpellSecure.Foe>;
 }
 
 /** The terrain height level at a place; undefined when the API is absent or gives no number. */
@@ -428,10 +443,13 @@ function enemiesOf(f: Frame): Offer.PathEnemy[] {
     if (f.enemies !== undefined) return f.enemies;
     const out: Offer.PathEnemy[] = [];
     const hs: string[] = [];
+    const units: Unit[] = [];
+    f.enemyUnits = units;
     for (const e of GetUnitList(UnitType.EnemyHeroes) ?? []) {
         if (!e.IsAlive() || e.IsIllusion() || !e.CanBeSeen()) continue;
         const at = e.GetLocation();
         if (at === null || at === undefined) continue;
+        units.push(e);
         out.push({ x: at.x, y: at.y, pid: e.GetPlayerID(), range: e.GetAttackRange(), hull: e.GetBoundingRadius(), dmg: e.GetAttackDamage(), spa: (e as Timed).GetSecondsPerAttack?.() ?? 1, speed: e.GetCurrentMovementSpeed() });
         hs.push(`${e.GetPlayerID()}:${heightAt(at.x, at.y) ?? "-"}`);
     }
@@ -533,10 +551,21 @@ function spellAnswers(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
     }
     const timings: SpellSecure.Timing[] = [];
     const takens: number[] = [];
+    // Keyed by the spell's index: a Lua array cannot hold the gap a unit-target spell leaves (push(undefined) adds nothing, and every later aim shifts onto the wrong spell).
+    const aims = new LuaTable<number, { aim: SpellAim.Aim; centre: number }>();
     let band = false;
     let horizon = 0;
-    for (const s of cs.spells) {
-        const timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+    let moving: SpellSecure.Moving | undefined;
+    for (let i = 0; i < cs.spells.length; i++) {
+        const s = cs.spells[i];
+        let timing: SpellSecure.Timing;
+        if (s.shape === "u") timing = SpellSecure.TimingOf(s, d, f.speed, turn);
+        else {
+            moving ??= movingOf(creep, at);
+            const r = SpellSecure.Aimed(s, f.hero, f.speed, turn, moving, moversOf(f), othersOf(f, creep));
+            timing = r.timing;
+            aims.set(i, r);
+        }
         const taken = creep.GetActualIncomingDamage(s.dmg, s.dtype);
         timings.push(timing);
         takens.push(taken);
@@ -552,9 +581,53 @@ function spellAnswers(bot: Unit, f: Frame, creep: Unit): SpellSecure.Answer[] {
         const timing = timings[i];
         const taken = takens[i];
         const hp = forecast !== undefined && hpNow <= taken * SETTINGS.SpellBand ? verbs.forecastHp(forecast, timing.land) : hpNow;
-        answers.push({ spell: s, timing, taken, hp, kill: SpellSecure.Kills(hp, taken), over: SpellSecure.OverReserve(mana, s, cs.keys), also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
+        const kill = SpellSecure.Kills(hp, taken);
+        const over = SpellSecure.OverReserve(mana, s, cs.keys);
+        const aimed = aims.get(i);
+        if (aimed === undefined) answers.push({ spell: s, timing, taken, hp, kill, over, also: SpellSecure.AlsoHit(s, f.hero, at, f.foes) });
+        else answers.push({ spell: s, timing, taken, hp, kill, over, also: aimed.aim.also, aim: aimed.aim, centre: aimed.centre });
     }
     return answers;
+}
+
+/** A unit's velocity from the API's extrapolation one second on (0 where the API gives none, as in the unit tests' mocks). */
+function velocityOf(u: Unit, at: Vec): [number, number] {
+    const ex = (u as Unit & { GetExtrapolatedLocation?(t: number): Vec | undefined }).GetExtrapolatedLocation?.(1);
+    if (ex === undefined || ex === null) return [0, 0];
+    return [ex.x - at.x, ex.y - at.y];
+}
+
+function movingOf(u: Unit, at: Vec): SpellSecure.Moving {
+    const [vx, vy] = velocityOf(u, at);
+    return { x: at.x, y: at.y, hull: u.GetBoundingRadius(), vx, vy };
+}
+
+/** The seen enemy heroes (`enemiesOf`) with their velocities, read once a call when a point or no-target spell is aimed. */
+function moversOf(f: Frame): SpellSecure.Moving[] {
+    if (f.movers !== undefined) return f.movers;
+    enemiesOf(f);
+    const out: SpellSecure.Moving[] = [];
+    for (const e of f.enemyUnits!) {
+        const at = e.GetLocation();
+        if (at !== null && at !== undefined) out.push(movingOf(e, at));
+    }
+    f.movers = out;
+    return out;
+}
+
+/** Their lane creeps in the hero's list other than `creep`, where they stand: what an aimed cast also hits. */
+function othersOf(f: Frame, creep: Unit): SpellSecure.Foe[] {
+    if (f.others === undefined) {
+        const all = new LuaTable<Unit, SpellSecure.Foe>();
+        for (const c of f.enemyCreeps) {
+            const at = c.GetLocation();
+            if (at !== null && at !== undefined) all.set(c, { x: at.x, y: at.y, hull: c.GetBoundingRadius() });
+        }
+        f.others = all;
+    }
+    const out: SpellSecure.Foe[] = [];
+    for (const [c, b] of f.others) if (c !== creep) out.push(b);
+    return out;
 }
 
 /** The hero's creep spells, read once a call (`Frame.spells`). */
@@ -598,6 +671,10 @@ function spellRecord(o: Opp, answers: SpellSecure.Answer[], n: number, now: numb
         mana: best.spell.mana,
         cd: best.spell.cd,
         n,
+        geom: best.aim !== undefined ? SpellSecure.GeomOf(best.spell).k : undefined,
+        off: best.aim?.off,
+        others: best.aim?.others,
+        centre: best.centre,
     };
     if (best.kill) {
         o.spFrom = now;

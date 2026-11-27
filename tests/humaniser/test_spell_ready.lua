@@ -200,6 +200,23 @@ do
 	local left = SpellReady.CreepSpellsOf(caster)
 	check("a left-out spell takes its SPELL_ADDED damage in the creep read", #left.spells == 1 and left.spells[1].dmg == 80, leftName)
 	check("the chase's list stays as built: no damage, no entry", #SpellReady.ReadySpells(caster) == 0)
+
+	-- Slice oha-spell-aim: a point or no-target spell's geometry is SPELL_SHAPE's keys, which the key lists above miss.
+	local function dmgKey(name) return (Data.SPELL_DAMAGE[name] or Data.SPELL_ADDED[name])[1] end
+	T = T + 1
+	caster.abilities = {
+		[0] = cast("nevermore_shadowraze2", { dmg = 0, bits = 4, range = 0, special = { [dmgKey("nevermore_shadowraze2")] = 90, shadowraze_radius = 250, shadowraze_range = 450 } }),
+		[1] = cast("lina_light_strike_array", { dmg = 0, bits = 16, special = { [dmgKey("lina_light_strike_array")] = 80, light_strike_array_aoe = 250, light_strike_array_delay_time = 0.5 } }),
+		[2] = cast("earthshaker_fissure", { dmg = 0, bits = 16, range = 1600, special = { [dmgKey("earthshaker_fissure")] = 110, fissure_radius = 225 } }),
+	}
+	local g = {}
+	for _, s in ipairs(SpellReady.CreepSpellsOf(caster).spells) do g[s.name] = s end
+	local raze, lsa, fissure = g.nevermore_shadowraze2, g.lina_light_strike_array, g.earthshaker_fissure
+	check("a raze, cast range 0 and no `radius` key, is kept as a circle 450 in front of the hero",
+		raze and raze.shape == "n" and raze.geom == "r" and raze.offset == 450 and raze.radius == 250, raze and raze.radius)
+	check("Light Strike Array: an area of its own aoe key, landing after its delay", lsa and lsa.geom == "a" and lsa.radius == 250 and lsa.delay == 0.5)
+	check("Fissure: a line from the hero as long as its cast range, its radius key the half width",
+		fissure and fissure.geom == "l" and fissure.half == 225 and fissure.length == 1600 and fissure.radius == 0)
 end
 
 finish()
