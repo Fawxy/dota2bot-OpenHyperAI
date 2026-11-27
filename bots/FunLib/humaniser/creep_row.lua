@@ -463,16 +463,16 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
     local pick
     for ____, c in ipairs(cands) do
         do
-            local __continue138
+            local __continue139
             repeat
                 local why = whys[c.cid]
                 if c.t.kind ~= "lasthit" or why == nil then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 local as = c.spells()
                 if #as == 0 then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 local claim
@@ -502,13 +502,13 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                     end
                 end
                 if ____exports.AttackCannot(why, claim, onTime, late) == nil then
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 local no = gate or (lastCid[pid] == c.cid and "tried" or nil)
                 if no ~= nil then
                     c.noteCast(false, no)
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #CreepClaim.ClaimsOn(c.cid) > 0 then
@@ -526,7 +526,7 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 end
                 if p == nil then
                     c.noteCast(false, no)
-                    __continue138 = true
+                    __continue139 = true
                     break
                 end
                 if best == nil or c.t.dies < best.t.dies then
@@ -538,9 +538,9 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                 else
                     c.noteCast(false, "other")
                 end
-                __continue138 = true
+                __continue139 = true
             until true
-            if not __continue138 then
+            if not __continue139 then
                 break
             end
         end
@@ -566,7 +566,10 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
         return
     end
     pending[pid] = nil
-    best.noteCast(false, "refused")
+    best.noteCast(
+        false,
+        Decider.Refusal(bot, ____exports.ROW.name) == "fight" and "fight" or "refused"
+    )
 end
 function refuse(bot, a, why)
     if a.tl == nil then
@@ -717,7 +720,7 @@ local function noTime(r, first)
     if first then
         return "notime_new"
     end
-    return (r.ok == "held" or r.ok == "acting" or r.ok == "row") and "notime_" .. r.ok or "notime"
+    return (r.ok == "held" or r.ok == "acting" or r.ok == "row" or r.ok == "fight") and "notime_" .. r.ok or "notime"
 end
 --- The creep is of a kind this hero acts on and about to come due at this read (the first such read is kept).
 local function dueNow(bot, c, r, lead, now)
@@ -1203,6 +1206,14 @@ function ____exports.Consider(bot, cands)
         return
     end
     pending[pid] = nil
+    if Decider.Refusal(bot, ____exports.ROW.name) == "fight" then
+        best.note(false, "fight")
+        local r = recs[best.cid]
+        r.why = "fight"
+        r.ok = "fight"
+        r.mode = HDebug.ModeName(mode)
+        return
+    end
     best.note(false, "refused")
     recs[best.cid].why = "refused"
 end

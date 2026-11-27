@@ -967,6 +967,9 @@ function rowWants(bot: Unit, reads: Reads): Decider.Offer | undefined {
     logSeeds();
     const pid = bot.GetPlayerID();
     pending[pid] = undefined;
+    // Last round's offer refused by the decider over a fight (Ours.FightFirst): the slot's reason until another holds it back, so a
+    // slot that runs out ends `late` with why `fight` (a new slot forgets it, dueSlot).
+    if (Decider.Refusal(bot, "pull") === "fight") gateWhy[pid] = "fight";
     const read = reads.camp;
     if (!rowOn(bot, read)) return undefined;
     Tasks.Tick(bot);

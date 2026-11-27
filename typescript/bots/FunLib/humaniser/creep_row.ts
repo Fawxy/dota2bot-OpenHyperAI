@@ -304,7 +304,7 @@ function touch(pid: number, cands: CreepOffer.Candidate[], now: number): Record<
 /** Why the on-time check refused: at the creep's first read about to come due, after a refusal on time for `held` or `acting`, or neither. */
 function noTime(r: Seen, first: boolean): string {
     if (first) return "notime_new";
-    return r.ok === "held" || r.ok === "acting" || r.ok === "row" ? "notime_" + r.ok : "notime";
+    return r.ok === "held" || r.ok === "acting" || r.ok === "row" || r.ok === "fight" ? "notime_" + r.ok : "notime";
 }
 
 /**
@@ -649,7 +649,8 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     // task is what Start would replace, whichever row or job started it.
     const other = Tasks.Running(bot) !== undefined;
     // An attempt started while stock's retreat holds the hero is cut before its first step and spends the creep's one try (rig ce1:
-    // 9 of 56 never started). Valve's attack no longer does: the hold is hard.
+    // 9 of 56 never started). A running attempt is not cut by Valve's attack: the hold is hard. A start out of a fight is the
+    // decider's to refuse (`fight`, Ours.FightFirst, below).
     const mode = bot.GetActiveMode();
     const held = Decider.LetGo(bot) || mode === BotMode.Retreat;
     let best: CreepOffer.Candidate | undefined;
@@ -712,9 +713,19 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     pending[pid] = { best, k: kindOf(bot, best)!, need: Need(bot, best.creep), lead, now, seen: recs[best.cid], tr: reads[best.cid] };
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;
+    pending[pid] = undefined;
+    // `fight`: the decider refused the start because the hero is in a fight (Ours.FightFirst). Like `held`, a later read may clear it:
+    // no claim and no `tried` are set (rowBegin's), so the creep is offered again at the next read while it is still on time.
+    if (Decider.Refusal(bot, ROW.name) === "fight") {
+        best.note(false, "fight");
+        const r = recs[best.cid];
+        r.why = "fight";
+        r.ok = "fight";
+        r.mode = HDebug.ModeName(mode);
+        return;
+    }
     // Not begun and not refused by the runner: Consider's own `other` check already turned away a row above holding the hero,
     // so what is left is an error in the row's guarded `wants`. It reads as the runner's refusal, not as another row.
-    pending[pid] = undefined;
     best.note(false, "refused");
     recs[best.cid].why = "refused";
 }
@@ -785,7 +796,7 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
     Decider.Offer(bot, ROW);
     if (pending[pid] === undefined) return;
     pending[pid] = undefined;
-    best.noteCast(false, "refused");
+    best.noteCast(false, Decider.Refusal(bot, ROW.name) === "fight" ? "fight" : "refused");
 }
 
 /**

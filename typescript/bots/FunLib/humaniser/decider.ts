@@ -19,6 +19,7 @@
  */
 import { BotMode, Unit } from "bots/ts_libs/dota";
 import * as HDebug from "bots/FunLib/humaniser/debug";
+import { On as OursOn } from "bots/FunLib/humaniser/ours";
 import { READS } from "bots/FunLib/humaniser/reads";
 import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Tasks from "bots/FunLib/humaniser/tasks";
@@ -121,9 +122,21 @@ interface Begun {
     from: string;
 }
 
+/** A begin the decider refused: kept for the row to read (`Refusal`), and logged once per row and target. */
+interface Refused {
+    row: string;
+    tgt?: string;
+    why: string;
+    mode: string;
+}
+
 interface HeroState {
     held?: Row;
     begun?: Begun;
+    /** Per row, the last begin refused since the row read it (`Refusal`); a begin of that row clears it. */
+    refused: Record<string, Refused | undefined>;
+    /** The rows and targets refused since the hero was last out of a fight, so each refusal is logged once while it repeats. */
+    refLines?: Record<string, boolean>;
     /** Set when a row wanted the hero but stock would retreat: the retreat file's value that led. */
     letAt?: number;
     /** Whether the held row's hold is soft, as `Host` asked it this round; `Cap` and the line read this. */
@@ -143,7 +156,7 @@ function stateOf(bot: Unit): HeroState {
     const pid = bot.GetPlayerID();
     let s = heroes[pid];
     if (s === undefined) {
-        s = { seen: {} };
+        s = { seen: {}, refused: {} };
         heroes[pid] = s;
     }
     return s;
@@ -158,12 +171,56 @@ function runningTask(bot: Unit): string | undefined {
     return Tasks.ForOurs.Running(bot)?.name;
 }
 
+/**
+ * The modes a row's start is refused from (offers-and-the-decider s4 1a, user 27/11/2026: a row never starts over a fight;
+ * fights stay Valve's). A row already holding the hero when a fight starts is not cut by this.
+ */
+const FIGHT: Record<number, boolean> = { [BotMode.Attack]: true, [BotMode.Roam]: true, [BotMode.TeamRoam]: true };
+
+/** The one place a row's task starts: refused over a fight (Ours.FightFirst), else the row's own begin. */
 function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     const over = runningTask(bot);
-    const from = HDebug.ModeName(bot.GetActiveMode());
+    const mode = bot.GetActiveMode();
+    const from = HDebug.ModeName(mode);
+    if (FIGHT[mode] === true && OursOn("FightFirst")) {
+        refuse(bot, s, { row: row.name, tgt: offer.tgt, why: "fight", mode: from });
+        return false;
+    }
+    s.refLines = undefined;
     if (!Tasks.Begin(row.name, () => row.begin(bot))) return false;
+    s.refused[row.name] = undefined;
     s.begun = { row, offer, over, from };
     return true;
+}
+
+/** Keeps a refusal for the row and writes its line once per row and target while it repeats. */
+function refuse(bot: Unit, s: HeroState, r: Refused): void {
+    s.refused[r.row] = r;
+    const key = `${r.row}|${r.tgt ?? ""}`;
+    const seen = (s.refLines ??= {});
+    if (seen[key] === true) return;
+    seen[key] = true;
+    if (!Telemetry.IsEnabled()) return;
+    Telemetry.Event("choice", [
+        ["pid", bot.GetPlayerID()],
+        ["kind", "decider"],
+        ["ref", r.row],
+        ["btgt", r.tgt],
+        ["bfrom", r.mode],
+        ["why", r.why],
+    ]);
+}
+
+/**
+ * Why the decider last refused to begin `row` for this hero, once (it is forgotten on reading): `fight` (the hero was in attack,
+ * roam or team roam, Ours.FightFirst). A row reads it after a begin it asked for did not happen. Undefined when none is kept.
+ */
+export function Refusal(bot: Unit, row: string): string | undefined {
+    const s = heroes[bot.GetPlayerID()];
+    const r = s?.refused[row];
+    if (r === undefined) return undefined;
+    s.refused[row] = undefined;
+    return r.why;
 }
 
 /** One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused. */
@@ -249,6 +306,7 @@ function note(bot: Unit, s: HeroState, heldRow = s.held, softNow = s.soft): void
 export function Host(bot: Unit, inner: () => any): () => any {
     return () => {
         const s = stateOf(bot);
+        if (FIGHT[bot.GetActiveMode()] !== true) s.refLines = undefined;
         const row = pick(bot, s);
         s.letAt = row !== undefined ? retreatLeads(s) : undefined;
         s.held = s.letAt === undefined ? row : undefined;

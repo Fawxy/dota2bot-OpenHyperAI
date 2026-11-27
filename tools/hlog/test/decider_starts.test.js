@@ -29,7 +29,8 @@ function load() {
     const store = new Store(':memory:');
     store.ingest(write('ds1_A_onrad_1', [...bots(),
         dec(100, 0, 'creep', 'laning'), dec(110, 0, 'creep', 'laning'), dec(120, 0, 'creep', 'attack'),
-        dec(130, 3, 'pull', 'roam'), dec(140, 5, 'creep', 'team_roam'),
+        dec(130, 3, 'pull', 'roam'), line(132, 'choice pid=3 kind=decider ref=stack btgt=camp:1 bfrom=roam why=fight'),
+        line(135, 'choice pid=3 kind=decider held=- win=roam'), dec(140, 5, 'creep', 'team_roam'),
         line(150, 'choice pid=0 kind=decider held=- win=laning'),
         line(160, 'choice pid=0 kind=pull go=0 want=1 why=late src=own lane=1 slot=160 beg=pull'),
         dec(700, 0, 'creep', 'attack'),
@@ -50,4 +51,10 @@ test('decider_starts: begins by row and mode, per team-game, with the fight mode
         ['test', 'support', 'pull', 'roam', 1, 1, 2, 0.5],
     ]);
     assert.ok(rows.every(r => r.batch === 'ds1' && r.arm === 'on'));
+    // Held: to the hero's next decider line holding another row or none, or a new begin; a refusal line does not end it.
+    // pid 0, game 1: laning 100 -> 110 -> 120 (begins), attack 120 -> 150 (held=-); game 2: laning 100 -> 200 (a begin).
+    // pid 3: roam 130 -> 135 (held=-; the refusal at 132 does not count). pid 5: team_roam 140, nothing after: 0.
+    const held = Object.fromEntries(rows.map(r => [`${r.side} ${r.beg} ${r.bfrom}`, r.held_s]));
+    assert.deepStrictEqual(held, { 'opp creep team_roam': 0, 'test creep laning': 120, 'test creep attack': 30, 'test stack -': 0, 'test pull roam': 5 });
+    assert.strictEqual(rows.find(r => r.bfrom === 'attack').held_tg, 15);
 });

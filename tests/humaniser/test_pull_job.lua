@@ -287,6 +287,38 @@ do
 		and field(choice[1], "go") == "0" and field(choice[1], "why") == "enemy-near", choice[1])
 end
 
+-- Ours.FightFirst (slice oha-no-start-over-fight): a puller in team roam the whole slot is never begun; the slot ends late with why
+-- `fight`. Control: the flag off, the same mode, the pull starts. (In attack the pull's own start check already says `busy`.)
+do
+	local function slot(flag)
+		local w = world({ reading = OUT })
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = flag
+		local started = false
+		local out = stubAlongs(waveBehind(function() return 0 end), function()
+			return capture(function()
+				while T < 90 do
+					w.sup.mode = 16 -- team roam (attack is the pull's own `busy`)
+					frame(w)
+					if w.H.PullJob.Running(w.sup) then started = true end
+				end
+			end)
+		end)
+		package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = nil
+		local pull, ref = {}, {}
+		for _, l in ipairs(out) do
+			if l:find("ev=choice ", 1, true) and l:find("kind=pull", 1, true) then pull[#pull + 1] = l end
+			if l:find("ev=choice ", 1, true) and l:find("ref=pull", 1, true) then ref[#ref + 1] = l end
+		end
+		return started, pull, ref, out
+	end
+	local started, choice, ref = slot(true)
+	check("fight: the pull is not begun and its slot ends with why=fight", not started and #choice == 1 and field(choice[1], "go") == "0"
+		and field(choice[1], "why") == "fight", table.concat(choice, " | "))
+	check("fight: one refusal line for the camp", #ref == 1 and field(ref[1], "bfrom") == "team_roam", table.concat(ref, " | "))
+	started = slot(false)
+	check("control, flag off: the pull starts in the same mode", started, tostring(started))
+end
+
 -- A pull with the camp's one neutral on the puller and the wave stubbed by `o.alongs` (default waveBehind(0)); `o.onFrame`
 -- runs after each frame. Returns the pull_job line.
 local function livePull(o)
