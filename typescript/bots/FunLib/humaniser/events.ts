@@ -1418,6 +1418,10 @@ export const EVENTS = {
         ha: "num",
         /** `job=aggro` end, with an order: drawn creeps that closed on the hero by 150 or more since the order, or came within 200 of it (they chased it, whatever their attack target read). */
         ac: "num",
+        /** `job=aggro` order: the target hero's distance (centre), 1 when it took damage from this hero within the draw's 3 s cooldown (`WasRecentlyDamagedByHero`), and the nearest drawn creep's distance. */
+        td: "num",
+        rh: "num",
+        nd: "num",
         /** `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. */
         aw: "num",
     },

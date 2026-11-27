@@ -338,6 +338,31 @@ local draw = __TS__Generator(function(ctx, bot, a, spot, walk)
     a.target = s.target
     a.drawn = s.drawnUnits
     a.hand = s.hand
+    local me = bot:GetLocation()
+    local nd = math.huge
+    for ____, c in ipairs(s.drawnUnits) do
+        local at = c:GetLocation()
+        if at ~= nil and at ~= nil and dist(me, at) < nd then
+            nd = dist(me, at)
+        end
+    end
+    local diag = {
+        {
+            "td",
+            math.floor(dist(
+                me,
+                s.target:GetLocation()
+            ))
+        },
+        {
+            "rh",
+            s.target:WasRecentlyDamagedByHero(bot, AggroOffer.SETTINGS.Cooldown) and 1 or 0
+        },
+        {
+            "nd",
+            nd < math.huge and math.floor(nd) or nil
+        }
+    }
     bot:Action_AttackUnit(s.target, true)
     a.orderAt = ctx.now()
     a.phase = "back"
@@ -352,7 +377,8 @@ local draw = __TS__Generator(function(ctx, bot, a, spot, walk)
                 "ot",
                 r1(a.orderAt - a.t0)
             },
-            {"an", #s.drawnUnits}
+            {"an", #s.drawnUnits},
+            unpack(diag)
         }
     )
     return __TS__DelegatedYield(back(ctx, bot, a))

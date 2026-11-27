@@ -221,6 +221,18 @@ function* draw(ctx: Lib.Ctx, bot: Unit, a: Attempt, spot: AggroOffer.Vec, walk: 
     a.target = s.target;
     a.drawn = s.drawnUnits;
     a.hand = s.hand;
+    // Diagnosis (round 0's nodraw): the target's distance, whether it took this hero's damage within the cooldown, the nearest drawn creep.
+    const me = bot.GetLocation();
+    let nd = math.huge;
+    for (const c of s.drawnUnits) {
+        const at = c.GetLocation();
+        if (at !== null && at !== undefined && dist(me, at) < nd) nd = dist(me, at);
+    }
+    const diag: Telemetry.Fields<"job"> = [
+        ["td", math.floor(dist(me, s.target.GetLocation()))],
+        ["rh", s.target.WasRecentlyDamagedByHero(bot, AggroOffer.SETTINGS.Cooldown) ? 1 : 0],
+        ["nd", nd < math.huge ? math.floor(nd) : undefined],
+    ];
     bot.Action_AttackUnit(s.target, true);
     a.orderAt = ctx.now();
     a.phase = "back";
@@ -228,6 +240,7 @@ function* draw(ctx: Lib.Ctx, bot: Unit, a: Attempt, spot: AggroOffer.Vec, walk: 
     jobLine(bot, a, "order", "go", [
         ["ot", r1(a.orderAt - a.t0)],
         ["an", s.drawnUnits.length],
+        ...diag,
     ]);
     return yield* back(ctx, bot, a);
 }
