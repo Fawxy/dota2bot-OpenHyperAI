@@ -117,7 +117,8 @@ function ____exports.ReadPass(bot, now)
         at = at,
         spawn = spawn,
         dr = dr,
-        ex = ex
+        ex = ex,
+        wr = dr / speed
     }
 end
 --- The modes the row may take a hero from: a hero walking, farming, laning or shopping. Any other (a gank, a rotation to defend,
@@ -327,7 +328,11 @@ local function rowWants(bot, _reads)
         return nil
     end
     pending[pid] = r
-    return {tgt = "rune:" .. tostring(r.rune)}
+    return {
+        tgt = "rune:" .. tostring(r.rune),
+        at = r.at,
+        secs = r.wr
+    }
 end
 --- The row's `begin`: starts the walk `rowWants` decided this round.
 local function rowBegin(bot)

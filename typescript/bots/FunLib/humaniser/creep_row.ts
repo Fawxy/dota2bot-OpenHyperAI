@@ -50,6 +50,7 @@ import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
 import * as Claims from "bots/FunLib/humaniser/claims";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
+import * as Offer from "bots/FunLib/humaniser/offer";
 import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
@@ -1048,11 +1049,25 @@ function offerOf(bot: Unit, pd: Pending): Decider.Offer {
     const { best, k } = pd;
     const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
     const due = pd.now + (k === "sp" ? pd.cast!.timing.land : best.t.due);
+    // Where the hero acts and for how long (the danger at the place, Decider.Offer): a cast from where it stands until it lands; an
+    // attack from the stand spot at the verb's reach (the offer read's), until the swing is due or the walk is done, whichever is later.
+    const me = bot.GetLocation();
+    let at = me;
+    const secs = k === "sp" ? pd.cast!.timing.land : math.max(pd.need, best.t.due);
+    if (k !== "sp") {
+        const c = best.creep.GetLocation();
+        if (c !== null && c !== undefined) {
+            const sp = Offer.StandSpot(me, c, CreepOffer.Reach(bot, best.creep));
+            at = Vector(sp.x, sp.y, 0);
+        }
+    }
     return {
         tgt: Claims.CreepTarget(best.cid),
         by: k === "sp" ? pd.now : pd.now + best.t.due - pd.need,
         way: WAY[k],
         claim: { rank, k: k === "dn" ? "dn" : "lh", due, phase: k === "sp" ? "swing" : undefined },
+        at,
+        secs,
     };
 }
 

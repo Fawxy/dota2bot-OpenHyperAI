@@ -1597,7 +1597,8 @@ function rowOffer(bot: Unit, reads: Reads): Decider.Offer | undefined {
     const a: Attempt = { minute: slot.minute, campIdx: slot.data.campIdx, type: slot.data.type, startedAt: now, host: ROW_HOST, row: true };
     const plan = Plan(bot, slot.data, slot.stand, slot.minute, a);
     rowPending[pid] = { slot, known, a, plan };
-    return { tgt: `camp:${slot.data.campIdx}`, by };
+    // Held from the go to the aggro, then the walk back (about the walk out): the seconds the danger at the stand is asked for.
+    return { tgt: `camp:${slot.data.campIdx}`, by, at: slot.stand, secs: slot.aggroAt - now + slot.walk };
 }
 
 /** The row's `begin`: starts the stack `rowOffer` decided this round. */
