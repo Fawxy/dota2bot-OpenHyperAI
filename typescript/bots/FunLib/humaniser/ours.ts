@@ -57,6 +57,10 @@ export const DEFAULTS = {
      *  our claims and of a teammate's hit. Off: the cast pass runs as a shadow (`cw=off`) and stock plays. On: provisional (plan s5's small
      *  row, merged after its audit creep-spells_audit_A to _C); read at the next checkpoint batch and deleted there if not above zero. */
     CreepSpells: true,
+    /** The cast's widening to aimed spells (creep_row.ts, slice oha-aimed-cast): with CreepSpells, a point spell is cast at its aim's point,
+     *  a no-target spell around the hero as it stands, and one that lands in front of the hero (a raze) after the hero turns to the aim's
+     *  facing; the same gates as the unit-target cast. Off: such a cast that passes them is logged `cw=aimoff` and unit-target casts only. */
+    AimedCasts: false,
     /** Slice oha-tower-fallthrough, a flag between two versions of our code: on, the leftover rule decides only whether to pre-hit, and
      *  a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the rule ends the
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at

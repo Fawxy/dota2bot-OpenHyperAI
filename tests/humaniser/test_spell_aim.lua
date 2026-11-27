@@ -55,6 +55,18 @@ do -- a raze's circle sits in front of the hero: it turns to the creep, or walks
 	check("a creep inside the near edge of the far raze: walk away from it", near(inside.gap, 350) and near(inside.from.x, -350), inside.from.x)
 end
 
+do -- slice oha-aimed-cast: the slack a raze's facing has before the creep leaves its circle
+	local raze = geom({ k = "r", radius = 250, offset = 450 })
+	local mid = A.AimAt(raze, hero, { x = 450, y = 0 }, {}, {})
+	-- The creep at the circle's centre distance: the facing may turn acos((450^2 + 450^2 - 250^2) / (2 * 450 * 450)) either way.
+	check("a creep at the circle's centre distance: the slack is the arc to its edge", near(mid.slack, math.acos(342500 / 405000), 1e-3), mid.slack)
+	local edge = A.AimAt(raze, hero, { x = 698, y = 0 }, {}, {})
+	check("a creep near the circle's far edge leaves almost none", edge.gap == 0 and edge.slack < 0.1, edge.slack)
+	local both = A.AimAt(raze, hero, { x = 450, y = 0 }, { body(450, 300) }, {})
+	check("turned to take a hero too, the slack is the narrower margin that keeps both", both.also == 1 and both.slack < mid.slack and both.slack > 0, both.slack)
+	check("an area does not depend on the facing: no slack", A.AimAt(geom({ k = "a", range = 700, radius = 250 }), hero, { x = 600, y = 0 }, {}, {}).slack == nil)
+end
+
 do -- a circle around the hero has no aim, only the walk to bring the creep inside
 	local s = A.AimAt(geom({ k = "s", radius = 400 }), hero, { x = 550, y = 0 }, { body(-200, 0), body(-300, 0) }, {})
 	check("the hero walks 150, and from there the foe 350 behind is inside and the one 450 behind is not", near(s.gap, 150) and s.also == 1, s.also)

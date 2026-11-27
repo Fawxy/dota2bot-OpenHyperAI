@@ -5,6 +5,7 @@ if ____math_atan2_0 == nil then
     ____math_atan2_0 = math.atan
 end
 local atan2 = ____math_atan2_0
+____exports.Atan2 = atan2
 local function dist(a, b)
     return math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y))
 end
@@ -80,7 +81,7 @@ local function arcOf(g, d, extra)
 end
 --- The facing for a line or a ring: the arc that hits `must` is cut at the edges of each wanted unit's arc, and of the pieces the
 -- one that hits the most wanted units wins. Within it the facing straight at `must` if the piece holds it, else the piece's middle,
--- so the unit nearest an edge keeps the most margin.
+-- so the unit nearest an edge keeps the most margin. `slack`: the facing's distance to the nearer end of its piece.
 local function facing(g, from, must, wanted)
     local base = atan2(must.y - from.y, must.x - from.x)
     local a0 = arcOf(
@@ -124,6 +125,7 @@ local function facing(g, from, must, wanted)
     local best = 0
     local bestN = -1
     local bestHas0 = false
+    local slack = 0
     do
         local i = 0
         while i + 1 < #cuts do
@@ -141,11 +143,12 @@ local function facing(g, from, must, wanted)
                 bestN = n
                 best = has0 and 0 or mid
                 bestHas0 = has0
+                slack = math.min(best - lo, hi - best)
             end
             i = i + 1
         end
     end
-    return base + best
+    return {th = base + best, slack = slack}
 end
 local function count(units, hit)
     local n = 0
@@ -267,7 +270,9 @@ function ____exports.AimAt(g, caster, must, wanted, others)
         gap = math.max(0, miss)
         from = toward(caster, must, d > g.offset and gap or -gap)
     end
-    local th = facing(g, from, must, wanted)
+    local ____facing_result_1 = facing(g, from, must, wanted)
+    local th = ____facing_result_1.th
+    local slack = ____facing_result_1.slack
     local function hit(b)
         return hitsAt(g, from, th, b)
     end
@@ -292,7 +297,8 @@ function ____exports.AimAt(g, caster, must, wanted, others)
         at = at,
         off = off,
         also = count(wanted, hit),
-        others = count(others, hit)
+        others = count(others, hit),
+        slack = slack
     }
 end
 return ____exports

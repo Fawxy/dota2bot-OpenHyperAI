@@ -35,6 +35,7 @@ local function world(o)
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerCreeps = o.tower == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.CreepSpells = o.spells == true
 	package.loaded["bots/FunLib/custom_loader"].Ours.TowerStay = o.stay == true
+	package.loaded["bots/FunLib/custom_loader"].Ours.AimedCasts = o.aimed == true
 	CURRENT_TEAM = 2
 	T = 100
 	TOWERS_W = { [2] = {}, [3] = {} }
@@ -1238,7 +1239,7 @@ end
 -- the attack ready in `cd` s and landing 0.3 s after its swing, the creep dying to the others' hits at `dies` s.
 local function castWorld(o)
 	o = o or {}
-	local w = world({ spells = o.spells ~= false })
+	local w = world({ spells = o.spells ~= false, aimed = o.aimed })
 	w.cd = o.cd or 0.4
 	w.core.mana = o.mana or 300
 	w.core.abilities = o.abilities or { [0] = spell() }
@@ -1257,13 +1258,34 @@ local function castRead(w, c)
 	end)
 end
 
+-- Runs the attempt's body to its end against a ctx whose cast records its order and succeeds; the clock moves a frame (0.03 s) each
+-- resume and `frame(i)` runs before resume i + 1. Returns the result and the cast's ability and options (nil when no cast was ordered).
+local function driveCast(w, frame)
+	local got = {}
+	local ctx = {
+		now = function() return T end,
+		fail = function(r, m) return { success = false, reason = r, message = m } end,
+		cast = function(a, opts)
+			return { ____coroutine = coroutine.create(function() got.a, got.opts = a, opts return { success = true, reason = "ok" } end) }
+		end,
+	}
+	local co = w.body(ctx).____coroutine
+	for i = 1, 60 do
+		local ok, v = coroutine.resume(co)
+		if not ok then error(v, 0) end
+		if coroutine.status(co) == "dead" then return v, got end
+		T = T + 0.03
+		if frame then frame(i) end
+	end
+	return nil, got
+end
+
 do -- the attack's hit lands after the creep dies (on cooldown): the cast goes on the creep, and the lines say so
 	local w, c = castWorld()
 	local out = castRead(w, c)
 	local ch, jobs = lines(out, "kind=creep"), lines(out, "job=creep")
 	check("cast: one task started, the row's decision", w.starts == 1, tostring(w.starts))
-	local got
-	w.body({ cast = function(a, opts) got = { a = a, opts = opts } end })
+	local _, got = driveCast(w)
 	check("cast: the engine's cast of that spell on the creep", got ~= nil and got.a:GetName() == "test_nuke" and got.opts.target == c, table.concat(out, " | "))
 	check("cast: the creep's line reads cg=1 with the cast's attempt id, the attack's refusal kept", #ch == 1 and field(ch[1], "cg") == "1" and field(ch[1], "cw") == nil
 		and field(ch[1], "aid") ~= nil and field(ch[1], "go") == "0", table.concat(ch, " | "))
@@ -1353,6 +1375,79 @@ do -- the attack first: a ranged creep the row attacks this read, and a melee cr
 	local out = capture(function() w.CO.Shadow(w.core) end)
 	local job = lines(out, "job=creep")[1]
 	check("attack first: the row's attempt is the last hit of the ranged creep", w.starts == 1 and field(job, "k") == "lh" and field(job, "cid") == tostring(cidOf(r)), table.concat(out, " | "))
+end
+
+-- Slice oha-aimed-cast (Ours.AimedCasts): a raze (no target, a circle of 250 centred 450 in front of the hero) and Crystal Nova (an
+-- area of 250 at a point; not a key spell), each 90 damage on the castWorld creep (60 HP) east of the hero at (0, -5000).
+local Data = require("bots/FunLib/humaniser/spell_damage_data")
+local function dmgKey(name) return (Data.SPELL_DAMAGE[name] or Data.SPELL_ADDED[name])[1] end
+local function raze()
+	local name = "nevermore_shadowraze2"
+	local a = spell({ name = name, dmg = 0, range = 0, special = { [dmgKey(name)] = 90, shadowraze_radius = 250, shadowraze_range = 450 } })
+	a.GetBehavior = function() return 4 end
+	return a
+end
+local function nova()
+	local name = "crystal_maiden_crystal_nova"
+	local a = spell({ name = name, dmg = 0, range = 700, special = { [dmgKey(name)] = 90, radius = 250 } })
+	a.GetBehavior = function() return 16 end
+	return a
+end
+
+do -- the raze: the hero faces away, turns along the aim with a move order, then casts with no target
+	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
+	w.core.facing = 180
+	local out = castRead(w, c)
+	check("raze: one cast started on the creep 450 east, the hero facing west", w.starts == 1, table.concat(out, " | "))
+	local start = lines(out, "phase=start")[1]
+	check("raze: the start line names the ring and its slack", field(start, "ag") == "r" and tonumber(field(start, "aw")) >= 0.1, start)
+	local moves
+	local r, got = driveCast(w, function(i)
+		if i == 1 then
+			moves = ActionsOf(1, "MoveToLocation")
+			w.core.facing = 0
+		end
+	end)
+	local to = moves[1] and moves[1].args[1]
+	check("raze: the first frame orders a move east along the aim, and no cast yet", #moves == 1 and to.x > 0 and math.abs(to.y + 5000) < 1, moves[1] and to.x)
+	check("raze: once facing east, the cast is ordered with no target and no point", r.success and got.a:GetName() == "nevermore_shadowraze2" and got.opts.target == nil and got.opts.at == nil)
+	out = capture(function() w.onEnd(r) end)
+	local fin = lines(out, "phase=end")[1]
+	check("raze: the end line has the turn's seconds and the facing's error at the cast", near(tonumber(field(fin, "aq")), 0.03) and field(fin, "ae") == "0", fin)
+end
+
+do -- the raze, controls: already facing, never facing, the switch off, too little slack
+	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
+	castRead(w, c)
+	local r, got = driveCast(w)
+	check("raze facing the aim already: the cast at once, no move order", r.success and got.a ~= nil and #ActionsOf(1, "MoveToLocation") == 0)
+
+	w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = raze() } })
+	w.core.facing = 180
+	castRead(w, c)
+	r, got = driveCast(w)
+	check("raze: the hero never turns: the attempt ends timeout (turn) with no cast", not r.success and r.reason == "timeout" and r.message == "turn" and got.a == nil, r.reason)
+	local out = capture(function() w.onEnd(r) end)
+	check("raze: never faced, the end line reads aq=-1", field(lines(out, "phase=end")[1], "aq") == "-1", table.concat(out, " | "))
+
+	w, c = castWorld({ aimed = false, x = 450, abilities = { [0] = raze() } })
+	out = castRead(w, c)
+	check("switch off: no raze; the line reads cw=aimoff", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "aimoff", table.concat(out, " | "))
+
+	w, c = castWorld({ aimed = true, x = 698, abilities = { [0] = raze() } })
+	out = castRead(w, c)
+	check("a creep at the raze's far edge: under AimSlack, no cast, cw=aim", w.starts == 0 and field(lines(out, "kind=creep")[1], "cw") == "aim", table.concat(out, " | "))
+end
+
+do -- a point spell: cast at the aim's point, no turn of ours
+	local w, c = castWorld({ aimed = true, x = 450, abilities = { [0] = nova() } })
+	w.core.facing = 180
+	local out = castRead(w, c)
+	local start = lines(out, "phase=start")[1]
+	check("point: one cast started, the start line names the area and no slack", w.starts == 1 and field(start, "ag") == "a" and field(start, "aw") == nil, table.concat(out, " | "))
+	local r, got = driveCast(w)
+	check("point: the cast is ordered at the creep's place, with no move order", r.success and got.opts.at ~= nil and math.abs(got.opts.at.x - 450) < 1
+		and math.abs(got.opts.at.y + 5000) < 1 and #ActionsOf(1, "MoveToLocation") == 0, got.opts and got.opts.at and got.opts.at.x)
 end
 
 do -- the go rule's parts, pure

@@ -73,6 +73,7 @@ ____exports.DEFAULTS = {
     TowerCreeps = true,
     SupportCreeps = true,
     CreepSpells = true,
+    AimedCasts = false,
     TowerStay = true,
     FightFirst = true,
     Threat = false,
