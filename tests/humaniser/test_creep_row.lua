@@ -1484,6 +1484,30 @@ do -- Ours.CreepReserve: the creep is reserved at the go (claim, no hold) and st
 	end)
 	check("wait: once it acts no more, the next round starts it", w.starts == 1, w.starts)
 
+	-- Their ranged creep inside our tower's range, the tower not on it yet: reserved; once the tower attacks it, the leftover rule's
+	-- attempt (a tower read, so never reserved) takes over at that read.
+	w = world({ reserve = true, tower = true })
+	w.core.range = 150
+	w.core.dmg, w.core.spa = 46, 1.0
+	w.core.GetBaseDamageVariance = function() return 3 end
+	local tc = MakeCreep({ team = 3, x = 100, y = -5000, hp = 120, name = RANGED })
+	local tw = MakeLaneTowers()[2][dota.Tower.Bot1]
+	tw.loc, tw.dmg, tw.spa, tw.target = tc.loc, 80, 1.0, nil
+	tw.GetAttackTarget = function(self) return self.target end
+	TOWERS_W[2] = { [dota.Tower.Bot1] = tw }
+	w.targets = { target(tc, { walk = 0, due = 2.5, dies = 4 }) }
+	capture(function() w.CO.Shadow(w.core) end)
+	check("tower: reserved while our tower is not on it", w.starts == 0 and claimApi().HeldBy(1) == cidOf(tc), w.starts)
+	local handed = capture(function()
+		T = T + 0.2
+		tw.target = tc
+		w.CO.Shadow(w.core)
+	end)
+	local tl = lines(handed, "job=creep")
+	check("tower: once the tower attacks it the reservation drops (tower) and the same read starts the leftover rule's attempt",
+		#tl == 2 and field(tl[1], "why") == "tower" and field(tl[2], "phase") == "start" and field(tl[2], "vd") ~= nil and field(tl[2], "rv") == nil and w.starts == 1,
+		table.concat(handed, " | "))
+
 	w = world({ reserve = true, fight = true })
 	w.core.range = 150
 	w.core.mode = 2
