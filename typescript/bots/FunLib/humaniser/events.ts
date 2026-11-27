@@ -1313,7 +1313,7 @@ export const EVENTS = {
         pid: "num",
         /** The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`. */
         aid: "num",
-        /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
+        /** On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`) or `creep:<cid>` (`job=aggro`: our ranged creep the draw is for; its claim is keyed `draw:<cid>`). Absent for `job=rune`, whose lines log no rune id, and on `end`. */
         tgt: "str",
         /** `stack`, `rune`, `pull`, `rune_detour`, `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason) or `aggro` (aggro_row.ts: one draw, its phases `start`, `order`, `resume`, `end`). */
         job: "str",
@@ -1441,7 +1441,7 @@ export const EVENTS = {
         td: "num",
         rh: "num",
         nd: "num",
-        /** `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. */
+        /** `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. Logs of builds before the draw's merge into team-bots name this `aw`, which on `job=creep` is the aimed cast's slack. */
         ow: "num",
     },
     /** One line per trigger minute (3, 5, 7) of the pos5's stack job (`Ours.StackExecute`; none with the switch off). Written after the job's walk-off, once the box was read, the hero died, or `ReadUntil` (5 s, 12 s on a double) passed, so `t` is up to that after the `ev=job phase=end` line. Pair by `start`..`t`. */

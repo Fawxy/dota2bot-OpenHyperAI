@@ -33,7 +33,9 @@ local function world(o)
 	F.Jobs = function() return {} end
 	F.Running = function() return w.running end
 	F.Tick = function() end
-	F.Start = function(_, opts, body)
+	-- The real Start wraps a row's onEnd with the decider's end hook (Tasks.WithRowEnd), which releases the claim; so does the stub.
+	F.Start = function(bot, opts, body)
+		opts = package.loaded["bots/FunLib/humaniser/tasks"].WithRowEnd(bot, opts)
 		w.starts = w.starts + 1
 		w.opts = opts
 		local task = { name = opts.name }
@@ -192,6 +194,40 @@ do -- no resume once the drawn creeps left the hero
 		T = T + 0.5
 	end)
 	check("no resume: nothing on the hero, nothing to walk back for (and the cooldown holds a new draw)", ask(w) == false and w.starts == 1, w.starts)
+end
+
+do -- the claim: a key of the draw's own, never our ranged creep's (a creep key is a last hit's or a deny's), released at the end
+	local w = world()
+	local held, on, after
+	capture(function()
+		ask(w)
+		local C = package.loaded["bots/FunLib/humaniser/claims"]
+		local cid = package.loaded["bots/FunLib/humaniser/telemetry"].CreepId(w.ours)
+		held, on = C.HeldBy(1) == "draw:" .. cid, #C.ClaimsOn("creep:" .. cid)
+		frame(w)
+		for _ = 1, 12 do T = T + 0.1 if frame(w) then break end end
+		after = C.HeldBy(1)
+	end)
+	check("claim: draw:<cid> while it runs, none on our ranged creep", held == true and on == 0, tostring(held) .. " " .. tostring(on))
+	check("claim: released at the end", w.res ~= nil and after == nil, tostring(after))
+end
+
+do -- a fight (Ours.FightFirst): the decider refuses the resume as it would any start
+	local w = world()
+	package.loaded["bots/FunLib/custom_loader"].Ours.FightFirst = true
+	local held
+	local out = capture(function()
+		ask(w)
+		frame(w)
+		w.m1.target, w.m2.target = w.core, w.core
+		T = T + 0.5
+		frame(w)
+		w.onEnd({ success = false, reason = "preempted" })
+		w.core.mode = BotMode.Attack
+		T = T + 0.5
+		held = ask(w)
+	end)
+	check("fight: no resume while Valve has the hero in attack, and the refusal is logged", held == false and w.starts == 1 and #lines(out, "ref=aggro") == 1, table.concat(out, " | "))
 end
 
 do -- the decider lets the creep row begin over the draw: a lower row's task

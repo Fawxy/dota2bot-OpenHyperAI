@@ -679,11 +679,11 @@ Slice 4 (stack_job): one line per trigger minute; "?" where a phase never ran. D
 
 Slice job-chooser: one start and one end per started job attempt, in both arms of Ours.JobChooser.
 
-`pid` num, `tT` num, `ts` num, `vd` str, `gd` num, `sp` num, `hm` str, `nw` num, `pq` num, `ps` num, `tks` num, `hp1` num
+`pid` num, `tT` num, `ts` num, `vd` str, `gd` num, `sp` num, `hm` str, `nw` num, `pq` num, `ps` num, `tks` num, `hp1` num, `rh` num, `nd` num
 
 - `aid` num: The attempt id: a number unique per hero within a game, allocated when a decision goes (or the job starts with no decision line) and shared by the go `ev=choice` line of a decider row's attempt, this job's `start` and `end` lines and its result line (`ev=pull_job`, `ev=stack`, `ev=rune_job`; none for `rune_detour`, whose `end` line is its result). On `job=creep` it is allocated at the go (creep_row.ts) and is on the go `ev=choice kind=creep` line, the start and the end; absent on logs before oha-creep-swing, whose creep lines join by `cid`.
-- `tgt` str: On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`). Absent for `job=rune`, whose lines log no rune id, and on `end`.
-- `job` str: `stack`, `rune`, `pull`, `rune_detour` or `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason).
+- `tgt` str: On `start`: what the attempt acts on, `<kind>:<id>`: `camp:<spawner index>` (`job=pull`, `job=stack`: as the result line's `camp`) or `rune:<rune id>` (`job=rune_detour`: as its `ev=choice` `rune`) or `creep:<cid>` (`job=aggro`: our ranged creep the draw is for; its claim is keyed `draw:<cid>`). Absent for `job=rune`, whose lines log no rune id, and on `end`.
+- `job` str: `stack`, `rune`, `pull`, `rune_detour`, `creep` (creep_row.ts: one attempt on a creep, its end `why` the engine lastHit's reason) or `aggro` (aggro_row.ts: one draw, its phases `start`, `order`, `resume`, `end`).
 - `phase` str: `start` (`why=trigger`) or `end`.
 - `why` str: On `end`: the job's `ev=stack`, `ev=rune_job` or `ev=pull_job` `why`.
 - `host` num: The hosting mode's number.
@@ -728,7 +728,17 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `tin` num: `job=creep` end: seconds from the start to the first step that ended inside the verb's range (centre distance against the engine's attackReach); -1 never.
 - `sw` num: `job=creep` end: 1 when the engine's lastHit ordered its swing, 0 when it ended before one (`why=ok` with 0: the hero's last-hit count rose from a swing ordered before the verb's, message `hit=other`); absent on a cut (`why=preempted`).
 - `hp0` num: `job=creep` end: the hero's HP (absolute) at the start and at the end.
-- `msg` str: `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut.
+- `msg` str: `job=creep` end: the verb's result message (engine docs/API.md "Message": what the swing was based on, or what held it); the runner's on a cut. `job=aggro` end: `nodraw` (`why=missed`: no drawn creep ever had the hero as its target), `replaced` (`why=cancelled`: the creep row began over the draw), or what cancelled the order after the walk-in (`why=cancelled`: `noclash`, `unseen`, `acting` or a check of `ev=choice kind=aggro` `arf`).
+- `ot` num: `job=aggro` (aggro_row.ts, the draw): on `order` and `end`, seconds from the start to the attack order on the enemy hero (the commit point, the hold hard from the next round); -1 on an end with no order.
+- `lt` num: `job=aggro` end: seconds from the order to the draw's end (no drawn creep on the hero any more), or to the attempt's end when it ended otherwise.
+- `an` num: `job=aggro`: on `start` the creeps the read would draw (within AggroOffer Drawn of the draw spot), on `order` and `end` those of the read at the order.
+- `ah` num: `job=aggro`: on `end` the most drawn creeps on the hero at one step; on `resume` those on it then.
+- `ar` num: `job=aggro` end: drawn creeps alive with our ranged creep as their attack target (the hand-over).
+- `rs` num: `job=aggro` end: how often the walk back was taken up again after another row or mode had the hero (`phase=resume`).
+- `ha` num: `job=aggro` end, with an order: 1 when the hero's attack target read as the order's target at some step after it (the order took), else 0.
+- `ac` num: `job=aggro` end, with an order: drawn creeps that closed on the hero by 150 or more since the order, or came within 200 of it (they chased it, whatever their attack target read).
+- `td` num: `job=aggro` order: the target hero's distance (centre), 1 when it took damage from this hero within the draw's 3 s cooldown (`WasRecentlyDamagedByHero`), and the nearest drawn creep's distance.
+- `ow` num: `job=aggro` end, with an order: seconds from the order to the first step where the hero's current action was the attack (`GetCurrentActionType`); -1 when it never was within AggroRow OrderCap. Logs of builds before the draw's merge into team-bots name this `aw`, which on `job=creep` is the aimed cast's slack.
 
 ## stack
 
@@ -1456,14 +1466,14 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 
 `pid` num, `bby` num, `awr` num, `am` num, `ar` num, `ag1` num, `agr` num, `agm` num, `rsrc` str, `rage` num, `ap` num, `rule` str
 
-- `aid` num: The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing.
+- `aid` num: The attempt id, on a line with `go=1` only (`kind=pull`, `stack`, `rune_detour`, `creep`, `aggro`): shared by the `ev=job` lines and the result line of the job it starts. Absent on `go=0`, on `shadow` and `decider` lines, and on `kind=creep` lines before oha-creep-swing.
 - `kind` str: The decision; `pull`, `rune_detour` (rune_detour.ts: one line per pass), `stack` (the stack row, stack_job.ts: once a minute at its leave time, `want` the puller's record of the camp under the pull's bar, `slot` the hit second), `creep` (creep_offer.ts: one line per hero and lane creep, `src=shadow go=0 why=off` where the creep row (creep_row.ts, Ours.LaneCreeps) is off, else `src=own` with the row's `go`, its first reason `why` and its latest `lw`, written when the creep leaves the hero's nearby lists; `want` 1 when arriving in time was ever possible, `slot` the second it was first offered; the fields below marked kind=creep hold the offer's answers as they stood when arriving first became possible, else at the largest slack), `shadow` (Ours.ChoiceShadow) or `decider` (decider.ts, every hero of both teams: one line per change of `held`, `let`, `win` or `hs`, and one per begin (`beg`), the creep row's at its read's moment; and one per refused begin (`ref`), once per row and target while it repeats).
 - `held` str: kind=decider: the row the decider holds the hero with, `-` when it yields to the host's own code.
 - `hs` str: kind=decider, while a row holds: its strength as asked this round, `hard` (Decider.HARD) or `soft` (Decider.SOFT, OHA's Lua modes capped under it); a row's strength may change while it holds (no row does today: all are hard).
 - `let` str: kind=decider: `retreat` when a row wanted the hero but the decider yielded because the retreat file's desire led every other mode's (stock would retreat); absent otherwise.
 - `beg` str: kind=decider: the row the decider began (started its task) since its last line; a begin always writes a line. Present with `let` when the row was begun in the round the decider let go (its task is then cut by the runner's preemptAfter).
 - `ref` str: kind=decider: the row whose begin the decider refused (Ours.FightFirst: the hero was in attack, roam or team roam), with `btgt` its offer's target, `bfrom` the mode and `why` the reason (`fight`); no `held`, `win` or `beg` on that line. Logged once per hero, row and target while the refusal repeats.
-- `btgt` str: kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour).
+- `btgt` str: kind=decider, with `beg` (or `ref`): the row's offer, its target (`camp:<idx>`, `rune:<rune>`, `creep:<cid>`, `draw:<cid>`) and the game time it had to go by (absent where the row has no such limit: the rune detour).
 - `over` str: kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran.
 - `bfrom` str: kind=decider, with `beg` (or `ref`): the mode Valve had the hero in at the begin (or the refusal), read inside the begin (HDebug.ModeName: `laning`, `farm`, `attack`, `roam`, `team_roam`, ...); absent on logs before oha-start-from.
 - `bway` str: kind=decider, with `beg`: how the offer is taken (`attack`, `deny`, `spell`: the creep row); absent where a row has one way. Absent on logs before oha-offer-accept.
@@ -1483,7 +1493,7 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `ck` str: `kind=creep`: the creep's kind, `m` melee, `r` ranged, `s` siege, `f` flag (`LaneRead.CreepKind`).
 - `who` str: `kind=creep`: `t` their creep (a last hit), `o` ours (a deny).
 - `wo` num: `kind=creep`: seconds from `slot` (floored to 0.1 s) to the first read where arriving was possible; absent when it never was. `kind=aggro`: to the first read that failed no check.
-- `ak` str: kind=aggro (aggro_offer.ts, the draw's shadow, no-creep-unpaid s6b): one line per core of the trip table's `aggro` row and our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1 when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot, `eh` the enemy heroes covering it). `kind=aggro`: the case, `hg` (their fighting creeps on average higher than our ranged creep, by more than half a step: location z, AggroOffer Step) or `dn`.
+- `ak` str: kind=aggro (aggro_offer.ts, the draw's read, no-creep-unpaid s6b): `src=shadow go=0 why=off` with Ours.LaneAggro off, else `src=own` (aggro_row.ts: `go` 1 with `aid` when the row started on the chance, else `why` the first failed check or `nogo`); one line per core of the trip table's `aggro` row and our ranged creep (`cid`), while their creeps fight ours within AggroOffer Clash of it; `slot` the first such read, `want` 1 when some read failed no check. The fields hold the read with the fewest failed checks (`walk` the walk to the draw spot, `eh` the enemy heroes covering it). `kind=aggro`: the case, `hg` (their fighting creeps on average higher than our ranged creep, by more than half a step: location z, AggroOffer Step) or `dn`.
 - `arf` str: `kind=aggro`: the failed checks, comma-joined (`-` none): onr (dn and their creeps already on our ranged creep), due (ag1 > 0), far, unseen (no enemy hero our team sees), etower, covered, danger (deadly at the draw spot), up (our ranged creep higher than their fighting creeps by more than half a step), cd (the hero attacked a hero within 3 s).
 - `ard` num: `kind=aggro`: reads of the chance, and how many of them failed no check.
 - `an` num: `kind=aggro`: their creeps drawn from the draw spot (within 500), and the melee among them.

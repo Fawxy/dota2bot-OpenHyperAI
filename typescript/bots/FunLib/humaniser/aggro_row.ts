@@ -21,7 +21,8 @@
  * `cancelled replaced`, `cut=replaced` on the end line). The attempt lives in this row's memo, not its task: while the memo is open (an
  * order went and the task was replaced or preempted), the order is under `Backstop` old, a creep was drawn, and the draw has not let go
  * (`letGo`, or a creep still names the hero), `wants` offers the walk back again (`phase=resume`, the same `aid`) unless the danger
- * read at the hero's place is deadly.
+ * read at the hero's place is deadly. Of the go rule only that is asked again (rule 5 set aside): its other checks are about an order
+ * still to be given and the draw spot, and the walk back gives no order and leads away from the clash.
  *
  * Lines: the offer read's `ev=choice kind=aggro src=own` (aggro_offer.ts: `go` 1 with the `aid` on the opportunity the row started on);
  * `ev=job job=aggro` start, order, resume and end.
