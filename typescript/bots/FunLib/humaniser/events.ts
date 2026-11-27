@@ -2940,6 +2940,8 @@ export const EVENTS = {
         bby: "num",
         /** kind=decider, with `beg`: the running task the begin replaced, which a higher row takes the hero from (a lower row's name, or an older job's task name: `stack`, `rune`); absent when none ran. */
         over: "str",
+        /** kind=decider, with `beg`: the mode Valve had the hero in at the begin, read inside the begin (HDebug.ModeName: `laning`, `farm`, `attack`, `roam`, `team_roam`, ...); absent on logs before oha-start-from. */
+        bfrom: "str",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */
