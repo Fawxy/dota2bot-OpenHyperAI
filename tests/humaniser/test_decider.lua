@@ -377,6 +377,40 @@ do -- a higher row that wants the hero while a lower row's task runs takes it; t
 		tostring(lines[1]))
 end
 
+do -- each begin names the mode Valve had the hero in at that moment, read before the row's begin moves it (the round's and a read's offer)
+	local H, bot, F = runnerWorld()
+	local hiOn, loOn = { want = false }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	for _, r in ipairs({ hi, lo }) do
+		local inner = r.begin
+		r.begin = function(b)
+			b.mode = BotMode.Farm -- the started task's host mode, as Valve would show it once it runs
+			return inner(b)
+		end
+	end
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	local offered
+	local lines = capture(function()
+		bot.mode = BotMode.Laning
+		desire()
+		T = T + 0.2
+		hiOn.want = true
+		bot.mode = BotMode.Attack
+		offered = H.Decider.Offer(bot, hi)
+	end)
+	check("bfrom: the round's begin names the mode before it", lines[1] ~= nil and lines[1]:find("beg=lo", 1, true) and lines[1]:find("bfrom=laning", 1, true),
+		table.concat(lines, " | "))
+	check("bfrom: a read's offer names the mode at its own moment", offered and lines[2] ~= nil and lines[2]:find("beg=hi", 1, true)
+		and lines[2]:find("bfrom=attack", 1, true), table.concat(lines, " | "))
+	local quiet = capture(function()
+		T = T + 0.2
+		desire()
+	end)
+	check("bfrom: a line with no begin carries none", #quiet == 0 or not quiet[1]:find("bfrom=", 1, true), table.concat(quiet, " | "))
+end
+
 do -- a lower row that wants the hero while a higher row holds it is not begun, in the round or at a read's offer
 	local H, bot, F = runnerWorld()
 	local hiOn, loOn = { want = true }, { want = false }

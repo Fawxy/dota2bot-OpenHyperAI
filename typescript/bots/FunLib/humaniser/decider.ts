@@ -117,6 +117,8 @@ interface Begun {
     offer: Offer;
     /** The task the begin replaced (a lower row's, or an older job's). */
     over?: string;
+    /** The mode Valve had the hero in at the moment of the begin (the creep row's `Offer` falls between rounds, so not `note`'s read). */
+    from: string;
 }
 
 interface HeroState {
@@ -158,8 +160,9 @@ function runningTask(bot: Unit): string | undefined {
 
 function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
     const over = runningTask(bot);
+    const from = HDebug.ModeName(bot.GetActiveMode());
     if (!Tasks.Begin(row.name, () => row.begin(bot))) return false;
-    s.begun = { row, offer, over };
+    s.begun = { row, offer, over, from };
     return true;
 }
 
@@ -238,7 +241,7 @@ function note(bot: Unit, s: HeroState, heldRow = s.held, softNow = s.soft): void
     ];
     if (heldRow !== undefined) fields.push(["hs", soft ? "soft" : "hard"]);
     if (s.letAt !== undefined) fields.push(["let", "retreat"], ["d_retreat", s.letAt]);
-    if (b !== undefined) fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over]);
+    if (b !== undefined) fields.push(["beg", b.row.name], ["btgt", b.offer.tgt], ["bby", b.offer.by !== undefined ? math.floor(b.offer.by * 10 + 0.5) / 10 : undefined], ["over", b.over], ["bfrom", b.from]);
     Telemetry.Event("choice", fields);
 }
 

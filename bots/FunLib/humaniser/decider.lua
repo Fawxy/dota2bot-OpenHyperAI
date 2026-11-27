@@ -104,13 +104,14 @@ local function runningTask(bot)
 end
 local function begin(bot, s, row, offer)
     local over = runningTask(bot)
+    local from = HDebug.ModeName(bot:GetActiveMode())
     if not Tasks.Begin(
         row.name,
         function() return row.begin(bot) end
     ) then
         return false
     end
-    s.begun = {row = row, offer = offer, over = over}
+    s.begun = {row = row, offer = offer, over = over, from = from}
     return true
 end
 --- One row's turn: its offer, and its begin when its task does not run. Undefined when it does not want the hero or the begin was refused.
@@ -232,7 +233,8 @@ local function note(bot, s, heldRow, softNow)
                 "bby",
                 b.offer.by ~= nil and math.floor(b.offer.by * 10 + 0.5) / 10 or nil
             },
-            {"over", b.over}
+            {"over", b.over},
+            {"bfrom", b.from}
         )
     end
     Telemetry.Event("choice", fields)
