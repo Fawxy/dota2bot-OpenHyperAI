@@ -39,6 +39,7 @@ local ____exports = {}
 local refuse
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
+local Claims = require(GetScriptDirectory().."/FunLib/humaniser/claims")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local ____ours = require(GetScriptDirectory().."/FunLib/humaniser/ours")
 local OursOn = ____ours.On
@@ -49,9 +50,9 @@ local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
 function refuse(bot, s, r)
     s.refused[r.row] = r
     local key = (r.row .. "|") .. (r.tgt or "")
-    local ____s_4, ____refLines_5 = s, "refLines"
-    if ____s_4[____refLines_5] == nil then
-        ____s_4[____refLines_5] = {}
+    local ____s_14, ____refLines_15 = s, "refLines"
+    if ____s_14[____refLines_15] == nil then
+        ____s_14[____refLines_15] = {}
     end
     local seen = s.refLines
     if seen[key] == true then
@@ -138,26 +139,104 @@ end
 --- The modes a row's start is refused from (offers-and-the-decider s4 1a, user 27/11/2026: a row never starts over a fight;
 -- fights stay Valve's). A row already holding the hero when a fight starts is not cut by this.
 local FIGHT = {[BotMode.Attack] = true, [BotMode.Roam] = true, [BotMode.TeamRoam] = true}
---- The one place a row's task starts: refused over a fight (Ours.FightFirst), else the row's own begin.
+--- Another hero's claim the offer may not take (s4 step 2): lower goes first, so one with no rank on either side, or a rank at or under this one's, holds.
+local function holds(c, mine)
+    return c.rank == nil or (mine and mine.rank) == nil or c.rank <= mine.rank
+end
+--- Acceptance (offers-and-the-decider s4), the same for a polled row and an offered one, its checks in s4's order. Step 1 (a row
+-- above holds the hero) is `Offer`'s, before the row's `wants` is asked; a polled row is asked only when no row above wanted the
+-- hero. 1a, the fight (Ours.FightFirst), refuses. 2, the claim (another hero holds the target, `holds`), and 3, the go-by (the
+-- time to go by has passed), are asked and logged and refuse nothing: each still lives in its row (the creep row's `FreeFor`,
+-- each row's own `by`) and refuses here once the conversion that removes the row's own check (route step 3) shows its shadow at 0.
+-- 4, danger at the place, is not asked yet; 5, the order, is `pick`'s.
+local function accept(bot, offer, mode)
+    if FIGHT[mode] == true and OursOn("FightFirst") then
+        return {no = "fight", others = 0}
+    end
+    local pid = bot:GetPlayerID()
+    local others = 0
+    local would
+    if offer.tgt ~= nil then
+        for ____, c in ipairs(Claims.ClaimsOn(offer.tgt)) do
+            do
+                local __continue12
+                repeat
+                    if c.pid == pid then
+                        __continue12 = true
+                        break
+                    end
+                    others = others + 1
+                    if holds(c, offer.claim) then
+                        would = "claim"
+                    end
+                    __continue12 = true
+                until true
+                if not __continue12 then
+                    break
+                end
+            end
+        end
+    end
+    if would == nil and offer.by ~= nil and DotaTime() > offer.by then
+        would = "late"
+    end
+    return {would = would, others = others}
+end
+--- The one place a row's task starts: acceptance (`accept`), then the row's own begin; the decider takes the offer's target as the hero's claim.
 local function begin(bot, s, row, offer)
     local over = runningTask(bot)
     local mode = bot:GetActiveMode()
     local from = HDebug.ModeName(mode)
-    if FIGHT[mode] == true and OursOn("FightFirst") then
-        refuse(bot, s, {row = row.name, tgt = offer.tgt, why = "fight", mode = from})
+    local v = accept(bot, offer, mode)
+    if v.no ~= nil then
+        refuse(bot, s, {row = row.name, tgt = offer.tgt, why = v.no, mode = from})
         return false
     end
     s.refLines = nil
-    if not Tasks.Begin(
+    local ok, res = pcall(function() return Tasks.Begin(
         row.name,
         function() return row.begin(bot) end
-    ) then
+    ) end)
+    if (not ok or res == true) and offer.tgt ~= nil and runningTask(bot) == row.name then
+        local c = offer.claim
+        Claims.Take(
+            offer.tgt,
+            {
+                pid = bot:GetPlayerID(),
+                rank = c and c.rank,
+                k = c and c.k,
+                due = c and c.due,
+                phase = c and c.phase
+            }
+        )
+        s.claimRow = row.name
+    end
+    if not ok then
+        error(res, 0)
+    end
+    if res ~= true then
         return false
     end
     s.refused[row.name] = nil
-    s.begun = {row = row, offer = offer, over = over, from = from}
+    s.begun = {
+        row = row,
+        offer = offer,
+        over = over,
+        from = from,
+        v = v
+    }
     return true
 end
+--- Tasks' end hook for a row's task: the claim that row's begin took is released (after the row's own end, which may read it).
+local function rowEnded(bot, name)
+    local s = heroes[bot:GetPlayerID()]
+    if s == nil or s.claimRow ~= name then
+        return
+    end
+    s.claimRow = nil
+    Claims.Release(bot:GetPlayerID())
+end
+Tasks.OnRowEnd(rowEnded)
 --- Why the decider last refused to begin `row` for this hero, once (it is forgotten on reading): `fight` (the hero was in attack,
 -- roam or team roam, Ours.FightFirst). A row reads it after a begin it asked for did not happen. Undefined when none is kept.
 function ____exports.Refusal(bot, row)
@@ -221,18 +300,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue30
+            local __continue44
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue30 = true
+                    __continue44 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue30 = true
+                __continue44 = true
             until true
-            if not __continue30 then
+            if not __continue44 then
                 break
             end
         end
@@ -289,7 +368,10 @@ local function note(bot, s, heldRow, softNow)
                 b.offer.by ~= nil and math.floor(b.offer.by * 10 + 0.5) / 10 or nil
             },
             {"over", b.over},
-            {"bfrom", b.from}
+            {"bfrom", b.from},
+            {"bway", b.offer.way},
+            {"bacc", b.v.would},
+            {"bcl", b.v.others > 0 and b.v.others or nil}
         )
     end
     Telemetry.Event("choice", fields)
@@ -302,20 +384,20 @@ function ____exports.Host(bot, inner)
             s.refLines = nil
         end
         local row = pick(bot, s)
-        local ____temp_11
+        local ____temp_21
         if row ~= nil then
-            ____temp_11 = retreatLeads(s)
+            ____temp_21 = retreatLeads(s)
         else
-            ____temp_11 = nil
+            ____temp_21 = nil
         end
-        s.letAt = ____temp_11
-        local ____temp_12
+        s.letAt = ____temp_21
+        local ____temp_22
         if s.letAt == nil then
-            ____temp_12 = row
+            ____temp_22 = row
         else
-            ____temp_12 = nil
+            ____temp_22 = nil
         end
-        s.held = ____temp_12
+        s.held = ____temp_22
         s.soft = s.held ~= nil and isSoft(s.held, bot)
         pcall(function() return note(bot, s) end)
         if s.held == nil then
@@ -366,7 +448,10 @@ end
 -- them. Their last round's answer adds nothing: a row picked then has its task running now, unless that task has ended, and
 -- then the row no longer wants the hero. A row above that comes to want the hero takes it at the next round (`over`). The row's
 -- own `wants` is asked for the offer. True when the row was begun; a row not in ROWS is never begun.
--- What a row wants: its target (a name or id) and the game time it must go by. Both optional; logged when the row is begun.
+-- What a row wants (offers-and-the-decider s3), every field optional and logged when the row is begun: its target (a name or id,
+-- the claim's key), the game time it must go by, how it is taken (`way`: `attack`, `deny`, `spell`; absent where a row has one
+-- way) and what its claim carries (`claim`: the creep row's rank, kind, due time and phase). The other fields of s3 (place,
+-- seconds, gain, phases, end) arrive with the first code that reads each.
 function ____exports.Offer(bot, row)
     local at = __TS__ArrayIndexOf(____exports.ROWS, row)
     if at < 0 then
@@ -408,18 +493,19 @@ function ____exports.LetGo(bot)
 end
 --- Whether the held row's hold was soft at this hero's last farm desire round (the overlay; the answer `Host` got, so a function-valued `Row.soft` counts).
 function ____exports.Soft(bot)
-    local ____opt_13 = heroes[bot:GetPlayerID()]
-    return (____opt_13 and ____opt_13.soft) == true
+    local ____opt_23 = heroes[bot:GetPlayerID()]
+    return (____opt_23 and ____opt_23.soft) == true
 end
 --- The row that held this hero at its last farm desire round, if any (the overlay).
 function ____exports.Held(bot)
-    local ____opt_15 = heroes[bot:GetPlayerID()]
-    return ____opt_15 and ____opt_15.held
+    local ____opt_25 = heroes[bot:GetPlayerID()]
+    return ____opt_25 and ____opt_25.held
 end
 --- Tests: forget every hero.
 function ____exports.Reset()
     for k in pairs(heroes) do
         heroes[k] = nil
     end
+    Claims.ResetCache()
 end
 return ____exports

@@ -1348,7 +1348,7 @@ export const EVENTS = {
         az: "num",
         /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
         am: "num",
-        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt took its own (creep_claim.ts). */
+        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt began (claims.ts; the decider then takes its own). */
         oc: "num",
         /** `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`. */
         cl: "num",
@@ -2944,6 +2944,17 @@ export const EVENTS = {
         over: "str",
         /** kind=decider, with `beg` (or `ref`): the mode Valve had the hero in at the begin (or the refusal), read inside the begin (HDebug.ModeName: `laning`, `farm`, `attack`, `roam`, `team_roam`, ...); absent on logs before oha-start-from. */
         bfrom: "str",
+        /** kind=decider, with `beg`: how the offer is taken (`attack`, `deny`, `spell`: the creep row); absent where a row has one way. Absent on logs before oha-offer-accept. */
+        bway: "str",
+        /**
+         * kind=decider, with `beg`: the first of the decider's acceptance checks that would have refused the begin had it been allowed
+         * to (offers-and-the-decider s4; it refuses nothing yet): `claim` (another hero of ours holds the offer's target, at a cell at
+         * or under this one's, or with none), `late` (the offer's go-by time had passed). Absent when every check passes, and on logs
+         * before oha-offer-accept.
+         */
+        bacc: "str",
+        /** kind=decider, with `beg`: how many other heroes of ours held a claim on the offer's target at the begin; absent when none. */
+        bcl: "num",
         /** 1 when the pull started. */
         go: "num",
         /** 1 when the reading wanted a pull. */

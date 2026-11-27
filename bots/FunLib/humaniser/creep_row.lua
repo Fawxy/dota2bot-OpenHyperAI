@@ -149,11 +149,12 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, STILL_GOING, CAST_OVER, running, lastCid, pending
+local mateGoing, creepsAttack, lastHits, underTower, kindOf, casts, yieldsTo, enterPhase, factsOf, castPass, refuse, towerGone, yieldNow, onPhase, offerOf, STILL_GOING, CAST_OVER, running, lastCid, pending, WAY
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DamageType = ____dota.DamageType
 local CreepClaim = require(GetScriptDirectory().."/FunLib/humaniser/creep_claim")
+local Claims = require(GetScriptDirectory().."/FunLib/humaniser/claims")
 local CreepOffer = require(GetScriptDirectory().."/FunLib/humaniser/creep_offer")
 local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
@@ -347,7 +348,7 @@ function casts()
     return Ours.On("CreepSpells")
 end
 --- Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
--- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+-- with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `Claims.ClaimsOn`),
 -- then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
 -- creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
 -- `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
@@ -359,8 +360,8 @@ function ____exports.FreeFor(bot, cid, now)
     if mine == nil or not TripTable.Outranked("creep", pos) then
         return nil
     end
-    for ____, c in ipairs(CreepClaim.ClaimsOn(cid)) do
-        if c.pid ~= pid and c.k == "lh" and c.rank < mine then
+    for ____, c in ipairs(Claims.ClaimsOn(Claims.CreepTarget(cid))) do
+        if c.pid ~= pid and c.k == "lh" and c.rank ~= nil and c.rank < mine then
             return "claimed"
         end
     end
@@ -411,16 +412,18 @@ function ____exports.FreeFor(bot, cid, now)
     return wait and "wait" or nil
 end
 function yieldsTo(pid, cid)
+    local on = Claims.ClaimsOn(Claims.CreepTarget(cid))
     local mine = __TS__ArrayFind(
-        CreepClaim.ClaimsOn(cid),
+        on,
         function(____, c) return c.pid == pid end
     )
-    if mine == nil or mine.k ~= "lh" or mine.phase == "swing" then
+    if mine == nil or mine.k ~= "lh" or mine.phase == "swing" or mine.rank == nil then
         return false
     end
+    local r = mine.rank
     return __TS__ArraySome(
-        CreepClaim.ClaimsOn(cid),
-        function(____, c) return c.pid ~= pid and c.k == "lh" and c.rank < mine.rank end
+        on,
+        function(____, c) return c.pid ~= pid and c.k == "lh" and c.rank ~= nil and c.rank < r end
     )
 end
 function enterPhase(a, p, t)
@@ -511,7 +514,7 @@ function castPass(bot, cands, whys, recs, now, gate, shadow)
                     __continue139 = true
                     break
                 end
-                if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #CreepClaim.ClaimsOn(c.cid) > 0 then
+                if ____exports.FreeFor(bot, c.cid, now) ~= nil or mateGoing(bot, c.cid, now) or #Claims.ClaimsOn(Claims.CreepTarget(c.cid)) > 0 then
                     no = "claimed"
                 elseif c.facts().kb == "mate" then
                     no = "mate"
@@ -597,7 +600,23 @@ function onPhase(pid, p, t)
     if a ~= nil then
         enterPhase(a, p, t)
     end
-    CreepClaim.Phase(pid, p)
+    Claims.Phase(pid, p)
+end
+function offerOf(bot, pd)
+    local ____pd_65 = pd
+    local best = ____pd_65.best
+    local k = ____pd_65.k
+    local rank = TripTable.RankOf(
+        k == "dn" and "deny" or "creep",
+        LaneConfig.PositionOf(bot)
+    )
+    local due = pd.now + (k == "sp" and pd.cast.timing.land or best.t.due)
+    return {
+        tgt = Claims.CreepTarget(best.cid),
+        by = k == "sp" and pd.now or pd.now + best.t.due - pd.need,
+        way = WAY[k],
+        claim = {rank = rank, k = k == "dn" and "dn" or "lh", due = due, phase = k == "sp" and "swing" or nil}
+    }
 end
 ____exports.SETTINGS = {
     NearWalk = 1,
@@ -742,6 +761,7 @@ function ____exports.ResetCache()
         end
     end
     CreepClaim.ResetCache()
+    Claims.ResetCache()
 end
 function ____exports.On(bot)
     local pos = LaneConfig.PositionOf(bot)
@@ -778,7 +798,7 @@ end
 -- what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
 -- due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
 -- when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
--- cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take); with Ours.TowerCreeps and a tower attacking the
+-- cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
 -- creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
 local function startLine(bot, cid, aid, t, g)
     local ____Telemetry_Event_21 = Telemetry.Event
@@ -1002,7 +1022,7 @@ local function finish(bot, r)
     local pid = bot:GetPlayerID()
     local a = running[pid]
     running[pid] = nil
-    local claimed = CreepClaim.Release(pid)
+    local claimed = Claims.HeldBy(pid) ~= nil
     local now = DotaTime()
     if a ~= nil then
         if a.phase ~= nil then
@@ -1387,13 +1407,11 @@ local function rowBegin(bot)
     }
     running[pid] = a
     lastCid[pid] = best.cid
-    local rank = TripTable.RankOf(
-        k == "dn" and "deny" or "creep",
-        LaneConfig.PositionOf(bot)
-    )
-    local others = CreepClaim.Take(best.cid, {pid = pid, rank = rank, k = k == "dn" and "dn" or "lh", due = pd.now + (k == "sp" and cast.timing.land or t.due)})
-    if k == "sp" then
-        CreepClaim.Phase(pid, "swing")
+    local oc = 0
+    for ____, c in ipairs(Claims.ClaimsOn(Claims.CreepTarget(best.cid))) do
+        if c.pid ~= pid then
+            oc = oc + 1
+        end
     end
     local sa = bot:GetAttackTarget()
     startLine(
@@ -1409,7 +1427,7 @@ local function rowBegin(bot)
             sa = sa ~= nil and sa ~= nil and sa == creep,
             lead = lead,
             k = k,
-            oc = #others,
+            oc = oc,
             tr = tr,
             cast = cast
         }
@@ -1432,11 +1450,9 @@ local function rowWants(bot, _reads)
     if pd == nil then
         return nil
     end
-    return {
-        tgt = "creep:" .. tostring(pd.best.cid),
-        by = pd.k == "sp" and pd.now or pd.now + pd.best.t.due - pd.need
-    }
+    return offerOf(bot, pd)
 end
+WAY = {lh = "attack", dn = "deny", sp = "spell"}
 --- The row's verb: one frame of the attempt; true once it has ended.
 local function rowStep(bot)
     local pid = bot:GetPlayerID()

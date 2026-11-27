@@ -25,7 +25,7 @@
  * Hard from the go: the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
- * The claim (`creep_claim.ts`, `Reads.creep`): the attempt takes it in `begin` and the task's end releases it (`finish`), whatever the end;
+ * The claim (`claims.ts`, `Reads.claims`): the decider takes it from the offer once `begin` returns and releases it when the task ends, after `finish`, whatever the end;
  * the row's per-creep answers (`Seen`) live in that read. The free rule and the yield read it (a support's last hit only).
  *
  * The leftover rule (Ours.TowerCreeps; `Verdict`): a creep one of our towers is attacking dies to a tower shot, so the hero's hit counts only if the
@@ -46,6 +46,7 @@
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, DamageType, Unit } from "bots/ts_libs/dota";
 import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
+import * as Claims from "bots/FunLib/humaniser/claims";
 import * as CreepOffer from "bots/FunLib/humaniser/creep_offer";
 import * as Decider from "bots/FunLib/humaniser/decider";
 import type { Reads } from "bots/FunLib/humaniser/reads";
@@ -405,6 +406,7 @@ const pending: Record<number, Pending | undefined> = {};
 export function ResetCache(): void {
     for (const t of [running, lastCid, pending] as Record<number, unknown>[]) for (const [k] of pairs(t)) t[k as number] = undefined;
     CreepClaim.ResetCache();
+    Claims.ResetCache();
 }
 
 export function On(bot: Unit): boolean {
@@ -438,7 +440,7 @@ export type Free = "claimed" | "wait" | "human";
 
 /**
  * Whether the creep is free for this hero, as far as the heroes with a lower `creep` cell go; undefined when it is, else why not. A hero
- * with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `CreepClaim.ClaimsOn`),
+ * with the lowest cell is always free, with no scan. In order: `claimed` (a lower-cell hero holds a claim on it, `Claims.ClaimsOn`),
  * then over the teammates with a lower cell: `human` (not a bot, in this hero's assigned lane: a human publishes no answers, so its
  * creep is never free) and `wait` (it has the creep on offer and has not refused it yet: its answer, `CreepClaim.AnswerOf`, has no
  * `why`). A fresh answer with a `why` is a refusal (`Consider` sets `why` on every refusal, and the next read after an attempt's end
@@ -449,7 +451,7 @@ export function FreeFor(this: void, bot: Unit, cid: number, now: number): Free |
     const pos = LaneConfig.PositionOf(bot);
     const mine = TripTable.RankOf("creep", pos);
     if (mine === undefined || !TripTable.Outranked("creep", pos)) return undefined;
-    for (const c of CreepClaim.ClaimsOn(cid)) if (c.pid !== pid && c.k === "lh" && c.rank < mine) return "claimed";
+    for (const c of Claims.ClaimsOn(Claims.CreepTarget(cid))) if (c.pid !== pid && c.k === "lh" && c.rank !== undefined && c.rank < mine) return "claimed";
     const lane = bot.GetAssignedLane();
     let wait = false;
     for (let i = 1; i <= 5; i++) {
@@ -469,9 +471,11 @@ export function FreeFor(this: void, bot: Unit, cid: number, now: number): Free |
 
 /** A lower-cell hero holds a claim on the creep this hero holds and this hero's swing is not yet ordered (a core's cell is never above a support's). */
 function yieldsTo(pid: number, cid: number): boolean {
-    const mine = CreepClaim.ClaimsOn(cid).find((c) => c.pid === pid);
-    if (mine === undefined || mine.k !== "lh" || mine.phase === "swing") return false;
-    return CreepClaim.ClaimsOn(cid).some((c) => c.pid !== pid && c.k === "lh" && c.rank < mine.rank);
+    const on = Claims.ClaimsOn(Claims.CreepTarget(cid));
+    const mine = on.find((c) => c.pid === pid);
+    if (mine === undefined || mine.k !== "lh" || mine.phase === "swing" || mine.rank === undefined) return false;
+    const r = mine.rank;
+    return on.some((c) => c.pid !== pid && c.k === "lh" && c.rank !== undefined && c.rank < r);
 }
 
 function r2(x: number): number {
@@ -491,7 +495,7 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * what the reads saw: `gn` the need at go and `sp` the spare (due less need), `hw` and `hm` the last refusal while about to come
  * due and the hero's mode then (absent when it went at the first such read), `hs` seconds from that first read to the go, `sa` 1
  * when the hero's attack target was the creep, `nw` 1 when this read was the first to list the creep, `k` `lh` or `dn`, `ld` the lead in force (s: one attack
- * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take); with Ours.TowerCreeps and a tower attacking the
+ * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (Claims.ClaimsOn, before the decider takes this one); with Ours.TowerCreeps and a tower attacking the
  * creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
  */
 function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" | "sp"; oc: number; tr?: TowerRead; cast?: SpellSecure.Answer }): void {
@@ -582,7 +586,8 @@ function finish(bot: Unit, r: Lib.Result): void {
     const pid = bot.GetPlayerID();
     const a = running[pid];
     running[pid] = undefined;
-    const claimed = CreepClaim.Release(pid);
+    // The decider releases the claim after this end (its task-end hook): whether the hero held one is read here.
+    const claimed = Claims.HeldBy(pid) !== undefined;
     const now = DotaTime();
     if (a !== undefined) {
         if (a.phase !== undefined) a.spent[a.phase] += now - a.phaseAt;
@@ -769,7 +774,7 @@ function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number,
             c.noteCast(false, no);
             continue;
         }
-        if (FreeFor(bot, c.cid, now) !== undefined || mateGoing(bot, c.cid, now) || CreepClaim.ClaimsOn(c.cid).length > 0) no = "claimed";
+        if (FreeFor(bot, c.cid, now) !== undefined || mateGoing(bot, c.cid, now) || Claims.ClaimsOn(Claims.CreepTarget(c.cid)).length > 0) no = "claimed";
         else if (c.facts().kb === "mate") no = "mate";
         let p: SpellSecure.Answer | undefined;
         if (no === undefined) {
@@ -924,12 +929,11 @@ function rowBegin(bot: Unit): boolean {
     };
     running[pid] = a;
     lastCid[pid] = best.cid;
-    const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
-    const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k: k === "dn" ? "dn" : "lh", due: pd.now + (k === "sp" ? cast!.timing.land : t.due) });
-    // A cast is committed from its order: no lower-cell hero's start makes it yield (`yieldsTo` reads the phase).
-    if (k === "sp") CreepClaim.Phase(pid, "swing");
+    // The decider takes the claim (`offerOf`'s) once this begin returns; the heroes already holding it are counted now.
+    let oc = 0;
+    for (const c of Claims.ClaimsOn(Claims.CreepTarget(best.cid))) if (c.pid !== pid) oc++;
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length, tr, cast });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc, tr, cast });
     return true;
 }
 
@@ -945,7 +949,7 @@ function yieldNow(pid: number, cid: number): boolean {
 function onPhase(pid: number, p: Lib.Verbs.LastHitPhase, t: number): void {
     const a = running[pid];
     if (a !== undefined) enterPhase(a, p, t);
-    CreepClaim.Phase(pid, p);
+    Claims.Phase(pid, p);
 }
 
 /**
@@ -960,8 +964,26 @@ function rowWants(bot: Unit, _reads: Reads): Decider.Offer | undefined {
     if (a !== undefined) return { tgt: `creep:${a.cid}` };
     const pd = pending[pid];
     if (pd === undefined) return undefined;
-    // A cast goes at the read that chose it: its window is now, not the attack's due.
-    return { tgt: `creep:${pd.best.cid}`, by: pd.k === "sp" ? pd.now : pd.now + pd.best.t.due - pd.need };
+    return offerOf(bot, pd);
+}
+
+const WAY: Record<Pending["k"], string> = { lh: "attack", dn: "deny", sp: "spell" };
+
+/**
+ * The pending attempt's offer: its creep, the time to go by, the way, and the claim the decider takes at the begin (the hero's
+ * cell, the kind, the time its swing or cast is due). A cast goes at the read that chose it (its window is now, not the attack's
+ * due) and is committed from its order, so its claim starts in `swing` and no lower-cell hero's start makes it yield (`yieldsTo`).
+ */
+function offerOf(bot: Unit, pd: Pending): Decider.Offer {
+    const { best, k } = pd;
+    const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
+    const due = pd.now + (k === "sp" ? pd.cast!.timing.land : best.t.due);
+    return {
+        tgt: Claims.CreepTarget(best.cid),
+        by: k === "sp" ? pd.now : pd.now + best.t.due - pd.need,
+        way: WAY[k],
+        claim: { rank, k: k === "dn" ? "dn" : "lh", due, phase: k === "sp" ? "swing" : undefined },
+    };
 }
 
 /** The row's verb: one frame of the attempt; true once it has ended. */

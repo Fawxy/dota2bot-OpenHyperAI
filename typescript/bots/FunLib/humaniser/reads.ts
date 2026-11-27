@@ -4,11 +4,14 @@
  * answer. A new shared read is a module like `camp_read.ts` and one member here; a row imports no other row's file for a fact.
  */
 import * as CampRead from "bots/FunLib/humaniser/camp_read";
+import * as Claims from "bots/FunLib/humaniser/claims";
 import * as CreepClaim from "bots/FunLib/humaniser/creep_claim";
 
 export interface Reads {
     camp: typeof CampRead;
     creep: typeof CreepClaim;
+    /** Who holds a claim on a target (the decider's). */
+    claims: typeof Claims;
 }
 
-export const READS: Reads = { camp: CampRead, creep: CreepClaim };
+export const READS: Reads = { camp: CampRead, creep: CreepClaim, claims: Claims };

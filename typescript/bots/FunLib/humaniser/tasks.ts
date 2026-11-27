@@ -188,6 +188,34 @@ export function Begin(row: string, begin: (this: void) => boolean): boolean {
     return res === true;
 }
 
+/** The decider's hook on a row's task end (`OnRowEnd`). */
+let rowEnd: ((this: void, bot: Unit, name: string) => void) | undefined;
+
+/**
+ * The decider's hook, called when any guarded row's task ends, after the task's own onEnd (so a row's end line still sees what the
+ * hero held): the decider releases the claim it took at the begin (offers-and-the-decider s6, claims by target).
+ */
+export function OnRowEnd(fn: (this: void, bot: Unit, name: string) => void): void {
+    rowEnd = fn;
+}
+
+/** A guarded row's task options with the decider's end hook after the row's own onEnd; any other task's unchanged. Exported for runner stubs in tests. */
+export function WithRowEnd(bot: Unit, opts: Lib.TaskOptions): Lib.TaskOptions {
+    const name = opts.name;
+    if (name === undefined || ROW_TASKS[name] !== true || rowEnd === undefined) return opts;
+    const own = opts.onEnd;
+    const hook = rowEnd;
+    return {
+        ...opts,
+        // The runner logs an onEnd error; the release runs whatever the row's own end did, and its error is raised again after.
+        onEnd: (r, info) => {
+            const [ok, err] = own === undefined ? [true, undefined] : pcall(own, r, info);
+            hook(bot, name);
+            if (!ok) error(tostring(err), 0);
+        },
+    };
+}
+
 /** A row's task started anywhere but the decider's begin: refused and logged (ev=lua_error where=Tasks.Start). */
 function refusedRowStart(name: string, via: string | undefined): boolean {
     if (ROW_TASKS[name] !== true || beginning === name || (via !== undefined && EXEMPT[via] === true)) return false;
@@ -198,7 +226,7 @@ function refusedRowStart(name: string, via: string | undefined): boolean {
 export function Start(bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory, via?: string): boolean {
     if (refusedRowStart(opts.name, via)) return false;
     const l = loadBundle();
-    return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
+    return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, WithRowEnd(bot, opts), body);
 }
 
 /** Call from the host mode's Think(); returns false when no task of this bot runs under `mode`. */
@@ -254,7 +282,7 @@ export const ForOurs = {
     Start: (bot: Unit, opts: Lib.TaskOptions, body: Lib.TaskFactory, via?: string): boolean => {
         if (refusedRowStart(opts.name, via)) return false;
         const l = loadBundle(true);
-        return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, opts, body);
+        return l !== undefined && l.Tasks.task(bot as unknown as Lib.TaskUnit, WithRowEnd(bot, opts), body);
     },
     Step: (bot: Unit, mode: number): boolean => {
         const l = loadBundle(true);

@@ -570,6 +570,105 @@ do -- a row's task started anywhere but the decider's begin is refused and logge
 	check("control: the chooser's stack (StackJob.Wants) is exempt and starts", exempt == true and F.Running(bot).name == "stack")
 end
 
+-- Claims by target and acceptance (slice oha-offer-accept, offers-and-the-decider s4 and s6): the decider takes the offer's target
+-- as the hero's claim after a begin and releases it when the row's task ends; the claim and go-by checks are logged, never refuse.
+do -- a begin takes the claim with the offer's data; the task's end releases it, after the row's own end could still read it
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local on = { want = true }
+	local r = taskRow(F, "lo", on)
+	local base = r.wants
+	r.wants = function(...)
+		local o = base(...)
+		if o then o.claim = { rank = 60, k = "lh", due = 301 } end
+		return o
+	end
+	H.Decider.Add(r)
+	capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	local c = C.ClaimsOn("camp:lo")[1]
+	check("claim: the begin takes the target with the offer's claim", c ~= nil and c.pid == 4 and c.rank == 60 and c.k == "lh" and c.due == 301 and C.HeldBy(4) == "camp:lo",
+		tostring(c and c.pid))
+	local endsBefore = #r.ends
+	F.Cancel(bot, "cancelled", "test")
+	check("claim: the task's end releases it", #r.ends == endsBefore + 1 and C.HeldBy(4) == nil and #C.ClaimsOn("camp:lo") == 0, tostring(C.HeldBy(4)))
+end
+
+do -- the row's own end still sees the claim; the decider releases after it
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local seen
+	local r = { name = "lo", begun = 0 }
+	r.wants = function() if r.running ~= false then return { tgt = "creep:9" } end end
+	r.begin = function(b)
+		r.running = F.Start(b, { name = "lo", host = BotMode.Farm, onEnd = function()
+			r.running = false
+			seen = C.HeldBy(4)
+		end }, FOREVER)
+		return r.running
+	end
+	r.step = function() return not r.running end
+	H.Decider.Add(r)
+	capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	F.Cancel(bot, "cancelled", "test")
+	check("claim order: the row's end reads the claim, then it is gone", seen == "creep:9" and C.HeldBy(4) == nil, tostring(seen))
+end
+
+do -- a higher row begun over a lower row: the lower row's claim goes with its task, the higher row's is taken
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	local hiOn, loOn = { want = false }, { want = true }
+	local hi, lo = taskRow(F, "hi", hiOn), taskRow(F, "lo", loOn)
+	H.Decider.Add(hi)
+	H.Decider.Add(lo)
+	local desire = H.Decider.Host(bot, function() return 0.4 end)
+	capture(function() desire() end)
+	local first = C.HeldBy(4)
+	capture(function()
+		T = T + 0.2
+		hiOn.want = true
+		desire()
+	end)
+	check("claim over: the lower row's claim was taken, then the higher row's replaces it", first == "camp:lo" and C.HeldBy(4) == "camp:hi"
+		and #C.ClaimsOn("camp:lo") == 0, tostring(first) .. " " .. tostring(C.HeldBy(4)))
+end
+
+do -- the claim and go-by checks are logged on the begin line and refuse nothing
+	local H, bot, F = runnerWorld()
+	local C = package.loaded["bots/FunLib/humaniser/claims"]
+	C.Take("camp:lo", { pid = 2 })
+	local r = taskRow(F, "lo", { want = true })
+	H.Decider.Add(r)
+	local lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept claim: another hero's claim is logged as would-refuse and the begin goes", r.begun == 1 and lines[1] ~= nil
+		and lines[1]:find("beg=lo", 1, true) and lines[1]:find("bacc=claim", 1, true) and lines[1]:find("bcl=1", 1, true), table.concat(lines, " | "))
+	check("accept claim: both heroes now hold the target", #C.ClaimsOn("camp:lo") == 2)
+
+	H, bot, F = runnerWorld()
+	C = package.loaded["bots/FunLib/humaniser/claims"]
+	C.Take("creep:3", { pid = 2, rank = 70, k = "lh" })
+	local lt = taskRow(F, "lo", { want = true })
+	lt.wants = function() if lt.running ~= false then return { tgt = "creep:3", claim = { rank = 60, k = "lh" } } end end
+	H.Decider.Add(lt)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept claim: a claim at a higher cell than this offer's does not hold it, and is counted", lines[1] ~= nil and lines[1]:find("bcl=1", 1, true)
+		and not lines[1]:find("bacc=", 1, true), table.concat(lines, " | "))
+
+	H, bot, F = runnerWorld()
+	local late = taskRow(F, "lo", { want = true })
+	late.wants = function() if late.running ~= false then return { tgt = "camp:lo", by = T - 1 } end end
+	H.Decider.Add(late)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("accept late: a go-by already past is logged as would-refuse and the begin goes", late.begun == 1 and lines[1] ~= nil
+		and lines[1]:find("bacc=late", 1, true) and not lines[1]:find("bcl=", 1, true), table.concat(lines, " | "))
+
+	H, bot, F = runnerWorld()
+	local ok = taskRow(F, "lo", { want = true })
+	H.Decider.Add(ok)
+	lines = capture(function() H.Decider.Host(bot, function() return 0.4 end)() end)
+	check("control: an offer on time and unclaimed carries no acceptance fields", lines[1] ~= nil and lines[1]:find("beg=lo", 1, true)
+		and not lines[1]:find("bacc=", 1, true) and not lines[1]:find("bcl=", 1, true), table.concat(lines, " | "))
+end
+
 do -- a begin that throws ends the decider's allowance: the row's task started afterwards outside begin is refused and logged
 	local H, bot, F = runnerWorld()
 	local bad = taskRow(F, "bad", { want = true })
