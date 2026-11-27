@@ -51,6 +51,11 @@ export const DEFAULTS = {
      *  Needs LaneCreeps. Off: a support takes no last hit and stock plays. On: provisional (plan s5's widening, merged after its firing
      *  audit scraudit1; deleted at the next checkpoint batch if the line or guards fall). */
     SupportCreeps: true,
+    /** The lane's creeps, the cast, on the creep row (creep_row.ts, slice oha-creep-spells; no-creep-unpaid proposal s6): a hero of ours at any
+     *  position casts a unit-target spell on their lane creep of any kind that the attack cannot take, when the cast kills it now with no walk,
+     *  the mana of the hero's dearest other key spell is kept, and a key spell also hits an enemy hero (SpellSecure.CastPick); the creep free of
+     *  our claims and of a teammate's hit. Off: the read logs the spell answers as a shadow and stock plays. */
+    CreepSpells: false,
     /** Slice threat (design docs/proposals/2026-11-09-fights-and-retreat.md s5.1-5.2): the missing-hero and visible-threat
      *  gates of the jobs' trip read (SafeGather.TripGate) read Threat.Read (the missing belief, a
      *  weight per unseen hero by game minute, in place of a count) and log ev=threat. */

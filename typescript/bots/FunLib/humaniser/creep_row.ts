@@ -34,8 +34,14 @@
  * then goes on with `lastHit` under the same hold and claim. Verdict `none` refuses (`nowindow`, or `mates` when our own creeps are attacking it) and ends a
  * running attempt whose swing is not yet ordered. A melee creep in our tower's range that the tower is not attacking is refused `notarget`.
  *
- * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why`; `ev=job job=creep` start and end
- * per attempt, with `k`.
+ * The cast (switch Ours.CreepSpells, slice oha-creep-spells; no-creep-unpaid proposal s6): when a read starts no attack, the row casts on
+ * their lane creep of any kind that the attack cannot take (`AttackCannot`), when a unit-target spell kills it now with no walk, the reserve
+ * kept, and a key spell also hits an enemy hero (`SpellSecure.CastPick`, user 27/11/2026), the creep free of our claims (`FreeFor`, any claim
+ * on it) and of a teammate's hit. Any position. The verb is the engine's `cast` on the creep, hard and claimed as committed (phase `swing`)
+ * until the cast's effect is seen.
+ *
+ * Lines: the read's `ev=choice kind=creep`, `src=own` with this row's `go` and latest `why` (and the cast's `cg`, `cw`); `ev=job job=creep`
+ * start and end per attempt, with `k`.
  */
 import type * as Lib from "bots/FunLib/engine/tasks";
 import { BotMode, DamageType, Unit } from "bots/ts_libs/dota";
@@ -51,6 +57,7 @@ import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
 import * as TripTable from "bots/FunLib/humaniser/states/trip_table";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as SpellSecure from "bots/FunLib/humaniser/spell_secure";
 
 export const SETTINGS = {
     /** The longest walk (s) in the near cell; past it a covered stand spot is refused (step 2's table split, proposal s5). */
@@ -148,6 +155,31 @@ export function Need(this: void, bot: Unit, creep: Unit): number {
 /** The creep comes due no sooner than the hero can be in the verb's range (`need`, `Need`). */
 export function OnTime(this: void, need: number, due: number): boolean {
     return due >= need;
+}
+
+/**
+ * The hero's hit cannot land before the creep dies to the others' hits: its swing is ordered no sooner than the creep comes due, the
+ * hero is in range (`need`) and its attack is ready (`cd`, the engine's `cooldownLeft`), and lands `hit` later (`ownHitTime`).
+ */
+export function AttackLate(this: void, due: number, need: number, cd: number, hit: number, dies: number): boolean {
+    return math.max(due, need, cd) + hit > dies;
+}
+
+/** The row's refusals of an attack that leave the creep to the cast: the hero cannot take it in time, or not safely. */
+const CAST_OVER: Record<string, boolean> = { late: true, outdmg: true, race: true, covered: true, etower: true, tower: true, notime: true, notime_new: true, notime_held: true, notime_acting: true };
+
+/**
+ * Why the attack cannot take the creep, for the cast; undefined when it can, or when the row held back for a reason the cast shares (the hero
+ * acting, another task, retreat, a claim, a teammate's hit). `why` the row's refusal this read. For a creep the row does not attack (`kind`)
+ * or not yet about to come due (`early`): the cell rule on it as a last hit (`claim`, Claim's answer), the on-time check, then `late`
+ * (`AttackLate`), so the cast waits while the attack may still take it.
+ */
+export function AttackCannot(this: void, why: string, claim: string | undefined, onTime: boolean, late: boolean): string | undefined {
+    if (CAST_OVER[why]) return why;
+    if (why !== "kind" && why !== "early") return undefined;
+    if (claim !== undefined) return CAST_OVER[claim] ? claim : undefined;
+    if (!onTime) return "notime";
+    return late ? "late" : undefined;
 }
 
 export type Vd = "wait" | "prehit" | "none";
@@ -310,8 +342,8 @@ interface Attempt {
     lastStep?: number;
     tk: number;
     tks: number;
-    /** `lh` a last hit, `dn` a deny: the job lines' `k`. */
-    k: "lh" | "dn";
+    /** `lh` a last hit, `dn` a deny, `sp` a cast: the job lines' `k`. */
+    k: "lh" | "dn" | "sp";
     /** The attempt's interrupt was a yield to a lower-cell hero's claim (`yieldsTo`), not a mate's hit: the end line's `yd`. */
     yielded?: boolean;
     /** The tower that was attacking the creep at the go (the leftover rule applies to this attempt), and the pre-hits ordered so far (the end line's `ph`). */
@@ -328,7 +360,9 @@ const lastCid: Record<number, number | undefined> = {};
 /** The candidate Consider chose, while it asks the decider to begin the row (`Decider.Offer`): what `begin` starts. */
 interface Pending {
     best: CreepOffer.Candidate;
-    k: "lh" | "dn";
+    k: "lh" | "dn" | "sp";
+    /** A cast (`k` `sp`): the answer the pick chose. */
+    cast?: SpellSecure.Answer;
     need: number;
     lead: number;
     now: number;
@@ -347,7 +381,12 @@ export function On(bot: Unit): boolean {
     const pos = LaneConfig.PositionOf(bot);
     const lh = lastHits(pos);
     const dn = TripTable.Does("deny", pos) && Ours.On("CreepDeny");
-    return (lh || dn) && bot.IsBot() && !Drill.Held(bot);
+    return (lh || dn || casts()) && bot.IsBot() && !Drill.Held(bot);
+}
+
+/** The cast is every position's (Ours.CreepSpells). */
+function casts(): boolean {
+    return Ours.On("CreepSpells");
 }
 
 /** OHA's own action holds the hero (the deny and pull rows' check: a queued order, a cast or channel). */
@@ -425,7 +464,7 @@ function enterPhase(a: Attempt, p: Lib.Verbs.LastHitPhase, t: number): void {
  * cycle, or `EarlyLead`), `oc` the other heroes already holding a claim on the creep (CreepClaim.Take); with Ours.TowerCreeps and a tower attacking the
  * creep `lf` the creep's HP just before the killing tower shot, `tT` the tower's damage on it, `ts` the shots before that one and `vd` the verdict (`Verdict`).
  */
-function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn"; oc: number; tr?: TowerRead }): void {
+function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: number }, g: { need: number; reach: number; seen: Seen; now: number; sa: boolean; lead: number; k: "lh" | "dn" | "sp"; oc: number; tr?: TowerRead; cast?: SpellSecure.Answer }): void {
     Telemetry.Event("job", [
         ["pid", bot.GetPlayerID()],
         ["aid", aid],
@@ -452,6 +491,10 @@ function startLine(bot: Unit, cid: number, aid: number, t: { walk: number; due: 
         ["tT", g.tr === undefined ? undefined : r2(g.tr.hit)],
         ["ts", g.tr?.v.shots],
         ["vd", g.tr?.v.vd],
+        ["ab", g.cast?.spell.name],
+        ["al", g.cast === undefined ? undefined : r2(g.cast.timing.land)],
+        ["az", g.cast?.also],
+        ["am", g.cast === undefined ? undefined : math.floor(g.cast.over + 0.5)],
     ]);
 }
 
@@ -581,6 +624,7 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     const tower = underTower(LaneConfig.PositionOf(bot));
     let towers: Unit[] | undefined;
     const reads: Record<number, TowerRead | undefined> = {};
+    const whys: Record<number, string | undefined> = {};
     for (const c of cands) {
         let why: string | undefined;
         const r = recs[c.cid];
@@ -617,10 +661,14 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
             if (string.sub(why, 1, 6) !== "notime") r.ok = why;
             r.mode = why === "held" ? HDebug.ModeName(mode) : undefined;
         }
+        whys[c.cid] = why;
         if (why !== undefined) c.note(false, why);
         else if (best === undefined || c.t.eta < best.t.eta) best = c;
     }
-    if (best === undefined) return;
+    if (best === undefined) {
+        if (casts()) castPass(bot, cands, whys, recs, now);
+        return;
+    }
     for (const c of cands) {
         if (c === best || kindOf(bot, c) === undefined) continue;
         c.note(false, "other");
@@ -635,6 +683,63 @@ export function Consider(this: void, bot: Unit, cands: CreepOffer.Candidate[]): 
     pending[pid] = undefined;
     best.note(false, "refused");
     recs[best.cid].why = "refused";
+}
+
+/**
+ * The cast pass, when the read starts no attack: over their creeps the attack cannot take (`AttackCannot`), the creep's refusals (`claimed`:
+ * a lower-cell hero's `FreeFor`, or any hero of ours holding a claim on it; `mate`), then the cast's (`SpellSecure.CastPick`); the creep
+ * that dies soonest of those with a cast is offered to the decider. Each creep weighed gets the cast's line fields (`noteCast`).
+ */
+function castPass(bot: Unit, cands: CreepOffer.Candidate[], whys: Record<number, string | undefined>, recs: Record<number, Seen>, now: number): void {
+    const pid = bot.GetPlayerID();
+    const verbs = Tasks.Verbs()!;
+    let cd: number | undefined;
+    let best: CreepOffer.Candidate | undefined;
+    let pick: SpellSecure.Answer | undefined;
+    for (const c of cands) {
+        const why = whys[c.cid];
+        if (c.t.kind !== "lasthit" || why === undefined) continue;
+        let claim: string | undefined;
+        let onTime = true;
+        let late = false;
+        if (why === "kind" || why === "early") {
+            claim = Claim({ ...factsOf(bot, c), k: "lh" });
+            if (claim === undefined) {
+                const need = Need(bot, c.creep);
+                onTime = OnTime(need, c.t.due);
+                if (onTime) {
+                    cd ??= verbs.cooldownLeft(bot as unknown as Lib.TaskUnit);
+                    late = AttackLate(c.t.due, need, cd, verbs.ownHitTime(bot as unknown as Lib.TaskUnit, c.t.creep), c.t.dies);
+                }
+            }
+        }
+        if (AttackCannot(why, claim, onTime, late) === undefined) continue;
+        let no: string | undefined;
+        if (FreeFor(bot, c.cid, now) !== undefined || CreepClaim.ClaimsOn(c.cid).length > 0) no = "claimed";
+        else if (c.facts().kb === "mate") no = "mate";
+        let p: SpellSecure.Answer | undefined;
+        if (no === undefined) {
+            const as = c.spells();
+            const r = SpellSecure.CastPick(as);
+            p = r.pick;
+            if (p === undefined) no = as.length === 0 ? "none" : r.why;
+        }
+        if (p === undefined) {
+            c.noteCast(false, no);
+            continue;
+        }
+        if (best === undefined || c.t.dies < best.t.dies) {
+            if (best !== undefined) best.noteCast(false, "other");
+            best = c;
+            pick = p;
+        } else c.noteCast(false, "other");
+    }
+    if (best === undefined) return;
+    pending[pid] = { best, k: "sp", cast: pick, need: 0, lead: 0, now, seen: recs[best.cid] };
+    Decider.Offer(bot, ROW);
+    if (pending[pid] === undefined) return;
+    pending[pid] = undefined;
+    best.noteCast(false, "refused");
 }
 
 /** The leftover rule ends a running attempt: the verdict is `none` now and the swing is not yet ordered. */
@@ -699,22 +804,33 @@ function rowBegin(bot: Unit): boolean {
     const pd = pending[pid];
     pending[pid] = undefined;
     if (pd === undefined) return false;
-    const { best, k, need, lead, now, tr } = pd;
+    const { best, k, need, lead, now, tr, cast } = pd;
     const t = best.t;
     const creep = t.creep;
+    const ability = cast === undefined ? undefined : bot.GetAbilityByName(cast.spell.name);
+    if (k === "sp" && (ability === undefined || ability === null)) {
+        best.noteCast(false, "refused");
+        return false;
+    }
     const ok = Tasks.Start(bot, { name: "creep", host: HOST, preemptAfter: 1, stallAfter: 4, onEnd: (r) => finish(bot, r) }, (ctx: Lib.Ctx) => {
+        // The cast lands after its flight; the verb ends once its effect (cooldown or mana) is seen, and the creep's fate is the result.
+        if (k === "sp") return ctx.cast(ability as unknown as Lib.TaskAbility, { target: creep, timeout: cast!.timing.land + 1 });
         const opts = { target: creep, maxWait: t.eta + SETTINGS.WaitSlack, interruptIf: () => mateTakes(bot, creep) || yieldNow(pid, best.cid) || towerLost(bot, pid), onPhase: (p: Lib.Verbs.LastHitPhase, at: number) => onPhase(pid, p, at) };
         if (k === "dn") return ctx.deny(opts);
         if (tr === undefined) return ctx.lastHit(opts);
         return towerAttempt(ctx, bot, pid, creep as unknown as Unit, opts);
     });
     if (!ok) {
-        best.note(false, "refused");
-        pd.seen.why = "refused";
+        if (k === "sp") best.noteCast(false, "refused");
+        else {
+            best.note(false, "refused");
+            pd.seen.why = "refused";
+        }
         return false;
     }
     const aid = Telemetry.NextAid(pid);
-    best.note(true, undefined, aid);
+    if (k === "sp") best.noteCast(true, undefined, aid);
+    else best.note(true, undefined, aid);
     const t0 = DotaTime();
     const a: Attempt = {
         cid: best.cid,
@@ -733,9 +849,11 @@ function rowBegin(bot: Unit): boolean {
     running[pid] = a;
     lastCid[pid] = best.cid;
     const rank = TripTable.RankOf(k === "dn" ? "deny" : "creep", LaneConfig.PositionOf(bot));
-    const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k, due: pd.now + t.due });
+    const others = CreepClaim.Take(best.cid, { pid, rank: rank!, k: k === "dn" ? "dn" : "lh", due: pd.now + (k === "sp" ? cast!.timing.land : t.due) });
+    // A cast is committed from its order: no lower-cell hero's start makes it yield (`yieldsTo` reads the phase).
+    if (k === "sp") CreepClaim.Phase(pid, "swing");
     const sa = bot.GetAttackTarget();
-    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length, tr });
+    startLine(bot, best.cid, aid, t, { need, reach: CreepOffer.Reach(bot, best.creep), seen: pd.seen, now, sa: sa !== null && sa !== undefined && sa === creep, lead, k, oc: others.length, tr, cast });
     return true;
 }
 

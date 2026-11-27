@@ -693,7 +693,11 @@ Slice job-chooser: one start and one end per started job attempt, in both arms o
 - `ex` num: `job=rune_detour`: the seconds the path by the rune was read to add when the walk started.
 - `took` num: `job=rune_detour` end: 1 on a pickup: the verb's ok, or one step's gold gain reaching RuneDetour TookGold (GetRuneStatus stays available while a second rune lies on the spot).
 - `gj` num: `job=rune_detour` end: the largest gold gain between two steps of the walk.
-- `k` str: `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`).
+- `k` str: `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`), `sp` a cast on their creep (Ours.CreepSpells, `SpellSecure.CastPick`).
+- `ab` str: `job=creep k=sp` start: the spell cast.
+- `al` num: `job=creep k=sp` start: seconds from the go until the damage was to land (turn, cast point, flight: `SpellSecure.TimingOf`).
+- `az` num: `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`).
+- `am` num: `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`).
 - `oc` num: `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt took its own (creep_claim.ts).
 - `cl` num: `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`.
 - `yd` num: `job=creep` end: 1 when the attempt ended because a hero with a lower `creep` cell took a claim on the creep before this hero's swing was ordered (`why=interrupted`; creep_row `yieldsTo`, Ours.SupportCreeps). Absent otherwise.
@@ -1515,6 +1519,8 @@ Slice support-lane: one line per judgement decision (bot-structure s2). kind: th
 - `sc` num: `kind=creep`, with `sp`: the spell's cooldown (s).
 - `sz` num: `kind=creep`, with `sp`: visible enemy heroes the cast aimed at the creep would also hit (its line, or its area around the creep, or around the hero for `sx=n`).
 - `sn` num: `kind=creep`, with `sp`: how many creep spells the hero held at that read.
+- `cg` num: `kind=creep`, their creep (slice oha-creep-spells, Ours.CreepSpells): 1 when the creep row cast on it (`aid` is the cast's attempt), 0 when the row weighed a cast because the attack could not take the creep and did not cast. Absent: never weighed.
+- `cw` str: `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero), `none` (no creep spell); the creep's: `claimed` (a hero of ours holds a claim on it), `mate` (a teammate's hit kills it first); `refused` (the runner).
 - `st` str: Lane push state: `OUT`, `HOLD` or `IN`.
 - `q` num: The clash point between the T1s: 0 ours, 1 theirs.
 - `mv` num: The clash's 30 s move from our side.

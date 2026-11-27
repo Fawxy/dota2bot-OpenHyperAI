@@ -1335,8 +1335,19 @@ export const EVENTS = {
         took: "num",
         /** `job=rune_detour` end: the largest gold gain between two steps of the walk. */
         gj: "num",
-        /** `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`). */
+        /**
+         * `job=creep` start and end: the attempt's kind, `lh` a last hit of their ranged creep or `dn` a deny of one of ours (creep_row.ts `KindOf`),
+         * `sp` a cast on their creep (Ours.CreepSpells, `SpellSecure.CastPick`).
+         */
         k: "str",
+        /** `job=creep k=sp` start: the spell cast. */
+        ab: "str",
+        /** `job=creep k=sp` start: seconds from the go until the damage was to land (turn, cast point, flight: `SpellSecure.TimingOf`). */
+        al: "num",
+        /** `job=creep k=sp` start: enemy heroes the cast was to hit as well (`SpellSecure.AlsoHit`). */
+        az: "num",
+        /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
+        am: "num",
         /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt took its own (creep_claim.ts). */
         oc: "num",
         /** `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`. */
@@ -3051,6 +3062,17 @@ export const EVENTS = {
         sz: "num",
         /** `kind=creep`, with `sp`: how many creep spells the hero held at that read. */
         sn: "num",
+        /**
+         * `kind=creep`, their creep (slice oha-creep-spells, Ours.CreepSpells): 1 when the creep row cast on it (`aid` is the cast's
+         * attempt), 0 when the row weighed a cast because the attack could not take the creep and did not cast. Absent: never weighed.
+         */
+        cg: "num",
+        /**
+         * `kind=creep`, `cg=0`: the latest reason the row did not cast. The cast's own (`SpellSecure.CastPick`): `shape` (no unit-target
+         * spell), `nokill`, `walk` (out of cast range), `reserve`, `key` (a disable hitting no enemy hero), `none` (no creep spell);
+         * the creep's: `claimed` (a hero of ours holds a claim on it), `mate` (a teammate's hit kills it first); `refused` (the runner).
+         */
+        cw: "str",
         /** Lane push state: `OUT`, `HOLD` or `IN`. */
         st: "str",
         /** The clash point between the T1s: 0 ours, 1 theirs. */
