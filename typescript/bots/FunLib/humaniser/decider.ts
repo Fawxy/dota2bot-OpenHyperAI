@@ -239,15 +239,18 @@ function begin(bot: Unit, s: HeroState, row: Row, offer: Offer): boolean {
         return false;
     }
     s.refLines = undefined;
-    if (!Tasks.Begin(row.name, () => row.begin(bot))) return false;
-    s.refused[row.name] = undefined;
+    const [ok, res] = pcall(() => Tasks.Begin(row.name, () => row.begin(bot)));
     // Taken after the begin, so a task the begin replaced has released its own (its end runs inside the start); only while the
-    // row's task runs, so a task that ended inside its begin leaves none behind.
-    if (offer.tgt !== undefined && runningTask(bot) === row.name) {
+    // row's task runs, so a task that ended inside its begin leaves none behind. A begin that threw after its task started still
+    // holds the claim, as when the row took it itself; the error is raised again after.
+    if ((!ok || res === true) && offer.tgt !== undefined && runningTask(bot) === row.name) {
         const c = offer.claim;
         Claims.Take(offer.tgt, { pid: bot.GetPlayerID(), rank: c?.rank, k: c?.k, due: c?.due, phase: c?.phase });
         s.claimRow = row.name;
     }
+    if (!ok) error(res, 0);
+    if (res !== true) return false;
+    s.refused[row.name] = undefined;
     s.begun = { row, offer, over, from, v };
     return true;
 }

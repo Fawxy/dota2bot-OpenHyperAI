@@ -1348,7 +1348,7 @@ export const EVENTS = {
         az: "num",
         /** `job=creep k=sp` start: the hero's mana over the reserve after the cast (`SpellSecure.OverReserve`). */
         am: "num",
-        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt took its own (creep_claim.ts). */
+        /** `job=creep` start: the number of other heroes already holding a claim on the creep when this attempt began (claims.ts; the decider then takes its own). */
         oc: "num",
         /** `job=creep` end: 1 when the hero's claim on the creep was held and released by this end. Every start has an end with `cl=1`. */
         cl: "num",

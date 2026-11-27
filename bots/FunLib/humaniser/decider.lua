@@ -193,14 +193,11 @@ local function begin(bot, s, row, offer)
         return false
     end
     s.refLines = nil
-    if not Tasks.Begin(
+    local ok, res = pcall(function() return Tasks.Begin(
         row.name,
         function() return row.begin(bot) end
-    ) then
-        return false
-    end
-    s.refused[row.name] = nil
-    if offer.tgt ~= nil and runningTask(bot) == row.name then
+    ) end)
+    if (not ok or res == true) and offer.tgt ~= nil and runningTask(bot) == row.name then
         local c = offer.claim
         Claims.Take(
             offer.tgt,
@@ -214,6 +211,13 @@ local function begin(bot, s, row, offer)
         )
         s.claimRow = row.name
     end
+    if not ok then
+        error(res, 0)
+    end
+    if res ~= true then
+        return false
+    end
+    s.refused[row.name] = nil
     s.begun = {
         row = row,
         offer = offer,
@@ -296,18 +300,18 @@ local function retreatLeads(s)
     end
     for mode, n in pairs(s.seen) do
         do
-            local __continue42
+            local __continue44
             repeat
                 if mode == "retreat" or mode == HOST or now - n.t > FRESH then
-                    __continue42 = true
+                    __continue44 = true
                     break
                 end
                 if n.v > r.v then
                     return nil
                 end
-                __continue42 = true
+                __continue44 = true
             until true
-            if not __continue42 then
+            if not __continue44 then
                 break
             end
         end

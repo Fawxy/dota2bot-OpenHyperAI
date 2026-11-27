@@ -1042,7 +1042,7 @@ do -- Ours.FightFirst: the decider refuses the start while the hero is in a figh
 	check("control, flag off: the start goes in attack", starts2 == 1 and w2.starts == 1, tostring(starts2))
 end
 
--- The creep claim (creep_claim.ts, Reads.creep): taken in the row's begin, released at every end of the task.
+-- The creep claim (claims.ts, Reads.claims): the decider takes it after the row's begin and releases it at every end of the task.
 local function claimOf(pid, cid) for _, c in ipairs(claimApi().ClaimsOn(cid)) do if c.pid == pid then return c end end end
 
 do -- a started attempt holds the claim until the task ends, whatever the end

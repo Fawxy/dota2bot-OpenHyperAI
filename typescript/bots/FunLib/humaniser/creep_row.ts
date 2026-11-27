@@ -25,7 +25,7 @@
  * Hard from the go: the hold is the decider's HARD, so Valve's attack, item, evasive and defend-ally do
  * not take the hero; stock's retreat lets go first (the decider's `retreatLeads`, which a hard hold is under too).
  *
- * The claim (`creep_claim.ts`, `Reads.creep`): the attempt takes it in `begin` and the task's end releases it (`finish`), whatever the end;
+ * The claim (`claims.ts`, `Reads.claims`): the decider takes it from the offer once `begin` returns and releases it when the task ends, after `finish`, whatever the end;
  * the row's per-creep answers (`Seen`) live in that read. The free rule and the yield read it (a support's last hit only).
  *
  * The leftover rule (Ours.TowerCreeps; `Verdict`): a creep one of our towers is attacking dies to a tower shot, so the hero's hit counts only if the
