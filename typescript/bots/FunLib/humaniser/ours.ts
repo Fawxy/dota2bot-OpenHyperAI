@@ -5,7 +5,7 @@
  * the reference arm and a batch arm, drill or test that wants one names it. The exception is a small row (plan s5) merged on
  * as provisional after its audit; its own line is read at the next checkpoint batch and it is deleted there if not above zero:
  * RuneDetour, TowerStay, CreepSpells, FightFirst. A widening (plan s5: more heroes run a behaviour merged on) is merged on the same way after its firing audit, and is
- * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps.
+ * deleted at that checkpoint if the behaviour's line or guards fall: SupportCreeps, AimedCasts.
  */
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import Customize = require("bots/FunLib/custom_loader");
@@ -59,8 +59,10 @@ export const DEFAULTS = {
     CreepSpells: true,
     /** The cast's widening to aimed spells (creep_row.ts, slice oha-aimed-cast): with CreepSpells, a point spell is cast at its aim's point,
      *  a no-target spell around the hero as it stands, and one that lands in front of the hero (a raze) after the hero turns to the aim's
-     *  facing; the same gates as the unit-target cast. Off: such a cast that passes them is logged `cw=aimoff` and unit-target casts only. */
-    AimedCasts: false,
+     *  facing; the same gates as the unit-target cast. Off: such a cast that passes them is logged `cw=aimoff` and unit-target casts only.
+     *  On: provisional (plan s5's widening, merged after its firing audit aimaudit1); deleted at the next checkpoint batch if the line or
+     *  guards fall. */
+    AimedCasts: true,
     /** Slice oha-tower-fallthrough, a flag between two versions of our code: on, the leftover rule decides only whether to pre-hit, and
      *  a `none` verdict, a refused pre-hit or the tower leaving the creep falls through to the plain last hit. Off: the rule ends the
      *  attempt there. Both log the rule's first refusal mid-attempt (`tl`, `tlt`, `tlc`). On: provisional (plan s5's small row); read at
