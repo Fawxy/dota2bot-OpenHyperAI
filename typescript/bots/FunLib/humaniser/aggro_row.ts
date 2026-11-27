@@ -47,6 +47,9 @@ export const SETTINGS = {
     WalkSlack: 0.5,
     /** Seconds the row yields after an attempt ends before a new one may start (as the rune detour's Rest: the decider's FRESH). */
     Rest: 0.5,
+    /** Diagnosis: a drawn creep that closed on the hero by this much, or came within Touch of it, chased it (judgement: a creep's swing range is about 100 plus hulls). */
+    Closed: 150,
+    Touch: 200,
 };
 
 /** The task's host: the decider's (farm). */
@@ -70,6 +73,10 @@ interface Attempt {
     letAt?: number;
     resumes: number;
     hp0: number;
+    /** Diagnosis (round 0's nodraw): the hero's attack target read as the order's target at a step after it; each drawn creep's distance to the hero at the order and its least since. */
+    heroOn?: boolean;
+    d0?: number[];
+    dmin?: number[];
 }
 
 /** pid -> the attempt whose task runs. */
@@ -131,12 +138,46 @@ function resumable(bot: Unit, a: Attempt, now: number): boolean {
     return SafeGather.At(bot, bot.GetLocation(), { remember: false }).level !== "deadly";
 }
 
+/** One step's diagnosis reads: whether the hero's attack target is the order's, and each drawn creep's distance to the hero. */
+function watch(bot: Unit, a: Attempt): void {
+    const tg = bot.GetAttackTarget();
+    if (tg !== null && tg !== undefined && tg === a.target) a.heroOn = true;
+    const me = bot.GetLocation();
+    a.d0 ??= [];
+    a.dmin ??= [];
+    for (let i = 0; i < a.drawn.length; i++) {
+        const c = a.drawn[i];
+        if (c.IsNull() || !c.IsAlive()) continue;
+        const at = c.GetLocation();
+        if (at === null || at === undefined) continue;
+        const d = dist(me, at);
+        if (a.d0[i] === undefined) a.d0[i] = d;
+        if (a.dmin[i] === undefined || d < a.dmin[i]) a.dmin[i] = d;
+    }
+}
+
+/** Drawn creeps that closed on the hero by `Closed` or more since the order (they chased it, whatever their attack target read). */
+function closed(a: Attempt): number {
+    let n = 0;
+    if (a.d0 === undefined || a.dmin === undefined) return 0;
+    for (let i = 0; i < a.drawn.length; i++) {
+        const d0 = a.d0[i];
+        const dm = a.dmin[i];
+        if (d0 !== undefined && dm !== undefined && (d0 - dm >= SETTINGS.Closed || dm <= SETTINGS.Touch)) n++;
+    }
+    return n;
+}
+
 /** The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone. */
 function* back(ctx: Lib.Ctx, bot: Unit, a: Attempt): Lib.TaskBody {
     const orderAt = a.orderAt!;
-    while (ctx.now() < orderAt + SETTINGS.OrderGap) yield;
+    while (ctx.now() < orderAt + SETTINGS.OrderGap) {
+        watch(bot, a);
+        yield;
+    }
     while (true) {
         if (!bot.IsAlive()) return ctx.fail("dead");
+        watch(bot, a);
         const t = ctx.now() - orderAt;
         const n = onHero(bot, a);
         if (n > a.peak) a.peak = n;
@@ -197,6 +238,8 @@ function finish(bot: Unit, res: Lib.Result): void {
         ["ah", a.peak],
         ["ar", onRanged(a)],
         ["rs", a.resumes],
+        ["ha", a.orderAt !== undefined ? (a.heroOn === true ? 1 : 0) : undefined],
+        ["ac", a.orderAt !== undefined ? closed(a) : undefined],
         ["hp0", a.hp0],
         ["hp1", math.floor(bot.GetHealth())],
     ]);

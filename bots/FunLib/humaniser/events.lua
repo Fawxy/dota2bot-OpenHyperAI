@@ -886,7 +886,9 @@ ____exports.EVENTS = {
         an = "num",
         ah = "num",
         ar = "num",
-        rs = "num"
+        rs = "num",
+        ha = "num",
+        ac = "num"
     },
     stack = {
         pid = "num",

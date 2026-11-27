@@ -115,7 +115,9 @@ ____exports.SETTINGS = {
     Backstop = 3.5,
     Tolerance = 50,
     WalkSlack = 0.5,
-    Rest = 0.5
+    Rest = 0.5,
+    Closed = 150,
+    Touch = 200
 }
 --- The task's host: the decider's (farm).
 local HOST = BotMode.Farm
@@ -201,16 +203,83 @@ local function resumable(bot, a, now)
         {remember = false}
     ).level ~= "deadly"
 end
+--- One step's diagnosis reads: whether the hero's attack target is the order's, and each drawn creep's distance to the hero.
+local function watch(bot, a)
+    local tg = bot:GetAttackTarget()
+    if tg ~= nil and tg ~= nil and tg == a.target then
+        a.heroOn = true
+    end
+    local me = bot:GetLocation()
+    if a.d0 == nil then
+        a.d0 = {}
+    end
+    if a.dmin == nil then
+        a.dmin = {}
+    end
+    do
+        local i = 0
+        while i < #a.drawn do
+            do
+                local __continue26
+                repeat
+                    local c = a.drawn[i + 1]
+                    if c:IsNull() or not c:IsAlive() then
+                        __continue26 = true
+                        break
+                    end
+                    local at = c:GetLocation()
+                    if at == nil or at == nil then
+                        __continue26 = true
+                        break
+                    end
+                    local d = dist(me, at)
+                    if a.d0[i + 1] == nil then
+                        a.d0[i + 1] = d
+                    end
+                    if a.dmin[i + 1] == nil or d < a.dmin[i + 1] then
+                        a.dmin[i + 1] = d
+                    end
+                    __continue26 = true
+                until true
+                if not __continue26 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+end
+--- Drawn creeps that closed on the hero by `Closed` or more since the order (they chased it, whatever their attack target read).
+local function closed(a)
+    local n = 0
+    if a.d0 == nil or a.dmin == nil then
+        return 0
+    end
+    do
+        local i = 0
+        while i < #a.drawn do
+            local d0 = a.d0[i + 1]
+            local dm = a.dmin[i + 1]
+            if d0 ~= nil and dm ~= nil and (d0 - dm >= ____exports.SETTINGS.Closed or dm <= ____exports.SETTINGS.Touch) then
+                n = n + 1
+            end
+            i = i + 1
+        end
+    end
+    return n
+end
 --- The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone.
 local back = __TS__Generator(function(ctx, bot, a)
     local orderAt = a.orderAt
     while ctx.now() < orderAt + ____exports.SETTINGS.OrderGap do
+        watch(bot, a)
         coroutine.yield()
     end
     while true do
         if not bot:IsAlive() then
             return ctx.fail("dead")
         end
+        watch(bot, a)
         local t = ctx.now() - orderAt
         local n = onHero(bot, a)
         if n > a.peak then
@@ -314,6 +383,11 @@ local function finish(bot, res)
                 onRanged(a)
             },
             {"rs", a.resumes},
+            {"ha", a.orderAt ~= nil and (a.heroOn == true and 1 or 0) or nil},
+            {
+                "ac",
+                a.orderAt ~= nil and closed(a) or nil
+            },
             {"hp0", a.hp0},
             {
                 "hp1",
