@@ -98,6 +98,7 @@ local function __TS__DelegatedYield(iterable)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
+local closed, letGo
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local AggroOffer = require(GetScriptDirectory().."/FunLib/humaniser/aggro_offer")
@@ -105,14 +106,43 @@ local Decider = require(GetScriptDirectory().."/FunLib/humaniser/decider")
 local Drill = require(GetScriptDirectory().."/FunLib/humaniser/drill")
 local HDebug = require(GetScriptDirectory().."/FunLib/humaniser/debug")
 local LaneConfig = require(GetScriptDirectory().."/FunLib/humaniser/lane_config")
+local LaneRead = require(GetScriptDirectory().."/FunLib/humaniser/lane_read")
 local SafeGather = require(GetScriptDirectory().."/FunLib/humaniser/safe_gather")
 local ____tasks = require(GetScriptDirectory().."/FunLib/humaniser/tasks")
 local Tasks = ____tasks.ForOurs
 local Telemetry = require(GetScriptDirectory().."/FunLib/humaniser/telemetry")
+function closed(a)
+    local n = 0
+    if a.d0 == nil or a.dmin == nil then
+        return 0
+    end
+    do
+        local i = 0
+        while i < #a.drawn do
+            local d0 = a.d0[i + 1]
+            local dm = a.dmin[i + 1]
+            if d0 ~= nil and dm ~= nil and (d0 - dm >= ____exports.SETTINGS.Closed or dm <= ____exports.SETTINGS.Touch) then
+                n = n + 1
+            end
+            i = i + 1
+        end
+    end
+    return n
+end
+function letGo(a)
+    for ____, c in ipairs(a.drawn) do
+        if LaneRead.CreepKind(c:GetUnitName()) == "r" then
+            return ____exports.SETTINGS.LetGoRanged
+        end
+    end
+    return ____exports.SETTINGS.LetGoMelee
+end
 ____exports.SETTINGS = {
     OrderGap = 0.1,
     OrderCap = 0.3,
     Switch = 1,
+    LetGoMelee = 2.3,
+    LetGoRanged = 2.85,
     Backstop = 3.5,
     Tolerance = 50,
     WalkSlack = 0.5,
@@ -195,7 +225,10 @@ local function resumable(bot, a, now)
     if a.orderAt == nil or now - a.orderAt >= ____exports.SETTINGS.Backstop or not bot:IsAlive() then
         return false
     end
-    if onHero(bot, a) == 0 then
+    if not (a.peak > 0 or closed(a) > 0) then
+        return false
+    end
+    if now - a.orderAt >= letGo(a) and onHero(bot, a) == 0 then
         return false
     end
     return SafeGather.At(
@@ -221,16 +254,16 @@ local function watch(bot, a)
         local i = 0
         while i < #a.drawn do
             do
-                local __continue26
+                local __continue27
                 repeat
                     local c = a.drawn[i + 1]
                     if c:IsNull() or not c:IsAlive() then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     local at = c:GetLocation()
                     if at == nil or at == nil then
-                        __continue26 = true
+                        __continue27 = true
                         break
                     end
                     local d = dist(me, at)
@@ -240,34 +273,15 @@ local function watch(bot, a)
                     if a.dmin[i + 1] == nil or d < a.dmin[i + 1] then
                         a.dmin[i + 1] = d
                     end
-                    __continue26 = true
+                    __continue27 = true
                 until true
-                if not __continue26 then
+                if not __continue27 then
                     break
                 end
             end
             i = i + 1
         end
     end
-end
---- Drawn creeps that closed on the hero by `Closed` or more since the order (they chased it, whatever their attack target read).
-local function closed(a)
-    local n = 0
-    if a.d0 == nil or a.dmin == nil then
-        return 0
-    end
-    do
-        local i = 0
-        while i < #a.drawn do
-            local d0 = a.d0[i + 1]
-            local dm = a.dmin[i + 1]
-            if d0 ~= nil and dm ~= nil and (d0 - dm >= ____exports.SETTINGS.Closed or dm <= ____exports.SETTINGS.Touch) then
-                n = n + 1
-            end
-            i = i + 1
-        end
-    end
-    return n
 end
 --- The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone.
 local back = __TS__Generator(function(ctx, bot, a)
@@ -293,9 +307,14 @@ local back = __TS__Generator(function(ctx, bot, a)
         if n > a.peak then
             a.peak = n
         end
-        if t >= ____exports.SETTINGS.Switch and n == 0 then
+        local drew = a.peak > 0 or closed(a) > 0
+        if t >= ____exports.SETTINGS.Switch and not drew then
             a.letAt = t
-            return a.peak > 0 and ctx.ok() or ctx.fail("missed", "nodraw")
+            return ctx.fail("missed", "nodraw")
+        end
+        if drew and t >= letGo(a) and n == 0 then
+            a.letAt = t
+            return ctx.ok()
         end
         if t >= ____exports.SETTINGS.Backstop then
             return ctx.fail("timeout")

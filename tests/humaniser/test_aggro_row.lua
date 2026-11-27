@@ -97,7 +97,8 @@ do -- a clean chance: go, the order on their hero, the walk back, the end when t
 		frame(w) -- no walk: the read again and the order
 		soft1 = w.AR.ROW.soft(w.core)
 		w.m1.target, w.m2.target = w.core, w.core
-		for _ = 1, 8 do T = T + 0.1 frame(w) end
+		-- Melee drawn: the draw lets go at about 2.3 s after the order.
+		for _ = 1, 23 do T = T + 0.1 frame(w) end
 		w.m1.target, w.m2.target = w.ours, w.ours
 		for _ = 1, 10 do
 			T = T + 0.1
@@ -127,6 +128,22 @@ do -- nothing drawn: missed nodraw after the switch time
 		for _ = 1, 12 do T = T + 0.1 if frame(w) then break end end
 	end)
 	check("nodraw: missed once the switch time passed with none on the hero", w.res ~= nil and w.res.reason == "missed" and w.res.message == "nodraw", w.res and w.res.reason)
+end
+
+do -- chasers that close on the hero without naming it (rig r2): drawn, so the walk back lasts to the let-go time, not nodraw at 1 s
+	local w = world()
+	local endT
+	capture(function()
+		ask(w)
+		frame(w)
+		for i = 1, 30 do
+			T = T + 0.1
+			w.m1.loc = Vector(300 - 20 * i, -5000)
+			if frame(w) then endT = T break end
+		end
+	end)
+	check("chasers: ok, not nodraw", w.res ~= nil and w.res.success == true, w.res and (w.res.reason .. " " .. tostring(w.res.message)))
+	check("chasers: ended at the melee let-go time, not at 1 s", endT ~= nil and endT - 100 >= 2.3 - 1e-6, endT)
 end
 
 do -- the control: a last hit the draw would cost holds it back (their creep left at the clash, not drawn)

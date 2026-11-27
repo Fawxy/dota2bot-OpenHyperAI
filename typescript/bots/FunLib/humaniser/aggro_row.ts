@@ -11,14 +11,17 @@
  *    phase looks at whether an action of the hero's is under way and does not order over it (rule 9).
  * 2. The order, the commit point: `Action_AttackUnit(target, once)`, then the hold is hard (`hs=hard` from the next round, `phase=order`
  *    on the job line). No swing of its own and no release order: a release turns the nearest chaser back onto the hero (measured).
- * 3. `back`, hard: a straight walk to the hand-over spot, `OrderGap` after the order. Ends `ok` when no drawn creep has the hero as its
- *    target any more (from `Switch` after the order: creeps switch 0.4 to 0.8 s after it), `missed nodraw` when none ever had, and
- *    `timeout` at `Backstop` (a logged backstop). The hero is then the next row's: stock's laning, the creep row, the deny row.
+ * 3. `back`, hard: a straight walk to the hand-over spot, once the attack is the hero's current action (at most `OrderCap`) and
+ *    `OrderGap` after the order. A creep is drawn when it names the hero as its attack target or closes on it (`closed`: a chasing creep
+ *    names it only once it swings). `missed nodraw` when none is drawn by `Switch` (creeps switch 0.4 to 0.8 s after the order); `ok`
+ *    once the draw's measured let-go time for the kinds drawn has passed (`letGo`) and no drawn creep names the hero; `timeout` at
+ *    `Backstop` (a logged backstop). The hero is then the next row's: stock's laning, the creep row, the deny row.
  *
  * The hand-over: a drawn creep that comes due mid-walk is the creep row's, which sits above; its begin replaces this task (the runner's
  * `cancelled replaced`, `cut=replaced` on the end line). The attempt lives in this row's memo, not its task: while the memo is open (an
- * order went and the task was replaced or preempted), the order is under `Backstop` old and a drawn creep still has the hero as its
- * target, `wants` offers the walk back again (`phase=resume`, the same `aid`) unless the danger read at the hero's place is deadly.
+ * order went and the task was replaced or preempted), the order is under `Backstop` old, a creep was drawn, and the draw has not let go
+ * (`letGo`, or a creep still names the hero), `wants` offers the walk back again (`phase=resume`, the same `aid`) unless the danger
+ * read at the hero's place is deadly.
  *
  * Lines: the offer read's `ev=choice kind=aggro src=own` (aggro_offer.ts: `go` 1 with the `aid` on the opportunity the row started on);
  * `ev=job job=aggro` start, order, resume and end.
@@ -31,6 +34,7 @@ import type { Reads } from "bots/FunLib/humaniser/reads";
 import * as Drill from "bots/FunLib/humaniser/drill";
 import * as HDebug from "bots/FunLib/humaniser/debug";
 import * as LaneConfig from "bots/FunLib/humaniser/lane_config";
+import * as LaneRead from "bots/FunLib/humaniser/lane_read";
 import * as SafeGather from "bots/FunLib/humaniser/safe_gather";
 import { ForOurs as Tasks } from "bots/FunLib/humaniser/tasks";
 import * as Telemetry from "bots/FunLib/humaniser/telemetry";
@@ -42,6 +46,9 @@ export const SETTINGS = {
     OrderCap: 0.3,
     /** Seconds after the order before "no drawn creep on the hero" ends the draw: they switch 0.4 to 0.8 s after it (measured, about 70). */
     Switch: 1.0,
+    /** Seconds from the order at which the draw lets go: melee about 2.3, ranged about 2.85 (measured, engine-physics "The draw"). */
+    LetGoMelee: 2.3,
+    LetGoRanged: 2.85,
     /** The logged backstop (s from the order): the draw lets go at about 2.3 s (melee) and 2.85 (ranged), measured; s6b's 3.5. */
     Backstop: 3.5,
     /** The walk-in's tolerance (world units) and its cap past the read's walk (s; judgement). */
@@ -140,7 +147,9 @@ function jobLine(bot: Unit, a: Attempt, phase: string, why: string, extra: Telem
 /** Whether an open attempt may take the hero back for its walk (s6b's resume). */
 function resumable(bot: Unit, a: Attempt, now: number): boolean {
     if (a.orderAt === undefined || now - a.orderAt >= SETTINGS.Backstop || !bot.IsAlive()) return false;
-    if (onHero(bot, a) === 0) return false;
+    // Still drawn: a creep chased or named the hero, and the draw has not let go by its measured time, or a creep still names the hero.
+    if (!(a.peak > 0 || closed(a) > 0)) return false;
+    if (now - a.orderAt >= letGo(a) && onHero(bot, a) === 0) return false;
     return SafeGather.At(bot, bot.GetLocation(), { remember: false }).level !== "deadly";
 }
 
@@ -174,6 +183,12 @@ function closed(a: Attempt): number {
     return n;
 }
 
+/** Seconds from the order at which the draw lets go of the kinds drawn: ranged when one is among them, else melee (measured). */
+function letGo(a: Attempt): number {
+    for (const c of a.drawn) if (LaneRead.CreepKind(c.GetUnitName()) === "r") return SETTINGS.LetGoRanged;
+    return SETTINGS.LetGoMelee;
+}
+
 /** The walk back to the hand-over spot until the draw lets go; the attempt's phase is `back` and its order has gone. */
 function* back(ctx: Lib.Ctx, bot: Unit, a: Attempt): Lib.TaskBody {
     const orderAt = a.orderAt!;
@@ -194,9 +209,16 @@ function* back(ctx: Lib.Ctx, bot: Unit, a: Attempt): Lib.TaskBody {
         const t = ctx.now() - orderAt;
         const n = onHero(bot, a);
         if (n > a.peak) a.peak = n;
-        if (t >= SETTINGS.Switch && n === 0) {
+        // A chasing creep names the hero as its attack target only once it swings (rig r2: 25 of 52 draws that pulled creeps ended at
+        // 1.0 s with none named), so the draw's let-go is read from its measured time for the kinds drawn, and then no creep on the hero.
+        const drew = a.peak > 0 || closed(a) > 0;
+        if (t >= SETTINGS.Switch && !drew) {
             a.letAt = t;
-            return a.peak > 0 ? ctx.ok() : ctx.fail("missed", "nodraw");
+            return ctx.fail("missed", "nodraw");
+        }
+        if (drew && t >= letGo(a) && n === 0) {
+            a.letAt = t;
+            return ctx.ok();
         }
         if (t >= SETTINGS.Backstop) return ctx.fail("timeout");
         const me = bot.GetLocation();
